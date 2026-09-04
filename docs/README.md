@@ -46,6 +46,8 @@ The architecture is documented across the following specifications:
 
 | Specification | Description |
 | :--- | :--- |
+| 🚀 **[Harness Integration Guides](harness-guides.md)** | Step-by-step instructions for Claude Code, Aider, OpenCode, Pi, AutoGen, CrewAI, LangChain/LangGraph, and custom loops. |
+| 🔍 **[Context Pollution & Heuristics Catalog](heuristics.md)** | Detailed specification of `CTX-001`..`004`, `CACHE-001`, detection formulas, and composite pollution score (0–100). |
 | 🌐 **[Network-Level Interception (MITM Proxy)](design-mitm-proxy.md)** | Transparent TLS proxy design using mitmproxy, automated cert provisioning, route filtering, and wrapper execution. |
 | 🔌 **[In-Harness Hooks & Plugins](design-harness-hooks.md)** | Native plugin architecture for Claude Code, OpenCode, Pi, and SDK callbacks (LangChain/AI SDK) for zero-proxy environments. |
 | 📡 **[Interceptor Component & UDS IPC Protocol](design-interceptor-uds.md)** | High-level deep dive on the zero-latency streaming tap, length-prefixed framing over Unix Domain Sockets, and wire event contracts. |
