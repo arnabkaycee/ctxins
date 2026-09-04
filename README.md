@@ -1,6 +1,6 @@
 # ctxins: Context Inspector & Optimizer for Agentic Harnesses
 
-[![CI](https://img.shields.io/badge/tests-221%20passed-brightgreen.svg)](docs/development.md#2-testing-suite)
+[![CI](https://img.shields.io/badge/tests-231%20passed-brightgreen.svg)](docs/development.md#2-testing-suite)
 [![Python](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13-blue.svg)](https://python.org)
 [![Type Checked](https://img.shields.io/badge/typecheck-mypy%20clean-blue.svg)](docs/development.md#3-quality-gates--linting)
 [![Linter](https://img.shields.io/badge/lint-ruff%20clean-blue.svg)](docs/development.md#3-quality-gates--linting)
@@ -15,18 +15,21 @@
 ```mermaid
 flowchart LR
     Agent["🤖 Agent Harness\n(Antigravity, Claude Code, Aider, AutoGen)"]
-    Proxy["⚡ ctxins Proxy\n(mitmproxy Addon)"]
+    Proxy["⚡ ctxins Proxy\n(mitmproxy Addon on port 8080)"]
     LLM["☁️ LLM Provider API\n(Anthropic / OpenAI / Gemini)"]
     Core["🧠 ctxins Core Engine\n(Context Graph & Rule Engine)"]
+    UI["💻 Web Dashboard & TUI\n(Live WebSocket Sync & Charts)"]
 
     Agent <-->|"Zero-Delay Streaming Tap"| Proxy
     Proxy <-->|"HTTPS"| LLM
     Proxy -.->|"Async IPC (Unix Socket)"| Core
+    Core -.->|"Event Broadcaster"| UI
 ```
 
 1. **Passive Stream Tap:** Runs as a transparent `mitmproxy` addon, intercepting LLM requests and streaming tokens downstream with zero buffering delay.
 2. **Context DAG & Pollution Analysis:** Ships framed telemetry over a non-blocking Unix Domain Socket to the Core Engine, tracking block lineage, prompt cache invalidations, and stale tool outputs.
-3. **Fail-Open Safety:** Ring buffers bound memory to ~10MB and safely drop frames under load so your agent's work is never blocked or interrupted.
+3. **Automated Interceptor Lifecycle:** `ctxins run`, `ctxins web`, and `ctxins live` automatically spawn and manage `mitmdump` on the configured proxy port (default: `8080`).
+4. **Fail-Open Safety:** Ring buffers bound memory to ~10MB and safely drop frames under load so your agent's work is never blocked or interrupted.
 
 ---
 
@@ -41,36 +44,48 @@ flowchart LR
 ## 🚀 Quick Start
 
 ### Option A: One-Command Runner (`ctxins run`)
-Execute your agent harness wrapped with an automatic proxy and interactive UI:
+Execute your agent harness wrapped with an automatic interceptor proxy and interactive presentation UI:
 
 ```bash
 git clone https://github.com/arnabkaycee/ctxins.git && cd ctxins
 uv sync --extra dev
 
-# Run with Terminal UI (TUI)
-uv run ctxins run --tui -- claude
-uv run ctxins run --tui -- agy
-
 # Run with Web Dashboard (http://localhost:8484)
+uv run ctxins run --web --port 8484 -- agy
 uv run ctxins run --web --port 8484 -- claude
+
+# Run with Terminal UI (TUI)
+uv run ctxins run --tui -- agy
+uv run ctxins run --tui -- claude
 ```
 
-### Option B: Decoupled Pipeline (`ctxins live` or separate daemons)
+### Option B: Standalone Dashboard Server (`ctxins web`)
+Launch the Web Dashboard and background proxy daemon attached to the Core Engine:
 
 ```bash
-# 1. Start Core Engine and presentation UI
-uv run ctxins live --tui            # Terminal UI
-uv run ctxins live --web --port 8484 # Web Dashboard
+# Start Web Dashboard on port 8484 and proxy interceptor on port 8080
+uv run ctxins web --port 8484 --proxy-port 8080
 
-# 2. In another terminal, start the interceptor proxy
-CTXINS_SOCKET_PATH=/tmp/ctxins.sock uv run mitmdump -p 8080 -s src/interceptor/addon.py
+# In your agent's terminal, route traffic through ctxins:
+HTTP_PROXY="http://127.0.0.1:8080" HTTPS_PROXY="http://127.0.0.1:8080" SSL_CERT_FILE="$HOME/.mitmproxy/mitmproxy-ca-cert.pem" agy
 
-# 3. Run any agent harness with the helper
+# Or using the with-ctxins helper:
 with-ctxins claude
 with-ctxins agy
 ```
 
-> **Tip:** You can also pass environment variables inline, e.g. `HTTP_PROXY="http://127.0.0.1:8080" HTTPS_PROXY="http://127.0.0.1:8080" SSL_CERT_FILE="$HOME/.mitmproxy/mitmproxy-ca-cert.pem" agy`. See [Harness Integration Guides](docs/harness-guides.md) for harness-specific details.
+> **Tip:** See [Harness Integration Guides](docs/harness-guides.md) for framework-specific proxy configuration details (Claude Code, Antigravity, Aider, AutoGen, CrewAI, etc.).
+
+---
+
+## 🛠️ CLI Reference
+
+| Subcommand | Description | Key Options |
+| :--- | :--- | :--- |
+| `ctxins run` | Spawn proxy, launch agent harness subprocess with auto-configured environment, and open UI | `--web`, `--tui`, `--port PORT`, `--proxy-port PORT`, `--socket PATH`, `-- COMMAND...` |
+| `ctxins web` | Launch real-time Web Dashboard server and auto-spawned mitmproxy interceptor | `--port PORT` (8484), `--host HOST`, `--proxy-port PORT` (8080), `--socket PATH` |
+| `ctxins tui` | Launch interactive Terminal UI (Textual) attached to Core Engine | `--socket PATH`, `--proxy-port PORT` (8080) |
+| `ctxins live` | Start Core Engine + selected UI mode (`web` or `tui`) | `--web`, `--tui`, `--port PORT`, `--proxy-port PORT`, `--socket PATH` |
 
 ---
 
@@ -109,16 +124,23 @@ uv run ctxins tui --socket /tmp/ctxins.sock
 ```
 👉 *See [docs/design-ui-dashboards.md](docs/design-ui-dashboards.md#4-interactive-terminal-ui-tui-design) and [docs/lld-presentation.md](docs/lld-presentation.md#3-terminal-ui-tui-architecture) for complete TUI design and implementation specifications.*
 
-### 2. Live Web Dashboard & WebSocket Stream
+### 2. Live Web Dashboard & Formatted JSON Inspector
 Launch the local web dashboard to view interactive token charts, cache invalidation heatmaps, and recommendation details:
 ```bash
 # Start the web dashboard gateway (default: http://localhost:8484)
-uv run ctxins web --port 8484 --socket /tmp/ctxins.sock
+uv run ctxins web --port 8484 --proxy-port 8080
 ```
-- **Real-Time WebSocket Sync (`/ws/live`)**: Instant updates as turns complete and tokens stream.
-- **Visual Context Sunburst & Treemaps**: Area-weighted breakdowns of prompt composition.
+- **Real-Time WebSocket Streaming (`/ws/live`)**: Instant session discovery, streaming status updates, and turn completion without page refreshes.
+- **Token Composition & Cache Hit Rate Graphs**: Interactive stacked bar charts showing exact system, tool definition, conversation history, tool result, thinking, and output token distributions per turn.
+- **Interactive, Collapsible JSON Inspector**:
+  - **Hierarchical Node Folding**: Expand/collapse objects and arrays with visual carets (`▼`/`▶`).
+  - **Collapsed Summary Pills**: Displays compact item/key counts (e.g. `{ 8 keys }`, `[ 12 items ]`) when folded.
+  - **Syntax Coloring**: Syntax-highlighted keys, strings, numbers, booleans, and nulls.
+  - **Global Controls**: Instant "Expand All" and "Collapse All" for complex multi-thousand token contexts.
+  - **Live Filter & Search**: Search keys or values in real time with keyword highlighting (`<mark>`) and automatic ancestor expansion.
+  - **Raw / Tree View Toggle & One-Click Copy**: Switch between interactive tree and raw formatted JSON with one-click clipboard copying.
 - **Prescriptive Recommendation Cards**: One-click remediation snippets and financial waste estimates for `CTX-001`..`004` and `CACHE-001`.
-- **Turn-by-Turn AST Diffing**: Inspect newly injected, persisted, and pruned context blocks.
+- **Turn-to-Turn AST Diffing**: Inspect newly injected, persisted, and pruned context blocks between any two turns in a session.
 
 👉 *See [docs/design-ui-dashboards.md](docs/design-ui-dashboards.md#5-web-dashboard-design) and [docs/lld-presentation.md](docs/lld-presentation.md#4-web-dashboard-server--restwebsocket-apis) for complete web architecture.*
 
