@@ -55,6 +55,7 @@ The architecture is documented across the following specifications:
 | 🛠️ **[Interceptor Low-Level Design (LLD)](lld-interceptor.md)** | Concrete package layout, data structures, SSE stream parsers (`AnthropicAccumulator`), ring buffer, and non-blocking UDS client implementation. |
 | ⚙️ **[Core Engine Low-Level Design (LLD)](lld-core-engine.md)** | Concrete AST classes (`CanonicalTurn`, `ContextBlock`), async `UDSFrameServer`, algorithmic heuristic implementations (`CTX-001` to `CTX-003`, `CACHE-001`), and session store. |
 | 🧪 **[Comprehensive Test Strategy](test-strategy.md)** | Unit, integration, and E2E testing framework, mock upstream LLM servers, UDS transport resilience, and performance latency benchmarks. |
+| 💻 **[Development & Testing Guide](development.md)** | Local environment setup, test runners, linters, project structure, and contribution workflow. |
 
 ---
 
