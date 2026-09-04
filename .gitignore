@@ -34,3 +34,12 @@ go.work.sum
 # Dolt database files (added by bd init)
 .dolt/
 *.db
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
