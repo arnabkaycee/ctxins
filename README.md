@@ -72,23 +72,53 @@ with-ctxins aider
 
 ---
 
-## 📊 Viewing Captured Metrics
+## 📊 Real-Time UIs & Captured Metrics
 
-`ctxins` provides several ways to inspect intercepted traffic and analysis:
+`ctxins` provides purpose-built real-time user interfaces to monitor context dynamics, cache performance, and optimization recommendations:
 
-### 1. Web Browser Dashboard (`mitmweb`)
-Launch the proxy with the embedded web interface:
+### 1. Interactive Terminal UI (TUI)
+Designed to run side-by-side with your agent harness in split terminals or `tmux`:
 ```bash
-CTXINS_SOCKET_PATH=/tmp/ctxins.sock uv run mitmweb -p 8080 -s src/interceptor/addon.py
+# Launch interactive TUI attached to the active Core Engine
+uv run python -m src.presentation.tui.app
 ```
-Open **`http://127.0.0.1:8081`** in your browser to inspect real-time message streams, TTFT latency, request/response headers, and raw SSE deltas.
+```text
+┌─────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│ ctxins v0.1.0 │ Session: sess_01j7abc991 (claude-3-5-sonnet) │ Status: ● STREAMING (Turn #4) │ Q: Quit │
+├─────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│ TOTAL TOKENS: 84.2k  │ CACHE HIT: 73.6% (62.0k) │ SPEND: $0.284 │ WASTED: $0.092 │ POLLUTION: 14.2/100  │
+├──────────────────────────────┬────────────────────────────────────────────┬─────────────────────────────┤
+│ [1] TURNS & TIMELINE         │ [2] CONTEXT COMPOSITION (TURN #3)          │ [3] RECOMMENDATIONS & ALERTS│
+├──────────────────────────────┼────────────────────────────────────────────┼─────────────────────────────┤
+│ ▶ Turn #1 (init)      12.4k  │ System Prompt:   1,800 tok  [2.1%]   ■■     │ ⚠ CTX-001: Stale Tool Out   │
+│   Turn #2 (file read) 24.1k  │ Tool Schemas:    2,400 tok  [2.8%]   ■■■    │   Turn #3: file_search res  │
+│   Turn #3 (bash run)  48.2k  │ Conversation:    3,200 tok  [3.8%]   ■■■■   │   unreferenced for 3 turns. │
+│ ● Turn #4 (streaming) 84.2k  │ Tool Results:   14,500 tok [17.2%]  ■■■■■■ │   Waste: $0.048 (14.5k tok) │
+│                              │ Thinking Block:    420 tok  [0.5%]   ■      │   Fix: Prune old output     │
+│                              │ Output Tokens:     350 tok  [0.4%]   ■      │ ─────────────────────────── │
+│                              │ Cache Read:     62,000 tok [73.6%]  ■■■■■■ │ 🚨 CACHE-001: Prefix Break  │
+│                              ├────────────────────────────────────────────┤   System prompt hash shifted│
+│                              │ SELECTED BLOCK: tool_result (id: blk_90fa) │   Waste: $0.044             │
+│                              │ Tool: run_shell ("find . -name '*.py'")    │   Fix: Move timestamp to end│
+│                              │ Size: 14,500 tokens | Survived: 3 turns    │                             │
+├──────────────────────────────┴────────────────────────────────────────────┴─────────────────────────────┤
+│ [Tab] Switch Pane  [↑/↓] Navigate Turns  [Enter] Inspect Block  [r] Filter Warnings  [e] Export .jsonc  │
+└─────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+```
+👉 *See [docs/design-ui-dashboards.md](docs/design-ui-dashboards.md#4-interactive-terminal-ui-tui-design) and [docs/lld-presentation.md](docs/lld-presentation.md#3-terminal-ui-tui-architecture) for complete TUI design and implementation specifications.*
 
-### 2. Interactive Terminal UI (`mitmproxy`)
-Launch the interactive terminal console to inspect live flows:
+### 2. Live Web Dashboard & WebSocket Stream
+Launch the local web dashboard to view interactive token charts, cache invalidation heatmaps, and recommendation details:
 ```bash
-CTXINS_SOCKET_PATH=/tmp/ctxins.sock uv run mitmproxy -p 8080 -s src/interceptor/addon.py
+# Start the web dashboard gateway (default: http://localhost:8484)
+uv run python -m src.presentation.web.server --port 8484
 ```
-Use keyboard shortcuts (`Enter` to inspect flow, `Tab` to switch request/response tabs, `q` to return).
+- **Real-Time WebSocket Sync (`/ws/live`)**: Instant updates as turns complete and tokens stream.
+- **Visual Context Sunburst & Treemaps**: Area-weighted breakdowns of prompt composition.
+- **Prescriptive Recommendation Cards**: One-click remediation snippets and financial waste estimates for `CTX-001`..`004` and `CACHE-001`.
+- **Turn-by-Turn AST Diffing**: Inspect newly injected, persisted, and pruned context blocks.
+
+👉 *See [docs/design-ui-dashboards.md](docs/design-ui-dashboards.md#5-web-dashboard-design) and [docs/lld-presentation.md](docs/lld-presentation.md#4-web-dashboard-server--restwebsocket-apis) for complete web architecture.*
 
 ### 3. Session Timeline Exports (`.jsonc`)
 The Core Engine exports complete session timelines into annotated `.jsonc` files (conforming to `https://ctxins.dev/schemas/session.v1.json`). Exports contain:
@@ -97,11 +127,14 @@ The Core Engine exports complete session timelines into annotated `.jsonc` files
 - AST diffs showing added, persisted, and pruned context blocks.
 - Triggered rule violations (`CTX-001`..`004`, `CACHE-001`), severity ratings, and estimated USD waste.
 
-### 4. Real-Time Terminal Telemetry (`mitmdump`)
-The default headless mode (`mitmdump`) streams real-time status lines to stdout:
-```text
-[INFO] REQUEST_INITIATED | corr_01j7... | provider=anthropic model=claude-3-5-sonnet
-[INFO] TURN_COMPLETED    | corr_01j7... | tokens=14,200 (cache_read: 8,400) duration=840ms
+### 4. Low-Level Network Inspection (`mitmweb` / `mitmproxy`)
+For raw HTTP/2 and SSE chunk debugging, `ctxins` supports mitmproxy's native frontends:
+```bash
+# Web proxy inspector (http://127.0.0.1:8081)
+uv run mitmweb -p 8080 -s src/interceptor/addon.py
+
+# Terminal proxy inspector
+uv run mitmproxy -p 8080 -s src/interceptor/addon.py
 ```
 
 ---

@@ -449,3 +449,17 @@ class SessionStore:
         with self.lock:
             return list(self.sessions.get(session_id, []))
 ```
+
+---
+
+## 5. Presentation Layer & Real-Time Event Dispatch
+
+The presentation layer consumes data from `SessionStore` and broadcasts real-time telemetry updates to terminal TUIs and web dashboards.
+
+- **High-Level UI Design & Wireframes**: [docs/design-ui-dashboards.md](design-ui-dashboards.md)
+- **Presentation Low-Level Design (LLD)**: [docs/lld-presentation.md](lld-presentation.md)
+- **Key Modules**:
+  - `src/presentation/broadcaster.py`: Thread-safe, non-blocking pub/sub event bus decoupling ingestion from rendering.
+  - `src/presentation/tui/`: Textual interactive terminal dashboard (`CtxinsTUIApp`).
+  - `src/presentation/web/`: FastAPI ASGI application, WebSocket live streaming hub (`/ws/live`), and embedded single-page dashboard.
+

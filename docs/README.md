@@ -54,6 +54,8 @@ The architecture is documented across the following specifications:
 | 🧠 **[Core Analysis Engine & Session Spec](design-core-engine.md)** | High-level architecture of context AST, pollution heuristics (`CTX-001` to `CACHE-003`), `.jsonc` schema, and baseline diffing. |
 | 🛠️ **[Interceptor Low-Level Design (LLD)](lld-interceptor.md)** | Concrete package layout, data structures, SSE stream parsers (`AnthropicAccumulator`), ring buffer, and non-blocking UDS client implementation. |
 | ⚙️ **[Core Engine Low-Level Design (LLD)](lld-core-engine.md)** | Concrete AST classes (`CanonicalTurn`, `ContextBlock`), async `UDSFrameServer`, algorithmic heuristic implementations (`CTX-001` to `CTX-003`, `CACHE-001`), and session store. |
+| 🖥️ **[Real-Time TUI & Web Dashboard Design](design-ui-dashboards.md)** | High-level architecture, user experience, wireframes, real-time WebSocket protocol, and optimization recommendation UX for TUI & Web dashboard. |
+| 📊 **[Presentation Layer Low-Level Design (LLD)](lld-presentation.md)** | Concrete class design for `PresentationBroadcaster`, Textual TUI widgets, and FastAPI / Starlette WebSocket & REST APIs. |
 | 🧪 **[Comprehensive Test Strategy](test-strategy.md)** | Unit, integration, and E2E testing framework, mock upstream LLM servers, UDS transport resilience, and performance latency benchmarks. |
 | 💻 **[Development & Testing Guide](development.md)** | Local environment setup, test runners, linters, project structure, and contribution workflow. |
 
