@@ -165,16 +165,39 @@
   <div id="block-modal" class="modal-overlay">
     <div class="modal-content">
       <div class="modal-header">
-        <div id="modal-title" class="modal-title">Block Details</div>
+        <div class="modal-header-left">
+          <div id="modal-title" class="modal-title">Block Details</div>
+          <span id="modal-type-badge" class="badge badge-info" style="margin-left: 10px; font-size: 11px;">JSON</span>
+        </div>
         <button id="modal-close-btn" class="modal-close-btn">&times;</button>
       </div>
-      <pre id="modal-body" class="modal-body"></pre>
+      <div id="modal-toolbar" class="modal-toolbar">
+        <div class="modal-toolbar-left">
+          <button id="modal-expand-all-btn" class="btn btn-sm">Expand All</button>
+          <button id="modal-collapse-all-btn" class="btn btn-sm">Collapse All</button>
+          <div class="view-mode-toggle">
+            <button id="modal-view-tree-btn" class="btn btn-sm active">Tree</button>
+            <button id="modal-view-raw-btn" class="btn btn-sm">Raw</button>
+          </div>
+          <input id="modal-search-input" type="text" class="modal-search" placeholder="Filter keys / values..." />
+          <span id="modal-search-matches" class="modal-search-matches" style="display: none;"></span>
+        </div>
+        <div class="modal-toolbar-right">
+          <button id="modal-copy-btn" class="btn btn-sm">Copy Content</button>
+        </div>
+      </div>
+      <div id="modal-body-container" class="modal-body-container">
+        <div id="modal-tree-container" class="json-tree-container"></div>
+        <pre id="modal-raw-container" class="modal-raw-container" style="display: none;"></pre>
+        <pre id="modal-body" class="modal-body" style="display: none;"></pre>
+      </div>
     </div>
   </div>
 
   <!-- Chart.js CDN with graceful fallback -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <!-- Application Scripts -->
+  <script src="/js/json_viewer.js"></script>
   <script src="/js/ws_client.js"></script>
   <script src="/js/charts.js"></script>
   <script src="/js/app.js"></script>

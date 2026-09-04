@@ -335,3 +335,27 @@ def test_websocket_hub_direct_methods() -> None:
 
     hub.unregister(dummy)  # type: ignore[arg-type]
     assert hub.client_count == 0
+
+
+def test_static_assets_and_json_viewer_served(client: TestClient) -> None:
+    """Verify index.html, json_viewer.js, and styles.css are correctly served."""
+    # 1. index.html includes JSON viewer markup and script tag
+    resp = client.get("/")
+    assert resp.status_code == 200
+    assert "modal-tree-container" in resp.text
+    assert "modal-expand-all-btn" in resp.text
+    assert "modal-view-tree-btn" in resp.text
+    assert "/js/json_viewer.js" in resp.text
+
+    # 2. json_viewer.js is served
+    resp_js = client.get("/js/json_viewer.js")
+    assert resp_js.status_code == 200
+    assert "class JsonViewer" in resp_js.text
+    assert "collapseAll" in resp_js.text
+    assert "expandAll" in resp_js.text
+
+    # 3. styles.css contains json tree styles
+    resp_css = client.get("/css/styles.css")
+    assert resp_css.status_code == 200
+    assert ".json-tree-container" in resp_css.text
+    assert ".json-caret" in resp_css.text

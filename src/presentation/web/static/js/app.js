@@ -41,11 +41,24 @@ class DashboardApp {
     this.diffBtn = document.getElementById('diff-btn');
     this.diffResults = document.getElementById('diff-results');
 
-    // Modal
+    // Modal & JSON Viewer Elements
     this.modalOverlay = document.getElementById('block-modal');
     this.modalTitle = document.getElementById('modal-title');
-    this.modalBody = document.getElementById('modal-body');
+    this.modalTypeBadge = document.getElementById('modal-type-badge');
     this.modalCloseBtn = document.getElementById('modal-close-btn');
+    this.modalBody = document.getElementById('modal-body');
+    this.modalTreeContainer = document.getElementById('modal-tree-container');
+    this.modalRawContainer = document.getElementById('modal-raw-container');
+    this.modalExpandAllBtn = document.getElementById('modal-expand-all-btn');
+    this.modalCollapseAllBtn = document.getElementById('modal-collapse-all-btn');
+    this.modalViewTreeBtn = document.getElementById('modal-view-tree-btn');
+    this.modalViewRawBtn = document.getElementById('modal-view-raw-btn');
+    this.modalCopyBtn = document.getElementById('modal-copy-btn');
+    this.modalSearchInput = document.getElementById('modal-search-input');
+    this.modalSearchMatches = document.getElementById('modal-search-matches');
+    this.modalToolbar = document.getElementById('modal-toolbar');
+
+    this.jsonViewer = null;
   }
 
   async init() {
@@ -55,6 +68,23 @@ class DashboardApp {
     this.charts = new DashboardCharts('token-chart', (turnIndex) => {
       this.selectTurn(turnIndex);
     });
+
+    // Initialize JSON Viewer
+    if (typeof window.JsonViewer !== 'undefined') {
+      this.jsonViewer = new JsonViewer({
+        treeContainer: this.modalTreeContainer,
+        rawContainer: this.modalRawContainer,
+        toolbar: this.modalToolbar,
+        expandAllBtn: this.modalExpandAllBtn,
+        collapseAllBtn: this.modalCollapseAllBtn,
+        viewTreeBtn: this.modalViewTreeBtn,
+        viewRawBtn: this.modalViewRawBtn,
+        copyBtn: this.modalCopyBtn,
+        searchInput: this.modalSearchInput,
+        searchMatches: this.modalSearchMatches,
+        typeBadge: this.modalTypeBadge,
+      });
+    }
 
     // Initialize WebSocket client
     this.wsClient = new WSClient({
@@ -98,6 +128,12 @@ class DashboardApp {
         }
       });
     }
+
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && this.modalOverlay && this.modalOverlay.classList.contains('active')) {
+        this.closeModal();
+      }
+    });
   }
 
   async refreshSessions() {
@@ -595,7 +631,15 @@ class DashboardApp {
 
   openModal(title, content) {
     if (this.modalTitle) this.modalTitle.textContent = title;
-    if (this.modalBody) this.modalBody.textContent = content;
+    const textRepresentation =
+      typeof content === 'object' && content !== null
+        ? JSON.stringify(content, null, 2)
+        : String(content || '');
+    if (this.modalBody) this.modalBody.textContent = textRepresentation;
+
+    if (this.jsonViewer) {
+      this.jsonViewer.render(content);
+    }
     if (this.modalOverlay) this.modalOverlay.classList.add('active');
   }
 
