@@ -27,21 +27,24 @@ def test_build_parser_defaults() -> None:
     parser = build_parser()
 
     # tui subcommand
-    args = parser.parse_args(["tui"])
+    args = parser.parse_args(["tui", "--proxy-port", "8085"])
     assert args.subcommand == "tui"
     assert args.socket == DEFAULT_SOCKET_PATH
+    assert args.proxy_port == 8085
 
     # web subcommand
-    args = parser.parse_args(["web", "--port", "9090"])
+    args = parser.parse_args(["web", "--port", "9090", "--proxy-port", "8086"])
     assert args.subcommand == "web"
     assert args.port == 9090
     assert args.host == DEFAULT_WEB_HOST
     assert args.socket == DEFAULT_SOCKET_PATH
+    assert args.proxy_port == 8086
 
     # live subcommand
-    args = parser.parse_args(["live", "--web"])
+    args = parser.parse_args(["live", "--web", "--proxy-port", "8087"])
     assert args.subcommand == "live"
     assert args.ui_mode == "web"
+    assert args.proxy_port == 8087
 
     # run subcommand with trailing args
     args = parser.parse_args(["run", "--web", "--", "claude", "code"])
@@ -78,6 +81,10 @@ async def test_core_pipeline_bridge_turn_lifecycle() -> None:
             payload={"model": "claude-3-5-sonnet", "provider": "anthropic"},
         )
     )
+    ev0 = await q.get()
+    assert ev0.event_type.value == "session_created"
+    assert ev0.session_id == "sess_cli_test"
+
     ev1 = await q.get()
     assert ev1.event_type.value == "turn_started"
     assert ev1.session_id == "sess_cli_test"
@@ -120,6 +127,11 @@ async def test_core_pipeline_bridge_turn_lifecycle() -> None:
     assert ev3.event_type.value == "turn_completed"
     assert ev3.session_id == "sess_cli_test"
     assert ev3.payload["turnIndex"] == 0
+    assert ev3.payload["turn_index"] == 0
+
+    ev4 = await q.get()
+    assert ev4.event_type.value == "session_summary_updated"
+    assert ev4.session_id == "sess_cli_test"
 
     # Ensure turn was recorded in SessionStore
     turns = store.get_session("sess_cli_test")
@@ -154,4 +166,26 @@ def test_run_with_harness_lifecycle():
         assert env["http_proxy"] == "http://127.0.0.1:8080"
         assert env["HTTPS_PROXY"] == "http://127.0.0.1:8080"
         assert env["https_proxy"] == "http://127.0.0.1:8080"
+
+
+def test_run_web_lifecycle():
+    with patch("subprocess.Popen") as mock_popen, \
+         patch("socket.create_connection") as mock_conn, \
+         patch("uvicorn.Server.serve"), \
+         patch("src.core.server.uds_server.UDSFrameServer.start"), \
+         patch("src.core.server.uds_server.UDSFrameServer.stop"):
+        mock_conn.side_effect = [OSError("not listening"), MagicMock()]
+        mock_proc = MagicMock()
+        mock_proc.poll.return_value = None
+        mock_popen.return_value = mock_proc
+
+        from src.cli import run_web
+
+        run_web(port=8484, proxy_port=8080)
+
+        assert mock_popen.call_count == 1
+        mitm_call = mock_popen.call_args_list[0]
+        assert any("mitmdump" in str(arg) for arg in mitm_call[0][0])
+        assert mock_proc.terminate.called
+
 

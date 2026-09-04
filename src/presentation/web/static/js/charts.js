@@ -112,7 +112,12 @@ class DashboardCharts {
             const clickedIndex = elements[0].index;
             if (this.turns && this.turns[clickedIndex] !== undefined) {
               const turnObj = this.turns[clickedIndex];
-              const turnIdx = turnObj.turn_index !== undefined ? turnObj.turn_index : clickedIndex;
+              const turnIdx =
+                turnObj.turn_index !== undefined
+                  ? turnObj.turn_index
+                  : turnObj.turnIndex !== undefined
+                  ? turnObj.turnIndex
+                  : clickedIndex;
               this.onTurnSelect(turnIdx);
             }
           }
@@ -226,7 +231,8 @@ class DashboardCharts {
     const cacheHitData = [];
 
     this.turns.forEach((t, i) => {
-      const idx = t.turn_index !== undefined ? t.turn_index : i;
+      const idx =
+        t.turn_index !== undefined ? t.turn_index : t.turnIndex !== undefined ? t.turnIndex : i;
       labels.push(`Turn #${idx}`);
 
       // Calculate token segments
@@ -236,27 +242,38 @@ class DashboardCharts {
       let res = 0;
       let tht = 0;
 
-      if (t.tokens) {
-        sys = t.tokens.system || 0;
-        tls = t.tokens.tools || 0;
-        hist = t.tokens.history || 0;
-        res = t.tokens.toolResults || 0;
-        tht = t.tokens.thoughts || 0;
+      const tok = t.tokens || t.tokenBreakdown;
+      if (tok) {
+        sys = tok.system || 0;
+        tls = tok.tools || tok.tool_defs || 0;
+        hist = tok.history || tok.conversation_history || 0;
+        res = tok.toolResults || tok.tool_results || 0;
+        tht = tok.thoughts || tok.thinking || 0;
       } else {
-        if (t.system_blocks) sys = t.system_blocks.reduce((acc, b) => acc + (b.token_count || 0), 0);
-        if (t.tool_defs) tls = t.tool_defs.reduce((acc, b) => acc + (b.token_count || 0), 0);
-        if (t.conversation_history) hist = t.conversation_history.reduce((acc, b) => acc + (b.token_count || 0), 0);
-        if (t.tool_results) res = t.tool_results.reduce((acc, b) => acc + (b.token_count || 0), 0);
-        if (t.assistant_blocks) {
-          tht = t.assistant_blocks
-            .filter((b) => b.metadata && b.metadata.type === 'thinking')
-            .reduce((acc, b) => acc + (b.token_count || 0), 0);
+        const sysBlocks = t.system_blocks || t.systemBlocks;
+        const toolBlocks = t.tool_defs || t.toolDefs;
+        const histBlocks = t.conversation_history || t.conversationHistory;
+        const resBlocks = t.tool_results || t.toolResults;
+        const asstBlocks = t.assistant_blocks || t.assistantBlocks;
+
+        if (sysBlocks) sys = sysBlocks.reduce((acc, b) => acc + (b.token_count || b.tokenCount || 0), 0);
+        if (toolBlocks) tls = toolBlocks.reduce((acc, b) => acc + (b.token_count || b.tokenCount || 0), 0);
+        if (histBlocks) hist = histBlocks.reduce((acc, b) => acc + (b.token_count || b.tokenCount || 0), 0);
+        if (resBlocks) res = resBlocks.reduce((acc, b) => acc + (b.token_count || b.tokenCount || 0), 0);
+        if (asstBlocks) {
+          tht = asstBlocks
+            .filter((b) => b.metadata && (b.metadata.type === 'thinking' || b.metadata.type === 'thought'))
+            .reduce((acc, b) => acc + (b.token_count || b.tokenCount || 0), 0);
         }
       }
 
-      const out = t.output_tokens || 0;
-      const inp = t.input_tokens || (sys + tls + hist + res);
-      const cached = t.cached_read_tokens || (t.cache && t.cache.readTokens) || 0;
+      const out = t.output_tokens ?? t.outputTokens ?? 0;
+      const inp = t.input_tokens ?? t.inputTokens ?? (sys + tls + hist + res);
+      const cached =
+        t.cached_read_tokens ??
+        t.cachedReadTokens ??
+        (t.cache && (t.cache.readTokens ?? t.cache.read_tokens)) ??
+        0;
       const hitRatio = inp > 0 ? Math.round((cached / inp) * 1000) / 10 : 0;
 
       systemData.push(sys);

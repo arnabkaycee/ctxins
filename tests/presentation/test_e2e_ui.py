@@ -56,6 +56,10 @@ async def test_e2e_uds_to_presentation_broadcaster() -> None:
             writer.write(raw_frame1)
             await writer.drain()
 
+            event0 = await asyncio.wait_for(queue.get(), timeout=2.0)
+            assert event0.event_type == UIEventType.SESSION_CREATED
+            assert event0.session_id == session_id
+
             event1 = await asyncio.wait_for(queue.get(), timeout=2.0)
             assert event1.event_type == UIEventType.TURN_STARTED
             assert event1.session_id == session_id
@@ -128,6 +132,10 @@ async def test_e2e_uds_to_presentation_broadcaster() -> None:
             assert event3.payload["turnIndex"] == 0
             assert event3.payload["inputTokens"] == 350
             assert event3.payload["cachedReadTokens"] == 200
+
+            event4 = await asyncio.wait_for(queue.get(), timeout=2.0)
+            assert event4.event_type == UIEventType.SESSION_SUMMARY_UPDATED
+            assert event4.session_id == session_id
 
             # Verify store was updated
             turns = store.get_session(session_id)

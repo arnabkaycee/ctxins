@@ -173,10 +173,18 @@ class DashboardApp {
     const type = event.type || (event.payload && event.payload.type);
     const sid = event.sessionId || (event.payload && event.payload.sessionId);
 
-    // If session matches or active session was not yet set
+    // If active session was not yet set, adopt incoming session
     if (!this.activeSessionId && sid) {
       this.activeSessionId = sid;
       this.refreshSessions();
+    }
+
+    // Ignore events for other sessions if activeSessionId is set, except session_created
+    if (this.activeSessionId && sid && this.activeSessionId !== sid) {
+      if (type === 'session_created' || type === 'SESSION_CREATED') {
+        this.refreshSessions();
+      }
+      return;
     }
 
     if (type === 'SNAPSHOT' || type === 'snapshot') {
@@ -189,10 +197,31 @@ class DashboardApp {
       this.violations = payload.violations || [];
       this.renderAll();
       this.refreshSessions();
+    } else if (type === 'turn_started' || type === 'TURN_STARTED') {
+      const tNum = event.payload?.turn_index ?? event.payload?.turnIndex;
+      if (this.statusText) {
+        this.statusText.textContent = tNum !== undefined ? `Turn #${tNum} in progress...` : 'Turn in progress...';
+      }
+    } else if (type === 'turn_streaming' || type === 'TURN_STREAMING') {
+      const tNum = event.payload?.turn_index ?? event.payload?.turnIndex;
+      if (this.statusText) {
+        this.statusText.textContent = tNum !== undefined ? `Turn #${tNum} streaming...` : 'Streaming tokens...';
+      }
     } else if (type === 'turn_completed' || type === 'TURN_COMPLETED') {
-      const turnData = event.payload ? event.payload.turn || event.payload : {};
-      if (turnData.turn_index !== undefined) {
-        const existingIdx = this.turns.findIndex((t) => t.turn_index === turnData.turn_index);
+      const payload = event.payload || {};
+      const turnData = payload.turn || payload;
+      const tIdx = turnData.turn_index !== undefined ? turnData.turn_index : turnData.turnIndex;
+      if (tIdx !== undefined) {
+        // Normalize fields for uniform internal access
+        if (turnData.turn_index === undefined) turnData.turn_index = tIdx;
+        if (turnData.input_tokens === undefined && turnData.inputTokens !== undefined) turnData.input_tokens = turnData.inputTokens;
+        if (turnData.output_tokens === undefined && turnData.outputTokens !== undefined) turnData.output_tokens = turnData.outputTokens;
+        if (turnData.cached_read_tokens === undefined && turnData.cachedReadTokens !== undefined) turnData.cached_read_tokens = turnData.cachedReadTokens;
+        if (!turnData.all_blocks && turnData.blocks) turnData.all_blocks = turnData.blocks;
+
+        const existingIdx = this.turns.findIndex(
+          (t) => (t.turn_index !== undefined ? t.turn_index : t.turnIndex) === tIdx
+        );
         if (existingIdx >= 0) {
           this.turns[existingIdx] = turnData;
         } else {
@@ -202,10 +231,12 @@ class DashboardApp {
       if (turnData.violations) {
         turnData.violations.forEach((v) => this.violations.push(v));
       }
-      if (event.payload && event.payload.summary) {
-        this.summary = event.payload.summary;
+      if (payload.summary) {
+        this.summary = payload.summary;
       }
       this.renderAll();
+      this.refreshSessions();
+      this.updateConnectionStatus('connected');
     } else if (type === 'violation_detected' || type === 'VIOLATION_DETECTED') {
       const violation = event.payload ? event.payload.violation || event.payload : null;
       if (violation) {
@@ -245,8 +276,15 @@ class DashboardApp {
     // Select latest turn if none or selected out of bounds
     if (this.turns.length > 0) {
       const lastTurn = this.turns[this.turns.length - 1];
-      const defaultIdx = lastTurn.turn_index !== undefined ? lastTurn.turn_index : this.turns.length - 1;
-      const valid = this.turns.some((t) => (t.turn_index !== undefined ? t.turn_index : 0) === this.selectedTurnIndex);
+      const defaultIdx =
+        lastTurn.turn_index !== undefined
+          ? lastTurn.turn_index
+          : lastTurn.turnIndex !== undefined
+          ? lastTurn.turnIndex
+          : this.turns.length - 1;
+      const valid = this.turns.some(
+        (t) => (t.turn_index !== undefined ? t.turn_index : t.turnIndex) === this.selectedTurnIndex
+      );
       this.selectTurn(valid ? this.selectedTurnIndex : defaultIdx);
     } else {
       this.renderEmptyTurnInspector();
@@ -254,28 +292,24 @@ class DashboardApp {
   }
 
   renderKPIs() {
-    const s = this.summary || {
-      totalInputTokens: 0,
-      totalOutputTokens: 0,
-      cacheHitRatio: 0,
-      estimatedCostUSD: 0,
-      potentialSavingsUSD: 0,
-      pollutionScore: 0,
-    };
+    const s = this.summary || {};
 
-    const totalTokens = (s.totalInputTokens || 0) + (s.totalOutputTokens || 0);
+    const totalInput = s.totalInputTokens ?? s.total_input_tokens ?? 0;
+    const totalOutput = s.totalOutputTokens ?? s.total_output_tokens ?? 0;
+    const totalTokens = totalInput + totalOutput;
     if (this.kpiTokens) this.kpiTokens.textContent = totalTokens.toLocaleString();
 
-    const hitPct = Math.round((s.cacheHitRatio || 0) * 1000) / 10;
+    const hitRatio = s.cacheHitRatio ?? s.cache_hit_ratio ?? 0;
+    const hitPct = Math.round(hitRatio * 1000) / 10;
     if (this.kpiCacheHit) this.kpiCacheHit.textContent = `${hitPct}%`;
 
-    const spend = Number(s.estimatedCostUSD || 0).toFixed(4);
+    const spend = Number(s.estimatedCostUSD ?? s.estimated_cost_usd ?? 0).toFixed(4);
     if (this.kpiSpend) this.kpiSpend.textContent = `$${spend}`;
 
-    const avoidable = Number(s.potentialSavingsUSD || 0).toFixed(4);
+    const avoidable = Number(s.potentialSavingsUSD ?? s.potential_savings_usd ?? 0).toFixed(4);
     if (this.kpiAvoidable) this.kpiAvoidable.textContent = `$${avoidable}`;
 
-    const score = Number(s.pollutionScore || 0);
+    const score = Number(s.pollutionScore ?? s.pollution_score ?? 0);
     if (this.kpiPollutionScore) this.kpiPollutionScore.textContent = `${score.toFixed(1)} / 100`;
 
     if (this.pollutionMeterFill) {
@@ -326,7 +360,8 @@ class DashboardApp {
       card.className = `violation-card severity-${sev}`;
 
       const badgeClass = sev === 'CRITICAL' ? 'badge-critical' : sev === 'WARN' ? 'badge-warn' : 'badge-info';
-      const wasteStr = v.estimated_waste_usd || v.estimatedWasteUSD ? `$${Number(v.estimated_waste_usd || v.estimatedWasteUSD).toFixed(4)} waste` : '';
+      const wasteVal = v.estimated_waste_usd ?? v.estimatedWasteUSD;
+      const wasteStr = wasteVal !== undefined && wasteVal !== null ? `$${Number(wasteVal).toFixed(4)} waste` : '';
 
       card.innerHTML = `
         <div class="violation-header">
@@ -345,20 +380,31 @@ class DashboardApp {
 
   selectTurn(turnIndex) {
     this.selectedTurnIndex = turnIndex;
-    const turn = this.turns.find((t) => (t.turn_index !== undefined ? t.turn_index : 0) === turnIndex);
+    const turn = this.turns.find(
+      (t) => (t.turn_index !== undefined ? t.turn_index : t.turnIndex) === turnIndex
+    );
     if (!turn) return;
 
+    const tIdx = turn.turn_index !== undefined ? turn.turn_index : turn.turnIndex;
     if (this.turnTitle) {
-      this.turnTitle.textContent = `Turn #${turn.turn_index} Inspector`;
+      this.turnTitle.textContent = `Turn #${tIdx} Inspector`;
     }
 
     if (this.turnMetaRibbon) {
-      const inp = (turn.input_tokens || 0).toLocaleString();
-      const out = (turn.output_tokens || 0).toLocaleString();
-      const cached = (turn.cached_read_tokens || 0).toLocaleString();
-      const dur = turn.duration_ms ? `${turn.duration_ms.toFixed(0)}ms` : '—';
-      const ttft = turn.ttft_ms ? `${turn.ttft_ms.toFixed(0)}ms` : '—';
-      const cost = turn.turn_cost_usd ? `$${turn.turn_cost_usd.toFixed(4)}` : '$0.0000';
+      const inp = (turn.input_tokens ?? turn.inputTokens ?? 0).toLocaleString();
+      const out = (turn.output_tokens ?? turn.outputTokens ?? 0).toLocaleString();
+      const cached = (
+        turn.cached_read_tokens ??
+        turn.cachedReadTokens ??
+        (turn.cache && (turn.cache.readTokens ?? turn.cache.read_tokens)) ??
+        0
+      ).toLocaleString();
+      const durVal = turn.duration_ms ?? turn.durationMs;
+      const dur = durVal !== undefined && durVal !== null ? `${Number(durVal).toFixed(0)}ms` : '—';
+      const ttftVal = turn.ttft_ms ?? turn.ttftMs;
+      const ttft = ttftVal !== undefined && ttftVal !== null ? `${Number(ttftVal).toFixed(0)}ms` : '—';
+      const costVal = turn.turn_cost_usd ?? turn.turnCostUSD;
+      const cost = costVal !== undefined && costVal !== null ? `$${Number(costVal).toFixed(4)}` : '$0.0000';
 
       this.turnMetaRibbon.innerHTML = `
         <div class="turn-meta-item"><span class="label">Input:</span><span class="val">${inp} tok</span></div>
@@ -381,13 +427,15 @@ class DashboardApp {
     let blocks = [];
     if (turn.all_blocks && turn.all_blocks.length > 0) {
       blocks = turn.all_blocks;
+    } else if (turn.blocks && turn.blocks.length > 0) {
+      blocks = turn.blocks;
     } else {
       blocks = [
-        ...(turn.system_blocks || []),
-        ...(turn.tool_defs || []),
-        ...(turn.conversation_history || []),
-        ...(turn.tool_results || []),
-        ...(turn.assistant_blocks || []),
+        ...(turn.system_blocks || turn.systemBlocks || []),
+        ...(turn.tool_defs || turn.toolDefs || []),
+        ...(turn.conversation_history || turn.conversationHistory || []),
+        ...(turn.tool_results || turn.toolResults || []),
+        ...(turn.assistant_blocks || turn.assistantBlocks || []),
       ];
     }
 
@@ -404,13 +452,18 @@ class DashboardApp {
 
     blocks.forEach((b) => {
       const row = document.createElement('tr');
-      const hashShort = b.content_hash ? `${b.content_hash.slice(0, 8)}...` : '—';
-      const survivedText = b.turns_survived !== undefined ? `${b.turns_survived} turns` : '—';
+      const bId = b.block_id || b.blockId || '—';
+      const bType = b.block_type || b.blockType || 'block';
+      const tokCount = b.token_count ?? b.tokenCount ?? 0;
+      const hash = b.content_hash || b.contentHash || '';
+      const hashShort = hash ? `${hash.slice(0, 8)}...` : '—';
+      const survived = b.turns_survived ?? b.turnsSurvived;
+      const survivedText = survived !== undefined ? `${survived} turns` : '—';
 
       row.innerHTML = `
-        <td class="code-cell">${b.block_id || '—'}</td>
-        <td><span class="badge badge-info">${b.block_type || 'block'}</span></td>
-        <td style="font-family: var(--font-mono);">${(b.token_count || 0).toLocaleString()}</td>
+        <td class="code-cell">${bId}</td>
+        <td><span class="badge badge-info">${bType}</span></td>
+        <td style="font-family: var(--font-mono);">${tokCount.toLocaleString()}</td>
         <td>${survivedText}</td>
         <td class="hash-cell">${hashShort}</td>
         <td>
@@ -421,7 +474,7 @@ class DashboardApp {
       const viewBtn = row.querySelector('button');
       if (viewBtn) {
         viewBtn.addEventListener('click', () => {
-          this.openModal(`Block: ${b.block_id} (${b.block_type})`, b.content || JSON.stringify(b, null, 2));
+          this.openModal(`Block: ${bId} (${bType})`, b.content || JSON.stringify(b, null, 2));
         });
       }
 
@@ -452,7 +505,8 @@ class DashboardApp {
     this.diffT2.innerHTML = '';
 
     this.turns.forEach((t, i) => {
-      const idx = t.turn_index !== undefined ? t.turn_index : i;
+      const idx =
+        t.turn_index !== undefined ? t.turn_index : t.turnIndex !== undefined ? t.turnIndex : i;
       const opt1 = document.createElement('option');
       opt1.value = idx;
       opt1.textContent = `Turn #${idx}`;
@@ -465,8 +519,10 @@ class DashboardApp {
     });
 
     if (this.turns.length >= 2) {
-      const prevIdx = this.turns[this.turns.length - 2].turn_index ?? 0;
-      const lastIdx = this.turns[this.turns.length - 1].turn_index ?? 1;
+      const prevTurn = this.turns[this.turns.length - 2];
+      const lastTurn = this.turns[this.turns.length - 1];
+      const prevIdx = prevTurn.turn_index ?? prevTurn.turnIndex ?? 0;
+      const lastIdx = lastTurn.turn_index ?? lastTurn.turnIndex ?? 1;
       this.diffT1.value = currentT1 || prevIdx;
       this.diffT2.value = currentT2 || lastIdx;
     }

@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from src.core.analyzer.engine import PollutionAnalyzer
+from src.core.analyzer.scorer import PollutionScorer
 from src.core.ast.normalizers import get_normalizer
 from src.core.server.uds_server import UDSFrameServer
 from src.core.store.session_store import SessionStore
@@ -59,6 +60,21 @@ class CorePipelineBridge:
         session_id = envelope.session_id
 
         if envelope.event_type == WireEventType.REQUEST_INITIATED:
+            existing_turns = self.store.get_session(session_id) or []
+            if len(existing_turns) == 0:
+                self.broadcaster.publish_nowait(
+                    UIEvent(
+                        event_type=UIEventType.SESSION_CREATED,
+                        session_id=session_id,
+                        timestamp=envelope.timestamp,
+                        payload={
+                            "sessionId": session_id,
+                            "model": envelope.payload.get("model", "unknown"),
+                            "provider": envelope.payload.get("provider", "unknown"),
+                        },
+                    )
+                )
+
             self.broadcaster.publish_nowait(
                 UIEvent(
                     event_type=UIEventType.TURN_STARTED,
@@ -96,13 +112,49 @@ class CorePipelineBridge:
                 logger.error("Error normalizing or analyzing turn: %s", e)
                 return
 
+            all_turns = self.store.get_session(session_id) or []
+            summary = PollutionScorer.calculate_summary(all_turns)
+            turn_dict = turn.to_dict()
+            turn_dict["all_blocks"] = [b.to_dict() for b in turn.all_blocks]
+
+            token_breakdown = {
+                "system": sum(b.token_count for b in turn.system_blocks),
+                "tools": sum(b.token_count for b in turn.tool_defs),
+                "history": sum(b.token_count for b in turn.conversation_history),
+                "toolResults": sum(b.token_count for b in turn.tool_results),
+                "assistant": sum(b.token_count for b in turn.assistant_blocks),
+                "cache": turn.cached_read_tokens,
+            }
+
             turn_payload = {
-                "turnIndex": turn.turn_index,
-                "turnId": turn.turn_id,
-                "correlationId": turn.correlation_id,
+                # Canonical attributes
+                "turn_index": turn.turn_index,
+                "turn_id": turn.turn_id,
+                "correlation_id": turn.correlation_id,
                 "model": turn.model,
                 "provider": turn.provider,
                 "timestamp": turn.timestamp,
+                "duration_ms": turn.duration_ms,
+                "ttft_ms": turn.ttft_ms,
+                "input_tokens": turn.input_tokens,
+                "output_tokens": turn.output_tokens,
+                "cached_read_tokens": turn.cached_read_tokens,
+                "cached_created_tokens": turn.cached_created_tokens,
+                "turn_cost_usd": turn.turn_cost_usd,
+                "wasted_cost_usd": turn.wasted_cost_usd,
+                "system_blocks": [b.to_dict() for b in turn.system_blocks],
+                "tool_defs": [b.to_dict() for b in turn.tool_defs],
+                "conversation_history": [b.to_dict() for b in turn.conversation_history],
+                "tool_results": [b.to_dict() for b in turn.tool_results],
+                "assistant_blocks": [b.to_dict() for b in turn.assistant_blocks],
+                "all_blocks": [b.to_dict() for b in turn.all_blocks],
+                "turn": turn_dict,
+                "summary": summary,
+
+                # CamelCase aliases for web dashboard
+                "turnIndex": turn.turn_index,
+                "turnId": turn.turn_id,
+                "correlationId": turn.correlation_id,
                 "durationMs": turn.duration_ms,
                 "ttftMs": turn.ttft_ms,
                 "inputTokens": turn.input_tokens,
@@ -111,32 +163,10 @@ class CorePipelineBridge:
                 "cachedCreatedTokens": turn.cached_created_tokens,
                 "cost": turn.turn_cost_usd,
                 "wastedCost": turn.wasted_cost_usd,
-                "tokenBreakdown": {
-                    "system": sum(b.token_count for b in turn.system_blocks),
-                    "tools": sum(b.token_count for b in turn.tool_defs),
-                    "history": sum(b.token_count for b in turn.conversation_history),
-                    "toolResults": sum(b.token_count for b in turn.tool_results),
-                    "assistant": sum(b.token_count for b in turn.assistant_blocks),
-                    "cache": turn.cached_read_tokens,
-                },
+                "tokenBreakdown": token_breakdown,
+                "tokens": token_breakdown,
                 "violations": [v.to_dict() for v in violations],
-                "blocks": [
-                    {
-                        "block_id": b.block_id,
-                        "block_type": b.block_type.value,
-                        "token_count": b.token_count,
-                        "content_hash": b.content_hash,
-                        "turns_survived": b.turns_survived,
-                        "content": b.content,
-                    }
-                    for b in (
-                        turn.system_blocks
-                        + turn.tool_defs
-                        + turn.conversation_history
-                        + turn.tool_results
-                        + turn.assistant_blocks
-                    )
-                ],
+                "blocks": [b.to_dict() for b in turn.all_blocks],
             }
 
             self.broadcaster.publish_nowait(
@@ -158,11 +188,77 @@ class CorePipelineBridge:
                     )
                 )
 
+            self.broadcaster.publish_nowait(
+                UIEvent(
+                    event_type=UIEventType.SESSION_SUMMARY_UPDATED,
+                    session_id=session_id,
+                    timestamp=turn.timestamp,
+                    payload={"sessionId": session_id, "summary": summary},
+                )
+            )
 
-def run_tui(socket_path: str = DEFAULT_SOCKET_PATH) -> None:
+
+def spawn_mitmproxy(
+    proxy_port: int = DEFAULT_PROXY_PORT,
+    socket_path: str = DEFAULT_SOCKET_PATH,
+) -> Optional[subprocess.Popen[Any]]:
+    """Spawn mitmdump interceptor process if proxy_port is not already listening."""
+    try:
+        with socket.create_connection(("127.0.0.1", proxy_port), timeout=0.2):
+            return None
+    except OSError:
+        pass
+
+    addon_path = str(Path(__file__).parent / "interceptor" / "addon.py")
+    repo_root = str(Path(__file__).parent.parent)
+
+    mitm_env = os.environ.copy()
+    mitm_env["CTXINS_SOCKET_PATH"] = socket_path
+    existing_py_path = mitm_env.get("PYTHONPATH", "")
+    mitm_env["PYTHONPATH"] = f"{repo_root}:{existing_py_path}" if existing_py_path else repo_root
+
+    mitmdump_path = shutil.which("mitmdump")
+    if mitmdump_path:
+        mitm_cmd = [mitmdump_path, "-p", str(proxy_port), "-s", addon_path, "-q"]
+    else:
+        mitm_cmd = [
+            sys.executable,
+            "-c",
+            "import sys; from mitmproxy.tools.main import mitmdump; sys.exit(mitmdump())",
+            "-p",
+            str(proxy_port),
+            "-s",
+            addon_path,
+            "-q",
+        ]
+
+    proc = subprocess.Popen(
+        mitm_cmd,
+        env=mitm_env,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    start_wait = time.time()
+    while time.time() - start_wait < 5.0:
+        if proc.poll() is not None:
+            break
+        try:
+            with socket.create_connection(("127.0.0.1", proxy_port), timeout=0.1):
+                break
+        except OSError:
+            time.sleep(0.05)
+
+    return proc
+
+
+def run_tui(
+    socket_path: str = DEFAULT_SOCKET_PATH,
+    proxy_port: int = DEFAULT_PROXY_PORT,
+) -> None:
     """Launch standalone Textual TUI attached to running Core Engine."""
     bridge = CorePipelineBridge()
     server = UDSFrameServer(socket_path=socket_path, on_turn_callback=bridge.handle_wire_envelope)
+    mitm_proc = spawn_mitmproxy(proxy_port=proxy_port, socket_path=socket_path)
 
     async def _start_and_run() -> None:
         await server.start()
@@ -171,6 +267,12 @@ def run_tui(socket_path: str = DEFAULT_SOCKET_PATH) -> None:
             app = CtxinsTUIApp(state=state, broadcaster=bridge.broadcaster)
             await app.run_async()
         finally:
+            if mitm_proc is not None and mitm_proc.poll() is None:
+                mitm_proc.terminate()
+                try:
+                    mitm_proc.wait(timeout=2.0)
+                except subprocess.TimeoutExpired:
+                    mitm_proc.kill()
             await server.stop()
 
     asyncio.run(_start_and_run())
@@ -180,20 +282,32 @@ def run_web(
     port: int = DEFAULT_WEB_PORT,
     host: str = DEFAULT_WEB_HOST,
     socket_path: str = DEFAULT_SOCKET_PATH,
+    proxy_port: int = DEFAULT_PROXY_PORT,
 ) -> None:
     """Launch standalone Web Dashboard attached to running Core Engine."""
     import uvicorn
 
     bridge = CorePipelineBridge()
     server = UDSFrameServer(socket_path=socket_path, on_turn_callback=bridge.handle_wire_envelope)
+    mitm_proc = spawn_mitmproxy(proxy_port=proxy_port, socket_path=socket_path)
 
-    async def _start_server() -> None:
+    async def _run_web_pipeline() -> None:
         await server.start()
+        try:
+            web_app = create_app(store=bridge.store, broadcaster=bridge.broadcaster)
+            config = uvicorn.Config(app=web_app, host=host, port=port, log_level="warning")
+            uvi_server = uvicorn.Server(config)
+            await uvi_server.serve()
+        finally:
+            if mitm_proc is not None and mitm_proc.poll() is None:
+                mitm_proc.terminate()
+                try:
+                    mitm_proc.wait(timeout=2.0)
+                except subprocess.TimeoutExpired:
+                    mitm_proc.kill()
+            await server.stop()
 
-    asyncio.run(_start_server())
-
-    app = create_app(store=bridge.store, broadcaster=bridge.broadcaster)
-    uvicorn.run(app, host=host, port=port, log_level="info")
+    asyncio.run(_run_web_pipeline())
 
 
 def run_live(
@@ -201,12 +315,13 @@ def run_live(
     port: int = DEFAULT_WEB_PORT,
     host: str = DEFAULT_WEB_HOST,
     socket_path: str = DEFAULT_SOCKET_PATH,
+    proxy_port: int = DEFAULT_PROXY_PORT,
 ) -> None:
     """Start Core Engine + selected UI."""
     if ui_mode == "web":
-        run_web(port=port, host=host, socket_path=socket_path)
+        run_web(port=port, host=host, socket_path=socket_path, proxy_port=proxy_port)
     else:
-        run_tui(socket_path=socket_path)
+        run_tui(socket_path=socket_path, proxy_port=proxy_port)
 
 
 def run_with_harness(
@@ -237,59 +352,9 @@ def run_with_harness(
         env["REQUESTS_CA_BUNDLE"] = cert_path
         env["NODE_EXTRA_CA_CERTS"] = cert_path
 
-    # Prepare mitmdump interceptor process command
-    addon_path = str(Path(__file__).parent / "interceptor" / "addon.py")
-    repo_root = str(Path(__file__).parent.parent)
-
-    mitm_env = os.environ.copy()
-    mitm_env["CTXINS_SOCKET_PATH"] = socket_path
-    existing_py_path = mitm_env.get("PYTHONPATH", "")
-    mitm_env["PYTHONPATH"] = f"{repo_root}:{existing_py_path}" if existing_py_path else repo_root
-
-    mitmdump_path = shutil.which("mitmdump")
-    if mitmdump_path:
-        mitm_cmd = [mitmdump_path, "-p", str(proxy_port), "-s", addon_path, "-q"]
-    else:
-        mitm_cmd = [
-            sys.executable,
-            "-c",
-            "import sys; from mitmproxy.tools.main import mitmdump; sys.exit(mitmdump())",
-            "-p",
-            str(proxy_port),
-            "-s",
-            addon_path,
-            "-q",
-        ]
-
     async def _run_pipeline() -> None:
         await server.start()
-
-        # Check if proxy is already listening or start mitmdump
-        mitm_proc: Optional[subprocess.Popen[Any]] = None
-        already_listening = False
-        try:
-            with socket.create_connection(("127.0.0.1", proxy_port), timeout=0.2):
-                already_listening = True
-        except OSError:
-            pass
-
-        if not already_listening:
-            mitm_proc = subprocess.Popen(
-                mitm_cmd,
-                env=mitm_env,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-            )
-            start_wait = time.time()
-            while time.time() - start_wait < 5.0:
-                if mitm_proc.poll() is not None:
-                    break
-                try:
-                    with socket.create_connection(("127.0.0.1", proxy_port), timeout=0.1):
-                        break
-                except OSError:
-                    time.sleep(0.05)
-
+        mitm_proc = spawn_mitmproxy(proxy_port=proxy_port, socket_path=socket_path)
         harness_proc: Optional[subprocess.Popen[Any]] = None
         try:
             # Launch harness subprocess if command is specified
@@ -336,12 +401,14 @@ def build_parser() -> argparse.ArgumentParser:
     # 1. tui
     tui_p = subparsers.add_parser("tui", help="Launch interactive Terminal UI")
     tui_p.add_argument("--socket", default=DEFAULT_SOCKET_PATH, help="UDS socket path")
+    tui_p.add_argument("--proxy-port", type=int, default=DEFAULT_PROXY_PORT, help="Proxy port")
 
     # 2. web
     web_p = subparsers.add_parser("web", help="Launch Web Dashboard")
     web_p.add_argument("--port", type=int, default=DEFAULT_WEB_PORT, help="Web server port")
     web_p.add_argument("--host", default=DEFAULT_WEB_HOST, help="Web server host")
     web_p.add_argument("--socket", default=DEFAULT_SOCKET_PATH, help="UDS socket path")
+    web_p.add_argument("--proxy-port", type=int, default=DEFAULT_PROXY_PORT, help="Proxy port")
 
     # 3. live
     live_p = subparsers.add_parser("live", help="Start Core Engine and presentation UI")
@@ -351,6 +418,7 @@ def build_parser() -> argparse.ArgumentParser:
     live_p.add_argument("--port", type=int, default=DEFAULT_WEB_PORT, help="Web port")
     live_p.add_argument("--host", default=DEFAULT_WEB_HOST, help="Web host")
     live_p.add_argument("--socket", default=DEFAULT_SOCKET_PATH, help="UDS socket path")
+    live_p.add_argument("--proxy-port", type=int, default=DEFAULT_PROXY_PORT, help="Proxy port")
 
     # 4. run
     run_p = subparsers.add_parser("run", help="Start proxy and execute agent harness wrapped in ctxins")
@@ -376,15 +444,21 @@ def main(args: Optional[List[str]] = None) -> int:
         return 0
 
     if parsed.subcommand == "tui":
-        run_tui(socket_path=parsed.socket)
+        run_tui(socket_path=parsed.socket, proxy_port=parsed.proxy_port)
     elif parsed.subcommand == "web":
-        run_web(port=parsed.port, host=parsed.host, socket_path=parsed.socket)
+        run_web(
+            port=parsed.port,
+            host=parsed.host,
+            socket_path=parsed.socket,
+            proxy_port=parsed.proxy_port,
+        )
     elif parsed.subcommand == "live":
         run_live(
             ui_mode=parsed.ui_mode,
             port=parsed.port,
             host=parsed.host,
             socket_path=parsed.socket,
+            proxy_port=parsed.proxy_port,
         )
     elif parsed.subcommand == "run":
         cmd = parsed.command
