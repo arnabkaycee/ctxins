@@ -69,12 +69,12 @@ The `ProviderFilter` acts as the first gatekeeper. It identifies LLM traffic, by
 
 ```mermaid
 flowchart LR
-    Req[Incoming HTTP Request] --> MatchHost{Match Host & Path?}
-    MatchHost -->|No| PassThrough[Transparent TCP Passthrough\n(Zero Inspection)]
-    MatchHost -->|Yes| Extract[Extract Provider & Route]
-    Extract --> ScrubHeaders[Sanitize Headers\n(Mask Auth & Secrets)]
-    ScrubHeaders --> AssignID[Generate Correlation ID]
-    AssignID --> Forward[Forward Request to Upstream & UDS]
+    Req["Incoming HTTP Request"] --> MatchHost{"Match Host & Path?"}
+    MatchHost -->|No| PassThrough["Transparent TCP Passthrough\n(Zero Inspection)"]
+    MatchHost -->|Yes| Extract["Extract Provider & Route"]
+    Extract --> ScrubHeaders["Sanitize Headers\n(Mask Auth & Secrets)"]
+    ScrubHeaders --> AssignID["Generate Correlation ID"]
+    AssignID --> Forward["Forward Request to Upstream & UDS"]
 ```
 
 ### A. Provider Routing Matrix
@@ -179,7 +179,7 @@ stateDiagram-v2
         IngestUsage --> RouteChunkType: Next Chunk
     }
 
-    StreamReceiving --> FinalizingTurn: Stream Terminated (message_stop / [DONE] / EOF)
+    StreamReceiving --> FinalizingTurn: Stream Terminated (message_stop / DONE / EOF)
     StreamReceiving --> StreamError: Connection Reset / HTTP Error / Abort
 
     FinalizingTurn --> EmitTurnCompleted: Validate AST & Assemble JSON Payloads
@@ -224,11 +224,11 @@ The UDS pipeline safely transmits captured frames from the Interceptor process t
 
 ```mermaid
 flowchart LR
-    Event[Event Object] --> Serialize[MsgPack / JSON Serializer]
-    Serialize --> Ring[Lock-Free Bounded Ring Buffer\n(1,000 slots / ~10MB)]
-    Ring --> Framer[4-Byte Big-Endian Length Framer]
-    Framer --> SocketWriter[Non-Blocking Socket Writer\n(O_NONBLOCK)]
-    SocketWriter -->|IPC Socket File| UnixSocket[(~/.ctxins/ctxins.sock)]
+    Event["Event Object"] --> Serialize["MsgPack / JSON Serializer"]
+    Serialize --> Ring["Lock-Free Bounded Ring Buffer\n(1,000 slots / ~10MB)"]
+    Ring --> Framer["4-Byte Big-Endian Length Framer"]
+    Framer --> SocketWriter["Non-Blocking Socket Writer\n(O_NONBLOCK)"]
+    SocketWriter -->|IPC Socket File| UnixSocket[("~/.ctxins/ctxins.sock")]
 ```
 
 ### A. Binary Length-Prefixed Wire Frame
@@ -276,12 +276,12 @@ flowchart TD
         T3["corr_03C (Parallel Tool) -> Started: 1725000000.310, TTL: 120s"]
     end
 
-    Req[Incoming Request] --> GenID[Generate Correlation ID: corr_UUIDv7]
-    GenID --> Store[Register in ActiveTurnMap]
-    RespChunk[Response Chunk] --> Lookup[Match Correlation ID]
-    Lookup --> Accum[Update SSE Accumulator]
-    StreamEnd[Stream Closed / Complete] --> Finalize[Remove from Map & Emit TURN_COMPLETED]
-    TimeoutWorker[TTL Reaper Worker] -.->|Purge Stale > 120s| ActiveTurnMap
+    Req["Incoming Request"] --> GenID["Generate Correlation ID: corr_UUIDv7"]
+    GenID --> Store["Register in ActiveTurnMap"]
+    RespChunk["Response Chunk"] --> Lookup["Match Correlation ID"]
+    Lookup --> Accum["Update SSE Accumulator"]
+    StreamEnd["Stream Closed / Complete"] --> Finalize["Remove from Map & Emit TURN_COMPLETED"]
+    TimeoutWorker["TTL Reaper Worker"] -.->|"Purge Stale > 120s"| ActiveTurnMap
 ```
 
 ### A. Correlation Key Generation

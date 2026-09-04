@@ -72,11 +72,11 @@ The `IPCServer` handles transport-level connection multiplexing, unmarshals wire
 
 ```mermaid
 flowchart LR
-    Socket[UDS Socket Stream] --> ReadLen[Read 4-Byte Length Prefix]
-    ReadLen --> ReadBody[Read N Bytes Payload]
-    ReadBody --> Unmarshal[JSON / MsgPack Unmarshal]
-    Unmarshal --> Validate[Envelope Validation]
-    Validate --> Route[Dispatch to Session Normalizer]
+    Socket["UDS Socket Stream"] --> ReadLen["Read 4-Byte Length Prefix"]
+    ReadLen --> ReadBody["Read N Bytes Payload"]
+    ReadBody --> Unmarshal["JSON / MsgPack Unmarshal"]
+    Unmarshal --> Validate["Envelope Validation"]
+    Validate --> Route["Dispatch to Session Normalizer"]
 ```
 
 ### Technical Specification:
@@ -212,22 +212,22 @@ The `PollutionAnalyzer` runs a suite of deterministic detection algorithms again
 
 ```mermaid
 flowchart TD
-    BlockStream[Incoming Turn AST Blocks] --> RuleRunner{Execute Rule Suite}
+    BlockStream["Incoming Turn AST Blocks"] --> RuleRunner{"Execute Rule Suite"}
     
-    RuleRunner --> CTX001[CTX-001: Stale Tool Output]
-    RuleRunner --> CTX002[CTX-002: Schema Overweight]
-    RuleRunner --> CTX003[CTX-003: Error Loop Detection]
-    RuleRunner --> CTX004[CTX-004: Redundant File Ingestion]
-    RuleRunner --> CTX005[CTX-005: Unreferenced Context]
+    RuleRunner --> CTX001["CTX-001: Stale Tool Output"]
+    RuleRunner --> CTX002["CTX-002: Schema Overweight"]
+    RuleRunner --> CTX003["CTX-003: Error Loop Detection"]
+    RuleRunner --> CTX004["CTX-004: Redundant File Ingestion"]
+    RuleRunner --> CTX005["CTX-005: Unreferenced Context"]
 
-    CTX001 --> Aggregator[Heuristic Result Aggregator]
+    CTX001 --> Aggregator["Heuristic Result Aggregator"]
     CTX002 --> Aggregator
     CTX003 --> Aggregator
     CTX004 --> Aggregator
     CTX005 --> Aggregator
 
-    Aggregator --> ComputeScore[Calculate Global Pollution Score 0-100]
-    ComputeScore --> GenerateFix[Synthesize Actionable Fix Recommendations]
+    Aggregator --> ComputeScore["Calculate Global Pollution Score 0-100"]
+    ComputeScore --> GenerateFix["Synthesize Actionable Fix Recommendations"]
 ```
 
 ### Detailed Detection Algorithms
