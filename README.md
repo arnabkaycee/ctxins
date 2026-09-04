@@ -30,19 +30,27 @@ flowchart LR
 
 ---
 
+## 📋 Prerequisites
+
+- **Operating System:** macOS or Linux (utilizes Unix Domain Sockets for high-throughput IPC).
+- **Python:** Version **3.11+**.
+- **Package Manager:** [`uv`](https://docs.astral.sh/uv/) (strongly recommended) or `pip`.
+
+---
+
 ## 🚀 Quick Start
 
 ### 1. Start the Core Engine & Proxy
-Install dependencies with [`uv`](https://docs.astral.sh/uv/) and start the interceptor pipeline:
+Install dependencies and launch the interceptor pipeline:
 
 ```bash
 git clone https://github.com/arnabkaycee/ctxins.git && cd ctxins
 uv sync --extra dev
 
-# Start the Core Frame Server (in background)
+# 1. Start the Core Frame Server (in background)
 CTXINS_SOCKET_PATH=/tmp/ctxins.sock uv run python -m src.core.server.uds_server &
 
-# Start the Interceptor Proxy (headless or interactive TUI)
+# 2. Start the Interceptor Proxy (headless or with web/TUI dashboard)
 CTXINS_SOCKET_PATH=/tmp/ctxins.sock uv run mitmdump -p 8080 -s src/interceptor/addon.py
 ```
 
@@ -58,6 +66,40 @@ HTTP_PROXY="http://127.0.0.1:8080" HTTPS_PROXY="http://127.0.0.1:8080" SSL_CERT_
 ```
 
 > **Tip:** Define a [`with-ctxins` shell helper](docs/harness-guides.md#2-universal-helper-function-with-ctxins) to run any tool effortlessly: `with-ctxins claude` or `with-ctxins aider`.
+
+---
+
+## 📊 Viewing Captured Metrics
+
+`ctxins` provides several ways to inspect intercepted traffic and analysis:
+
+### 1. Web Browser Dashboard (`mitmweb`)
+Launch the proxy with the embedded web interface:
+```bash
+CTXINS_SOCKET_PATH=/tmp/ctxins.sock uv run mitmweb -p 8080 -s src/interceptor/addon.py
+```
+Open **`http://127.0.0.1:8081`** in your browser to inspect real-time message streams, TTFT latency, request/response headers, and raw SSE deltas.
+
+### 2. Interactive Terminal UI (`mitmproxy`)
+Launch the interactive terminal console to inspect live flows:
+```bash
+CTXINS_SOCKET_PATH=/tmp/ctxins.sock uv run mitmproxy -p 8080 -s src/interceptor/addon.py
+```
+Use keyboard shortcuts (`Enter` to inspect flow, `Tab` to switch request/response tabs, `q` to return).
+
+### 3. Session Timeline Exports (`.jsonc`)
+The Core Engine exports complete session timelines into annotated `.jsonc` files (conforming to `https://ctxins.dev/schemas/session.v1.json`). Exports contain:
+- Turn-by-turn token consumption (input, output, cache creation, cache read).
+- Time-To-First-Token (TTFT) and stream durations.
+- AST diffs showing added, persisted, and pruned context blocks.
+- Triggered rule violations (`CTX-001`..`004`, `CACHE-001`), severity ratings, and estimated USD waste.
+
+### 4. Real-Time Terminal Telemetry (`mitmdump`)
+The default headless mode (`mitmdump`) streams real-time status lines to stdout:
+```text
+[INFO] REQUEST_INITIATED | corr_01j7... | provider=anthropic model=claude-3-5-sonnet
+[INFO] TURN_COMPLETED    | corr_01j7... | tokens=14,200 (cache_read: 8,400) duration=840ms
+```
 
 ---
 
