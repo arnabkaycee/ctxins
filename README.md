@@ -6,7 +6,7 @@
 [![Linter](https://img.shields.io/badge/lint-ruff%20clean-blue.svg)](docs/development.md#3-quality-gates--linting)
 [![License](https://img.shields.io/badge/license-MIT-purple.svg)](LICENSE)
 
-`ctxins` is an open-source context inspector and optimization engine for agentic coding harnesses (Claude Code, Aider, OpenCode, Pi, AutoGen, CrewAI, and custom loops). It provides real-time visibility into context composition, token consumption, context pollution, and prompt cache utilization with **zero agent code modifications** and **zero token delivery delay**.
+`ctxins` is an open-source context inspector and optimization engine for agentic coding harnesses (Antigravity `agy`, Claude Code, Aider, OpenCode, Pi, AutoGen, CrewAI, and custom loops). It provides real-time visibility into context composition, token consumption, context pollution, and prompt cache utilization with **zero agent code modifications** and **zero token delivery delay**.
 
 ---
 
@@ -14,7 +14,7 @@
 
 ```mermaid
 flowchart LR
-    Agent["🤖 Agent Harness\n(Claude Code, Aider, OpenCode, AutoGen)"]
+    Agent["🤖 Agent Harness\n(Antigravity, Claude Code, Aider, AutoGen)"]
     Proxy["⚡ ctxins Proxy\n(mitmproxy Addon)"]
     LLM["☁️ LLM Provider API\n(Anthropic / OpenAI / Gemini)"]
     Core["🧠 ctxins Core Engine\n(Context Graph & Rule Engine)"]
@@ -55,17 +55,20 @@ CTXINS_SOCKET_PATH=/tmp/ctxins.sock uv run mitmdump -p 8080 -s src/interceptor/a
 ```
 
 ### 2. Run Any Agent Harness
-Execute your agent with standard proxy environment variables:
+Execute your agent with standard proxy environment variables or using the [`with-ctxins` helper](docs/harness-guides.md#2-universal-helper-function-with-ctxins):
 
 ```bash
+# Antigravity (agy)
+with-ctxins agy
+
 # Claude Code
-HTTP_PROXY="http://127.0.0.1:8080" HTTPS_PROXY="http://127.0.0.1:8080" NODE_EXTRA_CA_CERTS="$HOME/.mitmproxy/mitmproxy-ca-cert.pem" claude
+with-ctxins claude
 
 # Aider
-HTTP_PROXY="http://127.0.0.1:8080" HTTPS_PROXY="http://127.0.0.1:8080" SSL_CERT_FILE="$HOME/.mitmproxy/mitmproxy-ca-cert.pem" aider
+with-ctxins aider
 ```
 
-> **Tip:** Define a [`with-ctxins` shell helper](docs/harness-guides.md#2-universal-helper-function-with-ctxins) to run any tool effortlessly: `with-ctxins claude` or `with-ctxins aider`.
+> **Tip:** You can also pass environment variables inline, e.g. `HTTP_PROXY="http://127.0.0.1:8080" HTTPS_PROXY="http://127.0.0.1:8080" SSL_CERT_FILE="$HOME/.mitmproxy/mitmproxy-ca-cert.pem" agy`. See [Harness Integration Guides](docs/harness-guides.md) for harness-specific details.
 
 ---
 
@@ -108,13 +111,14 @@ The default headless mode (`mitmdump`) streams real-time status lines to stdout:
 | Harness | Guide | Key Capabilities Inspected |
 | :--- | :--- | :--- |
 | **Claude Code** | [Setup Guide](docs/harness-guides.md#a-claude-code-claude) | Prompt caching hits, thinking blocks, stale `view_file` results |
-| **Aider** | [Setup Guide](docs/harness-guides.md#b-aider-aider) | Multi-turn file contexts, repo-map overhead, token consumption |
-| **OpenCode** | [Setup Guide](docs/harness-guides.md#c-opencode-opencode) | Workspace `.env` proxying, multi-turn diffs |
-| **Pi** | [Setup Guide](docs/harness-guides.md#d-pi-pi) | Proxy mode or zero-proxy in-process telemetry hook |
-| **AutoGen / AG2** | [Setup Guide](docs/harness-guides.md#e-autogen--ag2-python) | Multi-agent conversation snowballing and unused tool schemas |
-| **CrewAI** | [Setup Guide](docs/harness-guides.md#f-crewai-python) | Task output accumulation across sequential and hierarchical crews |
-| **LangChain / LangGraph** | [Setup Guide](docs/harness-guides.md#g-langchain--langgraph-python--typescript) | Agent state graph turn lineage and tool retry loops |
-| **Custom Loops & SDKs** | [Setup Guide](docs/harness-guides.md#h-custom-agent-loops--raw-sdks) | Python (`anthropic`, `openai`), TypeScript, cURL, and Docker recipes |
+| **Antigravity (`agy`)** | [Setup Guide](docs/harness-guides.md#b-antigravity-cli-agy) | Gemini SSE streams, multi-turn tool outputs, sub-agent context bloat |
+| **Aider** | [Setup Guide](docs/harness-guides.md#c-aider-aider) | Multi-turn file contexts, repo-map overhead, token consumption |
+| **OpenCode** | [Setup Guide](docs/harness-guides.md#d-opencode-opencode) | Workspace `.env` proxying, multi-turn diffs |
+| **Pi** | [Setup Guide](docs/harness-guides.md#e-pi-pi) | Proxy mode or zero-proxy in-process telemetry hook |
+| **AutoGen / AG2** | [Setup Guide](docs/harness-guides.md#f-autogen--ag2-python) | Multi-agent conversation snowballing and unused tool schemas |
+| **CrewAI** | [Setup Guide](docs/harness-guides.md#g-crewai-python) | Task output accumulation across sequential and hierarchical crews |
+| **LangChain / LangGraph** | [Setup Guide](docs/harness-guides.md#h-langchain--langgraph-python--typescript) | Agent state graph turn lineage and tool retry loops |
+| **Custom Loops & SDKs** | [Setup Guide](docs/harness-guides.md#i-custom-agent-loops--raw-sdks) | Python (`anthropic`, `openai`), TypeScript, cURL, and Docker recipes |
 
 ---
 

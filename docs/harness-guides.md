@@ -54,6 +54,7 @@ with-ctxins() {
 
 Once added, you can wrap any command or CLI tool:
 ```bash
+with-ctxins agy
 with-ctxins claude
 with-ctxins aider
 with-ctxins opencode
@@ -89,7 +90,45 @@ claude
 
 ---
 
-### B. Aider (`aider`)
+### B. Antigravity CLI (`agy`)
+
+Google Antigravity (`agy`) is an agentic coding assistant CLI supporting multi-turn conversations, tool invocations (`view_file`, `run_command`, `replace_file_content`), and sub-agent task orchestration across Gemini and Anthropic backends.
+
+#### Running with the Helper:
+```bash
+with-ctxins agy
+```
+
+#### Running Directly with Inline Environment Variables:
+```bash
+HTTP_PROXY="http://127.0.0.1:8080" \
+HTTPS_PROXY="http://127.0.0.1:8080" \
+ALL_PROXY="http://127.0.0.1:8080" \
+NODE_EXTRA_CA_CERTS="$HOME/.mitmproxy/mitmproxy-ca-cert.pem" \
+SSL_CERT_FILE="$HOME/.mitmproxy/mitmproxy-ca-cert.pem" \
+REQUESTS_CA_BUNDLE="$HOME/.mitmproxy/mitmproxy-ca-cert.pem" \
+agy
+```
+
+#### Persistent Proxy Configuration:
+If you prefer not setting environment variables on every launch, export them in your shell profile (`~/.zshrc` / `~/.bashrc`):
+```bash
+export HTTP_PROXY="http://127.0.0.1:8080"
+export HTTPS_PROXY="http://127.0.0.1:8080"
+export NODE_EXTRA_CA_CERTS="$HOME/.mitmproxy/mitmproxy-ca-cert.pem"
+export SSL_CERT_FILE="$HOME/.mitmproxy/mitmproxy-ca-cert.pem"
+```
+
+> **What `ctxins` inspects for Antigravity:**
+> - **Multi-Turn Context Accumulation:** Tracks token growth across planning, code edits, and sub-agent task delegations.
+> - **Stale Tool Outputs (`CTX-001`):** Flags large file reads, command execution outputs, or search results lingering across turns without subsequent reference.
+> - **Google Gemini SSE Ingestion:** Normalizes Gemini `streamGenerateContent` SSE response chunks and usage metadata (`promptTokenCount`, `candidatesTokenCount`).
+> - **Prompt Cache Optimization (`CACHE-001`):** Monitors cache prefix stability across sub-agent dispatches and system prompt changes.
+> - **Tool Schema Overhead (`CTX-002`):** Quantifies token weight of loaded tools, skills, and sub-agent declarations against invocation rates.
+
+---
+
+### C. Aider (`aider`)
 
 Aider is a Python CLI pairing tool communicating with OpenAI, Anthropic, or OpenRouter via `httpx` and `litellm`.
 
@@ -109,7 +148,7 @@ aider --model anthropic/claude-3-5-sonnet-20241022
 
 ---
 
-### C. OpenCode (`opencode`)
+### D. OpenCode (`opencode`)
 
 OpenCode is a terminal coding agent built on TypeScript/Node.js.
 
@@ -129,7 +168,7 @@ Then launch `opencode` normally.
 
 ---
 
-### D. Pi (`pi`)
+### E. Pi (`pi`)
 
 Pi is an extensible personal AI coding agent.
 
@@ -156,7 +195,7 @@ export default defineConfig({
 
 ---
 
-### E. AutoGen / AG2 (Python)
+### F. AutoGen / AG2 (Python)
 
 AutoGen multi-agent systems often produce turn-over-turn context bloat as conversation history is repeatedly appended across agent roles.
 
@@ -185,7 +224,7 @@ config_list = [{"model": "gpt-4o", "api_key": os.environ["OPENAI_API_KEY"]}]
 
 ---
 
-### F. CrewAI (Python)
+### G. CrewAI (Python)
 
 CrewAI coordinates specialized agents executing sequential or hierarchical tasks.
 
@@ -212,7 +251,7 @@ llm = ChatOpenAI(model="gpt-4o")
 
 ---
 
-### G. LangChain & LangGraph (Python / TypeScript)
+### H. LangChain & LangGraph (Python / TypeScript)
 
 #### Running with the Helper:
 ```bash
@@ -240,7 +279,7 @@ model = ChatAnthropic(
 
 ---
 
-### H. Custom Agent Loops & Raw SDKs
+### I. Custom Agent Loops & Raw SDKs
 
 #### Python: `anthropic` SDK
 ```python
