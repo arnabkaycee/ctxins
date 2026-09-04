@@ -66,25 +66,39 @@ flowchart TD
 
 ## 🚀 Using with Agentic Harnesses
 
-`ctxins` works universally with any tool, script, or language runtime. Use the `ctxins run` wrapper to automatically inject local proxy settings and certificates into your agent process:
+`ctxins` runs as a high-performance **mitmproxy addon** that captures and analyzes LLM traffic over a local Unix Domain Socket (UDS) with zero code modifications to your agent.
 
+### 1. Start the Interceptor Proxy
 ```bash
-# Wrap any agent command
-ctxins run -- <your-agent-command>
+# Start headless interceptor proxy on port 8080 (or run mitmproxy for interactive TUI):
+CTXINS_SOCKET_PATH=/tmp/ctxins.sock uv run mitmdump -p 8080 -s src/interceptor/addon.py
 ```
 
-| Harness / Tool | Runtime | Quick Command | Setup Guide |
-| :--- | :--- | :--- | :--- |
-| **Claude Code** | Node.js | `ctxins run -- claude` | [Claude Code Guide](docs/harness-guides.md#1-claude-code-claude) |
-| **Aider** | Python | `ctxins run -- aider` | [Aider Guide](docs/harness-guides.md#2-aider-aider) |
-| **OpenCode** | Node.js | `ctxins run -- opencode` | [OpenCode Guide](docs/harness-guides.md#3-opencode-opencode) |
-| **Pi** | Node / TypeScript | `ctxins run -- pi` | [Pi Guide](docs/harness-guides.md#4-pi-pi) |
-| **AutoGen / AG2** | Python | `ctxins run -- python agent.py` | [AutoGen Guide](docs/harness-guides.md#5-autogen--ag2-python) |
-| **CrewAI** | Python | `ctxins run -- python crew.py` | [CrewAI Guide](docs/harness-guides.md#6-crewai-python) |
-| **LangChain / LangGraph** | Python / TS | `ctxins run -- python agent.py` | [LangChain Guide](docs/harness-guides.md#7-langchain--langgraph-python--typescript) |
-| **Custom Loops / SDKs** | Any | `ctxins run -- <cmd>` | [SDKs & Docker Guide](docs/harness-guides.md#8-custom-agent-loops--raw-sdks) |
+### 2. Run Any Agent with Proxy Variables
+Run your agent tool with standard proxy and certificate environment variables:
 
-👉 **For manual shell environment setup, in-harness native hooks, or Docker containers, see [docs/harness-guides.md](docs/harness-guides.md).**
+```bash
+# Example: Claude Code
+HTTP_PROXY="http://127.0.0.1:8080" HTTPS_PROXY="http://127.0.0.1:8080" NODE_EXTRA_CA_CERTS="$HOME/.mitmproxy/mitmproxy-ca-cert.pem" claude
+
+# Example: Aider
+HTTP_PROXY="http://127.0.0.1:8080" HTTPS_PROXY="http://127.0.0.1:8080" SSL_CERT_FILE="$HOME/.mitmproxy/mitmproxy-ca-cert.pem" aider
+```
+
+> **Tip:** Add a `with-ctxins` helper function to your `~/.zshrc` or `~/.bashrc` to prefix any command: `with-ctxins claude`, `with-ctxins aider`, `with-ctxins python agent.py`.
+
+| Harness / Tool | Runtime | Quick Execution | Setup Guide |
+| :--- | :--- | :--- | :--- |
+| **Claude Code** | Node.js | `NODE_EXTRA_CA_CERTS=... claude` | [Claude Code Guide](docs/harness-guides.md#a-claude-code-claude) |
+| **Aider** | Python | `SSL_CERT_FILE=... aider` | [Aider Guide](docs/harness-guides.md#b-aider-aider) |
+| **OpenCode** | Node.js | `NODE_EXTRA_CA_CERTS=... opencode` | [OpenCode Guide](docs/harness-guides.md#c-opencode-opencode) |
+| **Pi** | Node / TypeScript | `pi` (via proxy or hook) | [Pi Guide](docs/harness-guides.md#d-pi-pi) |
+| **AutoGen / AG2** | Python | `python autogen_workflow.py` | [AutoGen Guide](docs/harness-guides.md#e-autogen--ag2-python) |
+| **CrewAI** | Python | `python crew.py` | [CrewAI Guide](docs/harness-guides.md#f-crewai-python) |
+| **LangChain / LangGraph** | Python / TS | `python langgraph_agent.py` | [LangChain Guide](docs/harness-guides.md#g-langchain--langgraph-python--typescript) |
+| **Custom Loops / SDKs** | Any | Python, TypeScript, cURL | [SDKs & Docker Guide](docs/harness-guides.md#h-custom-agent-loops--raw-sdks) |
+
+👉 **For complete copy-pasteable snippets, in-harness native hooks, and Docker recipes, see [docs/harness-guides.md](docs/harness-guides.md).**
 
 ---
 
