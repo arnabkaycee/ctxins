@@ -6,8 +6,12 @@ import argparse
 import asyncio
 import logging
 import os
+import shutil
+import socket
 import subprocess
 import sys
+import time
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from src.core.analyzer.engine import PollutionAnalyzer
@@ -219,21 +223,76 @@ def run_with_harness(
 
     cert_path = os.path.expanduser("~/.mitmproxy/mitmproxy-ca-cert.pem")
 
-    # Configure proxy environment variables
+    # Configure proxy environment variables (both upper and lowercase for Go/Python/Node)
     env = os.environ.copy()
-    env["HTTP_PROXY"] = f"http://127.0.0.1:{proxy_port}"
-    env["HTTPS_PROXY"] = f"http://127.0.0.1:{proxy_port}"
-    env["ALL_PROXY"] = f"http://127.0.0.1:{proxy_port}"
+    proxy_url = f"http://127.0.0.1:{proxy_port}"
+    env["HTTP_PROXY"] = proxy_url
+    env["HTTPS_PROXY"] = proxy_url
+    env["ALL_PROXY"] = proxy_url
+    env["http_proxy"] = proxy_url
+    env["https_proxy"] = proxy_url
+    env["all_proxy"] = proxy_url
     if os.path.exists(cert_path):
         env["SSL_CERT_FILE"] = cert_path
         env["REQUESTS_CA_BUNDLE"] = cert_path
         env["NODE_EXTRA_CA_CERTS"] = cert_path
 
+    # Prepare mitmdump interceptor process command
+    addon_path = str(Path(__file__).parent / "interceptor" / "addon.py")
+    repo_root = str(Path(__file__).parent.parent)
+
+    mitm_env = os.environ.copy()
+    mitm_env["CTXINS_SOCKET_PATH"] = socket_path
+    existing_py_path = mitm_env.get("PYTHONPATH", "")
+    mitm_env["PYTHONPATH"] = f"{repo_root}:{existing_py_path}" if existing_py_path else repo_root
+
+    mitmdump_path = shutil.which("mitmdump")
+    if mitmdump_path:
+        mitm_cmd = [mitmdump_path, "-p", str(proxy_port), "-s", addon_path, "-q"]
+    else:
+        mitm_cmd = [
+            sys.executable,
+            "-c",
+            "import sys; from mitmproxy.tools.main import mitmdump; sys.exit(mitmdump())",
+            "-p",
+            str(proxy_port),
+            "-s",
+            addon_path,
+            "-q",
+        ]
+
     async def _run_pipeline() -> None:
         await server.start()
+
+        # Check if proxy is already listening or start mitmdump
+        mitm_proc: Optional[subprocess.Popen[Any]] = None
+        already_listening = False
+        try:
+            with socket.create_connection(("127.0.0.1", proxy_port), timeout=0.2):
+                already_listening = True
+        except OSError:
+            pass
+
+        if not already_listening:
+            mitm_proc = subprocess.Popen(
+                mitm_cmd,
+                env=mitm_env,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            start_wait = time.time()
+            while time.time() - start_wait < 5.0:
+                if mitm_proc.poll() is not None:
+                    break
+                try:
+                    with socket.create_connection(("127.0.0.1", proxy_port), timeout=0.1):
+                        break
+                except OSError:
+                    time.sleep(0.05)
+
+        harness_proc: Optional[subprocess.Popen[Any]] = None
         try:
             # Launch harness subprocess if command is specified
-            harness_proc: Optional[subprocess.Popen[Any]] = None
             if command:
                 harness_proc = subprocess.Popen(command, env=env)
 
@@ -248,9 +307,19 @@ def run_with_harness(
                 tui_app = CtxinsTUIApp(state=state, broadcaster=bridge.broadcaster)
                 await tui_app.run_async()
 
-            if harness_proc is not None:
-                harness_proc.terminate()
         finally:
+            if harness_proc is not None and harness_proc.poll() is None:
+                harness_proc.terminate()
+                try:
+                    harness_proc.wait(timeout=2.0)
+                except subprocess.TimeoutExpired:
+                    harness_proc.kill()
+            if mitm_proc is not None and mitm_proc.poll() is None:
+                mitm_proc.terminate()
+                try:
+                    mitm_proc.wait(timeout=2.0)
+                except subprocess.TimeoutExpired:
+                    mitm_proc.kill()
             await server.stop()
 
     asyncio.run(_run_pipeline())

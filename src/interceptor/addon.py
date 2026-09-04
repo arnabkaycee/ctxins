@@ -232,6 +232,8 @@ class CtxinsAddon:
             return body["model"]
 
         if provider == Provider.GEMINI:
+            if "request" in body and isinstance(body["request"], dict) and "model" in body["request"]:
+                return str(body["request"]["model"])
             m = re.search(r"/models/([^:/]+)", path)
             if m:
                 return m.group(1)
@@ -240,7 +242,7 @@ class CtxinsAddon:
             if m:
                 return m.group(1)
 
-        return "unknown"
+        return "gemini" if provider == Provider.GEMINI else "unknown"
 
     def _create_accumulator(self, provider: Provider) -> Optional[BaseAccumulator]:
         """Create provider-specific SSE stream accumulator."""
@@ -372,7 +374,8 @@ class CtxinsAddon:
     ) -> UsageMetrics:
         """Extract usage metrics from a non-streaming response JSON payload."""
         usage = UsageMetrics()
-        raw = payload.get("usage") or payload.get("usageMetadata") or {}
+        inner = payload.get("response", payload) if isinstance(payload.get("response"), dict) else payload
+        raw = inner.get("usage") or inner.get("usageMetadata") or payload.get("usage") or payload.get("usageMetadata") or {}
         if not isinstance(raw, dict):
             return usage
 
@@ -395,6 +398,10 @@ class CtxinsAddon:
         elif provider == Provider.GEMINI:
             usage.input_tokens = raw.get("promptTokenCount", 0)
             usage.output_tokens = raw.get("candidatesTokenCount", 0)
+            if "cachedContentTokenCount" in raw:
+                usage.cache_read_input_tokens = raw["cachedContentTokenCount"]
+            if "thoughtsTokenCount" in raw:
+                usage.reasoning_tokens = raw["thoughtsTokenCount"]
 
         return usage
 
@@ -402,19 +409,20 @@ class CtxinsAddon:
         self, provider: Provider, payload: Dict[str, Any]
     ) -> Optional[str]:
         """Extract stop/finish reason from a non-streaming response JSON payload."""
+        inner = payload.get("response", payload) if isinstance(payload.get("response"), dict) else payload
         if provider == Provider.ANTHROPIC:
-            return payload.get("stop_reason")
+            return inner.get("stop_reason")
         elif provider in (
             Provider.OPENAI,
             Provider.AZURE_OPENAI,
             Provider.OPENROUTER,
             Provider.OLLAMA,
         ):
-            choices = payload.get("choices", [])
+            choices = inner.get("choices", [])
             if choices and isinstance(choices[0], dict):
                 return choices[0].get("finish_reason")
         elif provider == Provider.GEMINI:
-            candidates = payload.get("candidates", [])
+            candidates = inner.get("candidates", [])
             if candidates and isinstance(candidates[0], dict):
                 return candidates[0].get("finishReason")
         return None
@@ -525,6 +533,14 @@ class CtxinsAddon:
             )
             turn.model = model
             turn.request_payload = payload_dict
+
+            body_session_id = None
+            if isinstance(payload_dict, dict):
+                body_session_id = payload_dict.get("sessionId")
+                if not body_session_id and "request" in payload_dict and isinstance(payload_dict["request"], dict):
+                    body_session_id = payload_dict["request"].get("sessionId")
+            if body_session_id and turn.session_id == self.default_session_id:
+                turn.session_id = str(body_session_id)
 
             if req is not None and hasattr(req, "headers"):
                 turn.sanitized_headers = self.sanitizer.sanitize_headers(dict(req.headers))

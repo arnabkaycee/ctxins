@@ -25,8 +25,8 @@ class ProviderRouter:
             Provider.OPENAI,
         ),
         (
-            re.compile(r"^generativelanguage\.googleapis\.com(:443)?$", re.IGNORECASE),
-            re.compile(r"^/v1beta/models/.*:(generateContent|streamGenerateContent)(?=[/?#]|$)"),
+            re.compile(r"^([a-zA-Z0-9_.-]+\.)?googleapis\.com(:443)?$", re.IGNORECASE),
+            re.compile(r"^/.*:(generateContent|streamGenerateContent)(?=[/?#]|$)"),
             Provider.GEMINI,
         ),
         (

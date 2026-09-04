@@ -38,6 +38,16 @@ class TestProviderRouter:
                 Provider.GEMINI,
             ),
             (
+                "daily-cloudcode-pa.googleapis.com",
+                "/v1internal:streamGenerateContent?alt=json",
+                Provider.GEMINI,
+            ),
+            (
+                "aicode.googleapis.com:443",
+                "/v1internal:streamGenerateContent",
+                Provider.GEMINI,
+            ),
+            (
                 "custom-tenant.openai.azure.com",
                 "/openai/deployments/gpt-4o/chat/completions?api-version=2024-02-15",
                 Provider.AZURE_OPENAI,

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import time
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -13,6 +14,7 @@ from src.cli import (
     CorePipelineBridge,
     build_parser,
     main,
+    run_with_harness,
 )
 from src.core.analyzer.engine import PollutionAnalyzer
 from src.core.store.session_store import SessionStore
@@ -125,3 +127,31 @@ async def test_core_pipeline_bridge_turn_lifecycle() -> None:
     assert len(turns) == 1
 
     await broadcaster.unsubscribe(q)
+
+
+def test_run_with_harness_lifecycle():
+    with patch("subprocess.Popen") as mock_popen, \
+         patch("socket.create_connection") as mock_conn, \
+         patch("uvicorn.Server.serve"), \
+         patch("src.core.server.uds_server.UDSFrameServer.start"), \
+         patch("src.core.server.uds_server.UDSFrameServer.stop"):
+        mock_conn.side_effect = [OSError("not listening"), MagicMock()]
+        mock_proc = MagicMock()
+        mock_proc.poll.return_value = None
+        mock_popen.return_value = mock_proc
+
+        run_with_harness(command=["agy", "-p", "hi"], ui_mode="web", proxy_port=8080)
+
+        assert mock_popen.call_count == 2
+        mitm_call = mock_popen.call_args_list[0]
+        assert any("mitmdump" in str(arg) for arg in mitm_call[0][0])
+        assert mitm_call[1]["env"]["CTXINS_SOCKET_PATH"] == DEFAULT_SOCKET_PATH
+
+        harness_call = mock_popen.call_args_list[1]
+        assert harness_call[0][0] == ["agy", "-p", "hi"]
+        env = harness_call[1]["env"]
+        assert env["HTTP_PROXY"] == "http://127.0.0.1:8080"
+        assert env["http_proxy"] == "http://127.0.0.1:8080"
+        assert env["HTTPS_PROXY"] == "http://127.0.0.1:8080"
+        assert env["https_proxy"] == "http://127.0.0.1:8080"
+

@@ -389,6 +389,63 @@ def test_gemini_normalizer_full_turn():
     assert turn.cached_read_tokens == 45
 
 
+def test_gemini_normalizer_wrapped_cloudcode_payload():
+    """Verify GeminiASTNormalizer unwrap logic for Cloud Code / AI Code (agy)."""
+    normalizer = GeminiASTNormalizer()
+
+    raw_turn = {
+        "correlation_id": "turn-agy-001",
+        "session_id": "sess-agy-1",
+        "turn_index": 0,
+        "request_payload": {
+            "model": "gemini-3.1-flash-lite",
+            "request": {
+                "systemInstruction": {
+                    "parts": [{"text": "You are Antigravity CLI."}]
+                },
+                "contents": [
+                    {
+                        "role": "user",
+                        "parts": [{"text": "Hello agy!"}],
+                    }
+                ],
+                "sessionId": "-4090532296711904797",
+            },
+        },
+        "response_payload": {
+            "response": {
+                "candidates": [
+                    {
+                        "content": {
+                            "role": "model",
+                            "parts": [{"text": "Hello! How can I help you today?"}],
+                        },
+                        "finishReason": "STOP",
+                    }
+                ],
+                "usageMetadata": {
+                    "promptTokenCount": 13760,
+                    "candidatesTokenCount": 15,
+                    "thoughtsTokenCount": 27,
+                },
+            }
+        },
+    }
+
+    turn = normalizer.normalize(raw_turn)
+
+    assert turn.provider == "gemini"
+    assert turn.model == "gemini-3.1-flash-lite"
+    assert len(turn.system_blocks) == 1
+    assert turn.system_blocks[0].content == "You are Antigravity CLI."
+    assert len(turn.conversation_history) == 1
+    assert turn.conversation_history[0].content == "Hello agy!"
+    assert len(turn.assistant_blocks) == 1
+    assert turn.assistant_blocks[0].content == "Hello! How can I help you today?"
+    assert turn.input_tokens == 13760
+    assert turn.output_tokens == 15
+
+
 # ---------------------------------------------------------------------------
 # Factory & Hash Verification
 # ---------------------------------------------------------------------------

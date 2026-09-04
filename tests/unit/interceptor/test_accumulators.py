@@ -307,3 +307,23 @@ class TestGeminiAccumulator:
         assert fn.block_type == "tool_use"
         assert fn.tool_name == "search_db"
         assert fn.parsed_input == {"limit": 10}
+
+    def test_gemini_wrapped_response_and_thought_tokens(self) -> None:
+        """Verify handling of wrapped response format used by Cloud Code / AI Code."""
+        acc = GeminiAccumulator()
+
+        chunk1 = (
+            b'data: {"response": {"candidates": [{"content": {"parts": [{"text": "Hello!"}], "role": "model"}, "finishReason": "STOP", "index": 0}], '
+            b'"usageMetadata": {"promptTokenCount": 13760, "candidatesTokenCount": 1, "thoughtsTokenCount": 27}}}\n\n'
+        )
+        acc.feed_chunk(chunk1)
+        assert acc.is_done() is True
+        assert acc.get_stop_reason() == "STOP"
+        usage = acc.get_usage()
+        assert usage.input_tokens == 13760
+        assert usage.output_tokens == 1
+        assert usage.reasoning_tokens == 27
+        blocks = acc.get_content_blocks()
+        assert len(blocks) == 1
+        assert blocks[0].text == "Hello!"
+

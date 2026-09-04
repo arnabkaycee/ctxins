@@ -30,6 +30,17 @@ class GeminiASTNormalizer(BaseNormalizer):
             default_provider="gemini",
         )
 
+        # Handle Cloud Code / AI Code wrapped payloads
+        if "request" in req and isinstance(req["request"], dict):
+            outer_model = req.get("model")
+            req = dict(req["request"])
+            if outer_model and "model" not in req:
+                req["model"] = outer_model
+                meta["model"] = outer_model
+
+        if "response" in resp and isinstance(resp["response"], dict):
+            resp = dict(resp["response"])
+
         # 1. System Instruction Blocks
         system_blocks: list[ContextBlock] = []
         sys_inst = req.get("systemInstruction") or req.get("system_instruction")

@@ -65,6 +65,10 @@ class GeminiAccumulator(BaseAccumulator):
             self._handle_chunk(data)
 
     def _handle_chunk(self, data: Dict[str, Any]) -> None:
+        # Handle wrapped payload from Cloud Code / AI Code endpoints
+        if "response" in data and isinstance(data["response"], dict):
+            data = data["response"]
+
         # Extract usageMetadata if present
         usage_meta = data.get("usageMetadata")
         if usage_meta:
@@ -74,6 +78,8 @@ class GeminiAccumulator(BaseAccumulator):
                 self._usage.output_tokens = usage_meta["candidatesTokenCount"]
             if "cachedContentTokenCount" in usage_meta:
                 self._usage.cache_read_input_tokens = usage_meta["cachedContentTokenCount"]
+            if "thoughtsTokenCount" in usage_meta:
+                self._usage.reasoning_tokens = usage_meta["thoughtsTokenCount"]
 
             for detail in usage_meta.get("candidatesTokensDetails", []):
                 if detail.get("modality") in ("THINKING", "REASONING"):

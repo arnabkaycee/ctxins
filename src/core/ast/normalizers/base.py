@@ -165,6 +165,7 @@ class BaseNormalizer(ABC):
             or payload.get("usage_metrics")
             or resp.get("usage")
             or resp.get("usageMetadata")
+            or (resp.get("response", {}).get("usageMetadata") if isinstance(resp.get("response"), dict) else None)
             or {}
         )
         timing_raw = (

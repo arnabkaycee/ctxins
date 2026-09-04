@@ -411,3 +411,56 @@ class TestCtxinsAddon:
         assert addon.is_running
         addon.done()
         assert not addon.is_running
+
+    def test_cloudcode_agy_streaming_lifecycle(self):
+        buffer = BoundedRingBuffer(100)
+        addon = CtxinsAddon(ring_buffer=buffer)
+
+        req_payload = {
+            "model": "gemini-3.1-flash-lite",
+            "request": {
+                "systemInstruction": {"parts": [{"text": "You are agy."}]},
+                "contents": [{"role": "user", "parts": [{"text": "hello"}]}],
+                "sessionId": "-4090532296711904797",
+            },
+        }
+        req = MockRequest(
+            host="daily-cloudcode-pa.googleapis.com",
+            path="/v1internal:streamGenerateContent?alt=json",
+            content=json.dumps(req_payload).encode("utf-8"),
+        )
+        flow = MockFlow(request=req, flow_id="flow-cloudcode-1")
+
+        addon.requestheaders(flow)
+        assert flow.metadata.get("ctxins_intercepted") is True
+        addon.request(flow)
+
+        assert len(buffer) == 1
+        init_env = WireEnvelope.from_bytes(buffer.pop())
+        assert init_env.event_type == WireEventType.REQUEST_INITIATED
+        assert init_env.session_id == "-4090532296711904797"
+        assert init_env.payload["model"] == "gemini-3.1-flash-lite"
+
+        flow.response = MockResponse(
+            status_code=200,
+            headers={"content-type": "text/event-stream"},
+        )
+        addon.responseheaders(flow)
+        assert flow.response.stream is not None
+
+        chunk = (
+            b'data: {"response": {"candidates": [{"content": {"parts": [{"text": "Hi from agy!"}], "role": "model"}, "finishReason": "STOP", "index": 0}], '
+            b'"usageMetadata": {"promptTokenCount": 100, "candidatesTokenCount": 5, "thoughtsTokenCount": 10}}}\n\n'
+        )
+        list(flow.response.stream([chunk]))
+        addon.drain_chunk_queue()
+        addon.response(flow)
+
+        assert len(buffer) == 1
+        turn_env = WireEnvelope.from_bytes(buffer.pop())
+        assert turn_env.event_type == WireEventType.TURN_COMPLETED
+        assert turn_env.session_id == "-4090532296711904797"
+        assert turn_env.payload["usage"]["input_tokens"] == 100
+        assert turn_env.payload["usage"]["output_tokens"] == 5
+        assert turn_env.payload["usage"]["reasoning_tokens"] == 10
+
