@@ -186,3 +186,54 @@ class TestStreamPassthrough:
         assert turn.timing.first_byte_received_at is not None
         assert turn.timing.stream_closed_at is not None
         assert async_queue.qsize() == 3  # 2 chunks + EOF
+
+    def test_mitmproxy_single_bytes_chunk_invocation(self):
+        """Verify real mitmproxy streaming pattern where response.stream(chunk: bytes) is called per packet."""
+        sync_queue: queue.Queue = queue.Queue()
+        passthrough = StreamPassthrough(sync_queue)
+        turn = create_turn_context("corr-mitm-single")
+
+        class MockResponse:
+            stream = True
+
+        class MockFlow:
+            response = MockResponse()
+
+        flow = MockFlow()
+        passthrough.hook_stream(flow, turn)
+
+        assert callable(flow.response.stream)
+
+        # In real mitmproxy: HttpStream calls stream_fn(event.data) where event.data is a single bytes object
+        chunk1 = b'data: {"candidates": [{"content": {"parts": [{"text": "Hello"}]}}]}\r\n\r\n'
+        chunk2 = b'data: {"candidates": [{"content": {"parts": [{"text": " World"}]}}]}\r\n\r\n'
+
+        # Packet 1
+        res1 = flow.response.stream(chunk1)
+        assert res1 == chunk1
+        assert turn.timing.first_byte_received_at is not None
+        assert turn.timing.stream_closed_at is None
+
+        # Packet 2
+        res2 = flow.response.stream(chunk2)
+        assert res2 == chunk2
+
+        # EndOfMessage: mitmproxy calls stream(b"")
+        res_eof = flow.response.stream(b"")
+        assert res_eof == b""
+        assert turn.timing.stream_closed_at is not None
+
+        # Verify queue has chunk1, chunk2, and EOF sentinel
+        assert sync_queue.qsize() == 3
+        c1_id, c1_data, _ = sync_queue.get_nowait()
+        assert c1_id == "corr-mitm-single"
+        assert c1_data == chunk1
+
+        c2_id, c2_data, _ = sync_queue.get_nowait()
+        assert c2_id == "corr-mitm-single"
+        assert c2_data == chunk2
+
+        eof_id, eof_data, _ = sync_queue.get_nowait()
+        assert eof_id == "corr-mitm-single"
+        assert eof_data == b""
+

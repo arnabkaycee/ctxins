@@ -605,6 +605,17 @@ class CtxinsAddon:
             if turn is None:
                 return
 
+            resp = getattr(flow, "response", None)
+            if resp is not None:
+                stream_obj = getattr(resp, "stream", None)
+                if stream_obj is not None:
+                    close_fn = getattr(stream_obj, "close", None)
+                    if callable(close_fn):
+                        try:
+                            close_fn()
+                        except Exception:
+                            pass
+
             # Drain any buffered chunks from StreamPassthrough into the tracker
             self.drain_chunk_queue()
 

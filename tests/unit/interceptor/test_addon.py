@@ -464,3 +464,62 @@ class TestCtxinsAddon:
         assert turn_env.payload["usage"]["output_tokens"] == 5
         assert turn_env.payload["usage"]["reasoning_tokens"] == 10
 
+    def test_cloudcode_agy_streaming_lifecycle_single_bytes_invocations(self):
+        """Verify real mitmproxy streaming lifecycle where stream(chunk: bytes) is called directly."""
+        buffer = BoundedRingBuffer(100)
+        addon = CtxinsAddon(ring_buffer=buffer)
+
+        req_payload = {
+            "model": "gemini-3.8-flash",
+            "request": {
+                "systemInstruction": {"parts": [{"text": "You are agy."}]},
+                "contents": [{"role": "user", "parts": [{"text": "hello"}]}],
+                "sessionId": "-123456",
+            },
+        }
+        req = MockRequest(
+            host="daily-cloudcode-pa.googleapis.com",
+            path="/v1internal:streamGenerateContent?alt=sse",
+            content=json.dumps(req_payload).encode("utf-8"),
+        )
+        flow = MockFlow(request=req, flow_id="flow-mitm-prod-1")
+
+        addon.requestheaders(flow)
+        addon.request(flow)
+        buffer.pop()  # Drop REQUEST_INITIATED
+
+        flow.response = MockResponse(
+            status_code=200,
+            headers={"content-type": "text/event-stream"},
+        )
+        addon.responseheaders(flow)
+
+        chunk1 = (
+            b'data: {"response": {"candidates": [{"content": {"parts": [{"text": "Part 1"}]}}], '
+            b'"usageMetadata": {"promptTokenCount": 50, "candidatesTokenCount": 2}}}\r\n\r\n'
+        )
+        chunk2 = (
+            b'data: {"response": {"candidates": [{"content": {"parts": [{"text": " and 2"}]},"finishReason": "STOP"}], '
+            b'"usageMetadata": {"promptTokenCount": 50, "candidatesTokenCount": 4, "thoughtsTokenCount": 8}}}\r\n\r\n'
+        )
+
+        # Mitmproxy invokes stream with single bytes per packet
+        ret1 = flow.response.stream(chunk1)
+        assert ret1 == chunk1
+        ret2 = flow.response.stream(chunk2)
+        assert ret2 == chunk2
+
+        # Mitmproxy invokes stream with b"" on ResponseEndOfMessage
+        ret_eof = flow.response.stream(b"")
+        assert ret_eof == b""
+
+        addon.response(flow)
+
+        assert len(buffer) == 1
+        turn_env = WireEnvelope.from_bytes(buffer.pop())
+        assert turn_env.event_type == WireEventType.TURN_COMPLETED
+        assert turn_env.payload["usage"]["input_tokens"] == 50
+        assert turn_env.payload["usage"]["output_tokens"] == 4
+        assert turn_env.payload["usage"]["reasoning_tokens"] == 8
+
+
