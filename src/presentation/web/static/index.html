@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ctxins - Context Inspector Dashboard</title>
+  <link rel="stylesheet" href="/css/styles.css">
+</head>
+<body>
+  <!-- Navigation Header -->
+  <header class="navbar">
+    <div class="nav-brand">
+      <span class="nav-logo">ctxins</span>
+      <span class="nav-title">Context Inspector</span>
+    </div>
+
+    <div class="nav-controls">
+      <div class="session-select-wrapper">
+        <label for="session-select" class="session-select-label">Session:</label>
+        <select id="session-select" class="session-select">
+          <option value="">Loading sessions...</option>
+        </select>
+      </div>
+
+      <div id="connection-status" class="status-pill disconnected">
+        <span class="status-dot"></span>
+        <span id="status-text">Disconnected</span>
+      </div>
+
+      <button id="export-btn" class="btn btn-primary">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+          <path d="M7.47 10.78a.75.75 0 001.06 0l3.75-3.75a.75.75 0 00-1.06-1.06L8.75 8.44V1.75a.75.75 0 00-1.5 0v6.69L4.78 5.97a.75.75 0 00-1.06 1.06l3.75 3.75zM3.75 13a.75.75 0 000 1.5h8.5a.75.75 0 000-1.5h-8.5z"></path>
+        </svg>
+        Export .jsonc
+      </button>
+    </div>
+  </header>
+
+  <!-- Main Dashboard Container -->
+  <main class="container">
+    <!-- KPI Ribbon Banner -->
+    <section class="kpi-banner">
+      <div class="kpi-card">
+        <div class="kpi-label">Total Tokens</div>
+        <div id="kpi-tokens" class="kpi-value">0</div>
+        <div class="kpi-subtext">Cumulative Prompt & Output</div>
+      </div>
+
+      <div class="kpi-card">
+        <div class="kpi-label">Prompt Cache Hit %</div>
+        <div id="kpi-cache-hit" class="kpi-value">0.0%</div>
+        <div class="kpi-subtext">Cached Read / Input Tokens</div>
+      </div>
+
+      <div class="kpi-card">
+        <div class="kpi-label">Total Spend</div>
+        <div id="kpi-spend" class="kpi-value">$0.0000</div>
+        <div class="kpi-subtext">Estimated Model Usage</div>
+      </div>
+
+      <div class="kpi-card">
+        <div class="kpi-label">Avoidable Waste</div>
+        <div id="kpi-avoidable" class="kpi-value" style="color: var(--color-critical);">$0.0000</div>
+        <div class="kpi-subtext">Heuristic Waste Savings</div>
+      </div>
+
+      <div class="kpi-card">
+        <div class="kpi-label">Context Pollution Score</div>
+        <div id="kpi-pollution-score" class="kpi-value">0.0 / 100</div>
+        <div class="pollution-meter-track">
+          <div id="pollution-meter-fill" class="pollution-meter-fill"></div>
+        </div>
+        <div id="pollution-level-text" class="kpi-subtext">Pristine Clean</div>
+      </div>
+    </section>
+
+    <!-- Visualizations & Alerts Grid -->
+    <section class="dashboard-grid">
+      <!-- Left: Stacked Token Composition Chart -->
+      <div class="panel">
+        <div class="panel-header">
+          <div>
+            <div class="panel-title">Turn Token Composition & Cache Performance</div>
+            <div class="panel-subtitle">Interactive stacked breakdown across sequential conversational turns</div>
+          </div>
+        </div>
+        <div class="chart-container">
+          <canvas id="token-chart"></canvas>
+        </div>
+      </div>
+
+      <!-- Right: Recommendations & Heuristic Alerts Feed -->
+      <div class="panel">
+        <div class="panel-header">
+          <div>
+            <div class="panel-title">
+              Context Health Alerts
+              <span id="recommendations-count" class="badge badge-warn">0 active</span>
+            </div>
+            <div class="panel-subtitle">Rule violations, financial leakage, and remediation steps</div>
+          </div>
+        </div>
+        <div id="recommendations-feed" class="recommendations-feed">
+          <div class="empty-state">
+            <div class="empty-state-icon">✨</div>
+            <div style="font-weight: 600; color: var(--text-heading);">Zero Context Violations</div>
+            <div style="font-size: 12px; margin-top: 4px;">Context cache boundaries and prompt sizing are optimal.</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Turn Inspector Section -->
+    <section class="panel inspector-panel">
+      <div class="panel-header">
+        <div>
+          <div id="selected-turn-title" class="panel-title">Turn Inspector</div>
+          <div class="panel-subtitle">Block-level AST breakdown, token weights, and lineage survival</div>
+        </div>
+      </div>
+
+      <!-- Turn Metadata Summary -->
+      <div id="turn-meta-ribbon" class="turn-meta-ribbon">
+        <span>Select a turn from the chart or diff dropdowns below to inspect its context AST.</span>
+      </div>
+
+      <!-- Context Blocks Table -->
+      <div class="table-wrapper">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Block ID</th>
+              <th>Type</th>
+              <th>Tokens</th>
+              <th>Survived</th>
+              <th>Content Hash</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody id="blocks-table-body">
+            <tr>
+              <td colspan="6" style="text-align: center; color: var(--text-secondary); padding: 24px;">
+                No turn data loaded yet.
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Turn-to-Turn Diff Viewer Sub-Section -->
+      <div class="diff-toolbar">
+        <span style="font-weight: 600; font-size: 13px;">Turn-to-Turn Context Diff:</span>
+        <label for="diff-t1" style="font-size: 12px; color: var(--text-secondary);">From:</label>
+        <select id="diff-t1" class="session-select" style="min-width: 100px;"></select>
+        <label for="diff-t2" style="font-size: 12px; color: var(--text-secondary);">To:</label>
+        <select id="diff-t2" class="session-select" style="min-width: 100px;"></select>
+        <button id="diff-btn" class="btn">Compare Turns</button>
+      </div>
+
+      <div id="diff-results" class="diff-results"></div>
+    </section>
+  </main>
+
+  <!-- Modal for inspecting block content -->
+  <div id="block-modal" class="modal-overlay">
+    <div class="modal-content">
+      <div class="modal-header">
+        <div id="modal-title" class="modal-title">Block Details</div>
+        <button id="modal-close-btn" class="modal-close-btn">&times;</button>
+      </div>
+      <pre id="modal-body" class="modal-body"></pre>
+    </div>
+  </div>
+
+  <!-- Chart.js CDN with graceful fallback -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- Application Scripts -->
+  <script src="/js/ws_client.js"></script>
+  <script src="/js/charts.js"></script>
+  <script src="/js/app.js"></script>
+</body>
+</html>

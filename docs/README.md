@@ -77,18 +77,25 @@ The architecture is documented across the following specifications:
 
 ### 1. Universal Proxy Run (Any Agent / CLI)
 ```bash
-# Run any agent tool wrapped with automatic proxy & TUI
-ctxins run -- claude
-ctxins run -- npm run agent
+# Run any agent tool wrapped with automatic proxy & interactive Terminal UI (TUI)
+ctxins run --tui -- claude
+ctxins run --tui -- agy
+
+# Or launch with Web Dashboard attached
+ctxins run --web --port 8484 -- claude
 ```
 
-### 2. Native Hook Listener (Claude Code / OpenCode / Pi)
+### 2. Standalone Core Engine & Presentation UIs
 ```bash
-# Start ctxins listener in TUI mode
-ctxins live
+# Start Core Engine listener with real-time Terminal UI
+ctxins live --tui
 
-# In another terminal, run Claude Code with the ctxins plugin
-claude --plugin @ctxins/claude-hook
+# Start Core Engine listener with Web Dashboard
+ctxins live --web --port 8484
+
+# Attach standalone UI to existing socket
+ctxins tui --socket /tmp/ctxins.sock
+ctxins web --port 8484 --socket /tmp/ctxins.sock
 ```
 
 ### 3. Baseline & Prompt Regression Testing

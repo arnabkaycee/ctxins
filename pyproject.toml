@@ -24,6 +24,9 @@ dependencies = [
 ]
 
 
+[project.scripts]
+ctxins = "src.cli:main"
+
 [project.optional-dependencies]
 dev = [
     "pytest>=8.0.0",
@@ -53,3 +56,8 @@ minversion = "8.0"
 addopts = "-ra -q"
 testpaths = ["tests"]
 asyncio_mode = "auto"
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28.1",
+]

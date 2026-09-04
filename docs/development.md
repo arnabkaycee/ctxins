@@ -26,7 +26,7 @@ The `ctxins` test suite verifies network interception, streaming token reconstru
 ### Running Tests
 
 ```bash
-# Run all tests (185 tests)
+# Run all tests (221 tests)
 uv run pytest
 
 # Run with verbose output and short failure traces
@@ -35,6 +35,7 @@ uv run pytest -v -ra
 # Run specific test suites:
 uv run pytest tests/unit/interceptor/        # Interceptor unit tests (router, sanitizer, tap, accumulators)
 uv run pytest tests/unit/core/               # Core engine unit tests (normalizers, heuristics, graph)
+uv run pytest tests/presentation/           # Presentation tests (broadcaster, TUI, Web API, E2E UI)
 uv run pytest tests/integration/            # UDS IPC transport & socket resilience tests
 uv run pytest tests/e2e/                    # End-to-end multi-turn agent simulation tests
 ```
@@ -67,6 +68,7 @@ uv run mypy src tests
 ```text
 ctxins/
 ├── src/
+│   ├── cli.py               # Unified CLI runner (tui, web, live, run)
 │   ├── schema/              # Shared wire envelopes and canonical AST dataclasses
 │   │   ├── wire.py          # Provider enums, WireEnvelope, TimingMetrics, UsageMetrics
 │   │   └── ast.py           # CanonicalTurn, ContextBlock, RuleViolation, TurnDelta
@@ -78,15 +80,22 @@ ctxins/
 │   │   ├── correlation/     # ActiveTurnTracker and TTL reaper
 │   │   └── egress/          # BoundedRingBuffer, 4-byte framer, and non-blocking UDSClient
 │   │
-│   └── core/                # Core context analysis and rule engine
-│       ├── server/          # Asynchronous UDSFrameServer and FrameDecoder
-│       ├── ast/             # Canonical AST normalizers (Anthropic, OpenAI, Gemini)
-│       ├── graph/           # ContextGraph DAG, SHA-256 Hasher, and TurnDiffEngine
-│       ├── analyzer/        # PollutionAnalyzer, PollutionScorer, and heuristics (CTX-001..003, CACHE-001)
-│       └── store/           # Thread-safe SessionStore and JsoncExporter
+│   ├── core/                # Core context analysis and rule engine
+│   │   ├── server/          # Asynchronous UDSFrameServer and FrameDecoder
+│   │   ├── ast/             # Canonical AST normalizers (Anthropic, OpenAI, Gemini)
+│   │   ├── graph/           # ContextGraph DAG, SHA-256 Hasher, and TurnDiffEngine
+│   │   ├── analyzer/        # PollutionAnalyzer, PollutionScorer, and heuristics (CTX-001..003, CACHE-001)
+│   │   └── store/           # Thread-safe SessionStore and JsoncExporter
+│   │
+│   └── presentation/        # Real-time presentation subsystem
+│       ├── broadcaster.py   # Async pub/sub event bus & fan-out engine
+│       ├── events.py        # Presentation UIEvent models & serializable payloads
+│       ├── tui/             # Textual terminal UI application, state, and widgets
+│       └── web/             # FastAPI REST API, WebSocket hub, and zero-build SPA
 │
 ├── tests/
 │   ├── unit/                # Component-level unit tests
+│   ├── presentation/        # Presentation broadcaster, TUI, and Web API tests
 │   ├── integration/         # IPC socket stress tests, disconnect/reconnect tests
 │   ├── e2e/                 # Full multi-turn agent pipeline tests
 │   └── mocks/               # In-process mock LLM streaming server

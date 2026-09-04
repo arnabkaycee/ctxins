@@ -6,29 +6,46 @@
 
 ---
 
-## 1. Starting the `ctxins` Pipeline
+## 1. Execution Modes
 
-Before running your agent harness, start the proxy and the IPC socket.
+`ctxins` can be executed using either the **all-in-one runner** or the **decoupled pipeline**:
 
-### Step 1: Start the Core Engine (UDS Receiver)
-The Core Engine listens on a Unix Domain Socket (e.g. `/tmp/ctxins.sock`):
+### Option 1: Unified One-Command Runner (`ctxins run`)
+Launches the proxy, configures certificate/proxy environment variables, runs the agent command, and opens the presentation UI automatically:
 
 ```bash
-# Start the Core Frame Server in a background terminal or daemon
-CTXINS_SOCKET_PATH=/tmp/ctxins.sock uv run python -m src.core.server.uds_server
+# Wrap agent execution in the interactive Terminal UI (TUI)
+uv run ctxins run --tui -- claude
+uv run ctxins run --tui -- agy
+uv run ctxins run --tui -- aider
+
+# Wrap agent execution and launch the Web Dashboard (http://localhost:8484)
+uv run ctxins run --web --port 8484 -- claude
 ```
 
-### Step 2: Start the Interceptor Proxy
-Run `mitmdump` (headless) or `mitmproxy` (interactive TUI) loading `src/interceptor/addon.py`:
+---
+
+### Option 2: Decoupled Pipeline (`ctxins live` or Daemons)
+
+When running agents in existing terminal sessions, remote servers, or persistent setups:
+
+#### Step 1: Start the Core Engine & UI
+```bash
+# Start Core Engine with interactive Terminal UI
+uv run ctxins live --tui
+
+# Or start Core Engine with Web Dashboard
+uv run ctxins live --web --port 8484
+```
+
+#### Step 2: Start the Interceptor Proxy
+Run `mitmdump` (headless) or `mitmweb` / `mitmproxy` loading `src/interceptor/addon.py`:
 
 ```bash
-# Option A: Headless proxy (recommended for scripts & automation)
+# Headless proxy (recommended for scripts & automation)
 CTXINS_SOCKET_PATH=/tmp/ctxins.sock uv run mitmdump -p 8080 -s src/interceptor/addon.py
 
-# Option B: Interactive terminal dashboard
-CTXINS_SOCKET_PATH=/tmp/ctxins.sock uv run mitmproxy -p 8080 -s src/interceptor/addon.py
-
-# Option C: Web dashboard interface
+# Or with raw mitmproxy traffic inspectors:
 CTXINS_SOCKET_PATH=/tmp/ctxins.sock uv run mitmweb -p 8080 -s src/interceptor/addon.py
 ```
 

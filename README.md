@@ -1,6 +1,6 @@
 # ctxins: Context Inspector & Optimizer for Agentic Harnesses
 
-[![CI](https://img.shields.io/badge/tests-185%20passed-brightgreen.svg)](docs/development.md#2-testing-suite)
+[![CI](https://img.shields.io/badge/tests-221%20passed-brightgreen.svg)](docs/development.md#2-testing-suite)
 [![Python](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13-blue.svg)](https://python.org)
 [![Type Checked](https://img.shields.io/badge/typecheck-mypy%20clean-blue.svg)](docs/development.md#3-quality-gates--linting)
 [![Linter](https://img.shields.io/badge/lint-ruff%20clean-blue.svg)](docs/development.md#3-quality-gates--linting)
@@ -40,32 +40,34 @@ flowchart LR
 
 ## 🚀 Quick Start
 
-### 1. Start the Core Engine & Proxy
-Install dependencies and launch the interceptor pipeline:
+### Option A: One-Command Runner (`ctxins run`)
+Execute your agent harness wrapped with an automatic proxy and interactive UI:
 
 ```bash
 git clone https://github.com/arnabkaycee/ctxins.git && cd ctxins
 uv sync --extra dev
 
-# 1. Start the Core Frame Server (in background)
-CTXINS_SOCKET_PATH=/tmp/ctxins.sock uv run python -m src.core.server.uds_server &
+# Run with Terminal UI (TUI)
+uv run ctxins run --tui -- claude
+uv run ctxins run --tui -- agy
 
-# 2. Start the Interceptor Proxy (headless or with web/TUI dashboard)
-CTXINS_SOCKET_PATH=/tmp/ctxins.sock uv run mitmdump -p 8080 -s src/interceptor/addon.py
+# Run with Web Dashboard (http://localhost:8484)
+uv run ctxins run --web --port 8484 -- claude
 ```
 
-### 2. Run Any Agent Harness
-Execute your agent with standard proxy environment variables or using the [`with-ctxins` helper](docs/harness-guides.md#2-universal-helper-function-with-ctxins):
+### Option B: Decoupled Pipeline (`ctxins live` or separate daemons)
 
 ```bash
-# Antigravity (agy)
-with-ctxins agy
+# 1. Start Core Engine and presentation UI
+uv run ctxins live --tui            # Terminal UI
+uv run ctxins live --web --port 8484 # Web Dashboard
 
-# Claude Code
+# 2. In another terminal, start the interceptor proxy
+CTXINS_SOCKET_PATH=/tmp/ctxins.sock uv run mitmdump -p 8080 -s src/interceptor/addon.py
+
+# 3. Run any agent harness with the helper
 with-ctxins claude
-
-# Aider
-with-ctxins aider
+with-ctxins agy
 ```
 
 > **Tip:** You can also pass environment variables inline, e.g. `HTTP_PROXY="http://127.0.0.1:8080" HTTPS_PROXY="http://127.0.0.1:8080" SSL_CERT_FILE="$HOME/.mitmproxy/mitmproxy-ca-cert.pem" agy`. See [Harness Integration Guides](docs/harness-guides.md) for harness-specific details.
@@ -79,8 +81,8 @@ with-ctxins aider
 ### 1. Interactive Terminal UI (TUI)
 Designed to run side-by-side with your agent harness in split terminals or `tmux`:
 ```bash
-# Launch interactive TUI attached to the active Core Engine
-uv run python -m src.presentation.tui.app
+# Launch interactive TUI attached to active Core Engine
+uv run ctxins tui --socket /tmp/ctxins.sock
 ```
 ```text
 ┌─────────────────────────────────────────────────────────────────────────────────────────────────────────┐
@@ -111,7 +113,7 @@ uv run python -m src.presentation.tui.app
 Launch the local web dashboard to view interactive token charts, cache invalidation heatmaps, and recommendation details:
 ```bash
 # Start the web dashboard gateway (default: http://localhost:8484)
-uv run python -m src.presentation.web.server --port 8484
+uv run ctxins web --port 8484 --socket /tmp/ctxins.sock
 ```
 - **Real-Time WebSocket Sync (`/ws/live`)**: Instant updates as turns complete and tokens stream.
 - **Visual Context Sunburst & Treemaps**: Area-weighted breakdowns of prompt composition.
