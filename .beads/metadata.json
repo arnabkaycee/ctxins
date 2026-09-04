@@ -1,0 +1,7 @@
+{
+  "database": "dolt",
+  "backend": "dolt",
+  "dolt_mode": "server",
+  "dolt_database": "ctxins",
+  "project_id": "4f21b40d-9887-4983-99d1-2bf913faf1da"
+}
