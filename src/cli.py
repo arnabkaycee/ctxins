@@ -211,16 +211,32 @@ class CorePipelineBridge:
         session_id = envelope.session_id
 
         if envelope.event_type == WireEventType.REQUEST_INITIATED:
-            existing_turns = self.store.get_session(session_id) or []
-            harness = (
-                envelope.payload.get("client_metadata", {}).get("harness")
-                or envelope.payload.get("harness")
-                or "unknown"
-            )
             agent_info = (
                 envelope.payload.get("client_metadata", {}).get("agent")
                 or envelope.payload.get("agent")
             )
+            harness = (
+                envelope.payload.get("client_metadata", {}).get("harness")
+                or envelope.payload.get("harness")
+                or (agent_info.get("name") if isinstance(agent_info, dict) else None)
+                or getattr(agent_info, "name", None)
+                or "unknown"
+            )
+            if session_id not in self.store.list_sessions():
+                self.store.register_session(
+                    session_id,
+                    metadata={
+                        "sessionId": session_id,
+                        "model": envelope.payload.get("model", "unknown"),
+                        "provider": envelope.payload.get("provider", "unknown"),
+                        "agentHarness": harness,
+                        "harness": harness,
+                        "agent": agent_info,
+                        "status": "active",
+                    },
+                )
+
+            existing_turns = self.store.get_session(session_id) or []
             if len(existing_turns) == 0:
                 self.broadcaster.publish_nowait(
                     UIEvent(

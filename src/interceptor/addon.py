@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import os
@@ -88,10 +89,16 @@ class CtxinsAddon:
             process_detector if process_detector is not None else ProcessDetector()
         )
 
-        # Connection and session lifecycle tracking for auto-detection and erasure
+        # Connection and session lifecycle tracking for auto-detection and multi-session persistence
         self._client_to_session: Dict[tuple[str, int], str] = {}
         self._session_to_clients: Dict[str, set[tuple[str, int]]] = {}
         self._session_agents: Dict[str, AgentIdentity] = {}
+
+        # Per-process session tracking to detect session switches within a single agent process
+        self._pid_active_session: Dict[int, str] = {}
+        self._pid_session_counter: Dict[int, int] = {}
+        self._pid_last_history_len: Dict[int, int] = {}
+        self._pid_last_first_msg_hash: Dict[int, str] = {}
 
         # Thread-safe chunk tee queue consumed by background worker or drained on response
         self.chunk_queue: queue.Queue[tuple[str, bytes, float]] = queue.Queue(maxsize=10000)
@@ -195,23 +202,70 @@ class CtxinsAddon:
             except Exception as e:
                 logger.debug("Error in chunk worker loop: %s", e)
 
-    def _extract_ids(self, flow: Any) -> tuple[str, str]:
+    def _extract_ids(self, flow: Any, body: Optional[Dict[str, Any]] = None) -> tuple[str, str]:
         """Extract or generate session_id and correlation_id for flow."""
         headers = flow.request.headers if hasattr(flow, "request") and flow.request else {}
+        lower_headers = {str(k).lower(): str(v) for k, v in headers.items()}
 
-        session_id = (
-            headers.get("x-session-id")
-            or headers.get("x-ctxins-session-id")
-            or headers.get("ctxins-session-id")
-            or self.default_session_id
-        )
+        session_id = None
+        for key in (
+            "x-session-id",
+            "x-ctxins-session-id",
+            "ctxins-session-id",
+            "session-id",
+            "session_id",
+            "x-conversation-id",
+            "conversation-id",
+            "conversation_id",
+            "x-chat-id",
+            "chat-id",
+            "x-opencode-session",
+            "x-opencode-session-id",
+            "opencode-session-id",
+            "x-claude-session-id",
+            "claude-session-id",
+            "x-agy-session",
+            "x-agy-session-id",
+        ):
+            val = lower_headers.get(key)
+            if val and val.strip():
+                session_id = val.strip()
+                break
+
+        if not session_id and isinstance(body, dict):
+            for key in ("sessionId", "session_id", "conversationId", "conversation_id", "chatId", "chat_id"):
+                val = body.get(key)
+                if val and isinstance(val, (str, int)) and str(val).strip():
+                    session_id = str(val).strip()
+                    break
+
+            if not session_id:
+                meta = body.get("metadata")
+                if isinstance(meta, dict):
+                    for key in ("sessionId", "session_id", "conversationId", "conversation_id", "chatId", "chat_id", "user_id"):
+                        val = meta.get(key)
+                        if val and isinstance(val, (str, int)) and str(val).strip():
+                            session_id = str(val).strip()
+                            break
+
+            if not session_id:
+                req_wrapper = body.get("request")
+                if isinstance(req_wrapper, dict):
+                    for key in ("sessionId", "session_id", "conversationId", "conversation_id"):
+                        val = req_wrapper.get(key)
+                        if val and isinstance(val, (str, int)) and str(val).strip():
+                            session_id = str(val).strip()
+                            break
+
+        if not session_id:
+            session_id = self.default_session_id
 
         metadata = getattr(flow, "metadata", {})
         correlation_id = (
             metadata.get("ctxins_correlation_id")
-            or headers.get("x-correlation-id")
-            or headers.get("x-ctxins-correlation-id")
-            or headers.get("x-request-id")
+            or lower_headers.get("x-correlation-id")
+            or lower_headers.get("x-ctxins-correlation-id")
+            or lower_headers.get("x-request-id")
             or getattr(flow, "id", None)
             or f"corr-{uuid.uuid4().hex[:12]}"
         )
@@ -632,13 +686,78 @@ class CtxinsAddon:
             turn.model = model
             turn.request_payload = payload_dict
 
-            body_session_id = None
-            if isinstance(payload_dict, dict):
-                body_session_id = payload_dict.get("sessionId")
-                if not body_session_id and "request" in payload_dict and isinstance(payload_dict["request"], dict):
-                    body_session_id = payload_dict["request"].get("sessionId")
-            if body_session_id and turn.session_id == self.default_session_id:
-                turn.session_id = str(body_session_id)
+            # Check if session ID can be resolved or switched from body, headers, or message history
+            extracted_sid, _ = self._extract_ids(flow, body=payload_dict)
+            agent_identity = metadata.get("ctxins_agent")
+            pid = agent_identity.pid if (agent_identity and agent_identity.pid) else None
+            harness_name = agent_identity.name if (agent_identity and agent_identity.is_known) else "agent"
+
+            if extracted_sid and extracted_sid != self.default_session_id:
+                # Explicit session ID present in headers or request body
+                computed_sid = extracted_sid
+                if pid:
+                    self._pid_active_session[pid] = computed_sid
+            elif pid:
+                # No explicit session ID; inspect conversation messages to detect session switches within this process
+                messages = []
+                if "messages" in payload_dict and isinstance(payload_dict["messages"], list):
+                    messages = [m for m in payload_dict["messages"] if isinstance(m, dict)]
+                elif "contents" in payload_dict and isinstance(payload_dict["contents"], list):
+                    messages = [m for m in payload_dict["contents"] if isinstance(m, dict)]
+                elif "request" in payload_dict and isinstance(payload_dict["request"], dict):
+                    req_inner = payload_dict["request"]
+                    if "messages" in req_inner and isinstance(req_inner["messages"], list):
+                        messages = [m for m in req_inner["messages"] if isinstance(m, dict)]
+                    elif "contents" in req_inner and isinstance(req_inner["contents"], list):
+                        messages = [m for m in req_inner["contents"] if isinstance(m, dict)]
+
+                first_content = ""
+                if messages:
+                    first_msg = messages[0]
+                    first_content = str(first_msg.get("content", first_msg.get("parts", "")))[:200]
+                first_hash = hashlib.sha256(first_content.encode("utf-8")).hexdigest()[:8] if first_content else ""
+                msg_count = len(messages)
+
+                curr_sid = self._pid_active_session.get(pid)
+                prev_first_hash = self._pid_last_first_msg_hash.get(pid)
+                prev_count = self._pid_last_history_len.get(pid, 0)
+
+                is_new_session = False
+                if curr_sid is not None:
+                    # If first message content hash changed, or message count dropped back to initial turn
+                    if prev_first_hash and first_hash and prev_first_hash != first_hash:
+                        is_new_session = True
+                    elif msg_count <= 1 and prev_count >= 2:
+                        is_new_session = True
+
+                if is_new_session or curr_sid is None:
+                    counter = self._pid_session_counter.get(pid, 0) + 1
+                    self._pid_session_counter[pid] = counter
+                    counter_suffix = f"_{counter}" if counter > 1 else ""
+                    computed_sid = f"sess_{harness_name}_{pid}{counter_suffix}"
+                    self._pid_active_session[pid] = computed_sid
+                else:
+                    computed_sid = curr_sid
+
+                self._pid_last_history_len[pid] = msg_count
+                if first_hash:
+                    self._pid_last_first_msg_hash[pid] = first_hash
+            elif agent_identity and agent_identity.is_known:
+                computed_sid = f"sess_{agent_identity.name}_{agent_identity.pid or uuid.uuid4().hex[:6]}"
+            else:
+                computed_sid = turn.session_id or self.default_session_id
+
+            turn.session_id = computed_sid
+
+            # Update client and agent connection mappings for this session
+            client_conn = getattr(flow, "client_conn", None)
+            peer = getattr(client_conn, "peername", None)
+            if peer and len(peer) >= 2:
+                peer_tuple = (peer[0], peer[1])
+                self._client_to_session[peer_tuple] = computed_sid
+                self._session_to_clients.setdefault(computed_sid, set()).add(peer_tuple)
+            if agent_identity:
+                self._session_agents[computed_sid] = agent_identity
 
             if req is not None and hasattr(req, "headers"):
                 turn.sanitized_headers = self.sanitizer.sanitize_headers(dict(req.headers))
