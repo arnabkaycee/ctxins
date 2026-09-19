@@ -199,13 +199,19 @@ class TUIState:
                 t_data.get("cached_created_tokens", turn["cachedCreatedTokens"]),
             )
 
-            total_tok = t_data.get(
-                "tokens",
+            raw_tok = t_data.get(
+                "total_tokens",
                 t_data.get(
                     "totalTokens",
-                    t_data.get("total_tokens", turn["inputTokens"] + turn["outputTokens"]),
+                    t_data.get("tokens", turn["inputTokens"] + turn["outputTokens"]),
                 ),
             )
+            if isinstance(raw_tok, dict):
+                total_tok = sum(int(v) for v in raw_tok.values() if isinstance(v, (int, float)))
+            elif isinstance(raw_tok, (int, float)):
+                total_tok = int(raw_tok)
+            else:
+                total_tok = int(turn["inputTokens"] + turn["outputTokens"])
             turn["tokens"] = total_tok
 
             turn["durationMs"] = float(
@@ -280,31 +286,37 @@ class TUIState:
                 )
 
         elif etype == UIEventType.SESSION_SUMMARY_UPDATED:
-            if "totalTokens" in payload or "total_tokens" in payload:
-                self.total_tokens = int(payload.get("totalTokens", payload.get("total_tokens", self.total_tokens)))
-            if "cacheHitRatio" in payload or "cache_hit_ratio" in payload:
-                self.cache_hit_ratio = float(
-                    payload.get("cacheHitRatio", payload.get("cache_hit_ratio", self.cache_hit_ratio))
-                )
-            if "cachedReadTokens" in payload or "cached_read_tokens" in payload:
-                self.cached_read_tokens = int(
-                    payload.get(
-                        "cachedReadTokens",
-                        payload.get("cached_read_tokens", self.cached_read_tokens),
-                    )
-                )
-            if "totalCostUSD" in payload or "total_cost_usd" in payload:
-                self.total_spend_usd = float(
-                    payload.get("totalCostUSD", payload.get("total_cost_usd", self.total_spend_usd))
-                )
-            if "wastedCostUSD" in payload or "wasted_cost_usd" in payload:
-                self.wasted_spend_usd = float(
-                    payload.get("wastedCostUSD", payload.get("wasted_cost_usd", self.wasted_spend_usd))
-                )
-            if "pollutionScore" in payload or "pollution_score" in payload:
-                self.pollution_score = float(
-                    payload.get("pollutionScore", payload.get("pollution_score", self.pollution_score))
-                )
+            sum_payload: Dict[str, Any] = payload if isinstance(payload, dict) else {}
+            sum_raw = sum_payload.get("summary")
+            sum_dict: Dict[str, Any] = sum_raw if isinstance(sum_raw, dict) else sum_payload
+
+            tot_tok = sum_dict.get("totalTokens", sum_dict.get("total_tokens"))
+            if tot_tok is not None:
+                self.total_tokens = int(tot_tok)
+            elif "totalInputTokens" in sum_dict or "total_input_tokens" in sum_dict:
+                inp = int(sum_dict.get("totalInputTokens", sum_dict.get("total_input_tokens", 0)) or 0)
+                outp = int(sum_dict.get("totalOutputTokens", sum_dict.get("total_output_tokens", 0)) or 0)
+                self.total_tokens = inp + outp
+
+            chr_val = sum_dict.get("cacheHitRatio", sum_dict.get("cache_hit_ratio"))
+            if chr_val is not None:
+                self.cache_hit_ratio = float(chr_val)
+
+            crt_val = sum_dict.get("cachedReadTokens", sum_dict.get("cached_read_tokens", sum_dict.get("cachedInputTokens")))
+            if crt_val is not None:
+                self.cached_read_tokens = int(crt_val)
+
+            cost_val = sum_dict.get("totalCostUSD", sum_dict.get("total_cost_usd", sum_dict.get("estimatedCostUSD")))
+            if cost_val is not None:
+                self.total_spend_usd = float(cost_val)
+
+            waste_val = sum_dict.get("wastedCostUSD", sum_dict.get("wasted_cost_usd", sum_dict.get("potentialSavingsUSD")))
+            if waste_val is not None:
+                self.wasted_spend_usd = float(waste_val)
+
+            pol_val = sum_dict.get("pollutionScore", sum_dict.get("pollution_score"))
+            if pol_val is not None:
+                self.pollution_score = float(pol_val)
 
         elif etype == UIEventType.SESSION_ENDED:
             self.status = "Ended"
@@ -394,20 +406,50 @@ class TUIState:
                 continue
 
             t_idx = d.get("turnIndex", d.get("turn_index", len(converted)))
-            tok_bd = d.get("tokenBreakdown", d.get("token_breakdown", {}))
-            if not tok_bd and hasattr(t, "system_blocks"):
-                tok_bd = {
-                    "system": sum(b.token_count for b in getattr(t, "system_blocks", [])),
-                    "tools": sum(b.token_count for b in getattr(t, "tool_defs", [])),
-                    "history": sum(b.token_count for b in getattr(t, "conversation_history", [])),
-                    "toolResults": sum(b.token_count for b in getattr(t, "tool_results", [])),
-                    "assistant": sum(b.token_count for b in getattr(t, "assistant_blocks", [])),
-                    "cache": getattr(t, "cached_read_tokens", 0),
-                }
+            inp_tokens = int(d.get("inputTokens", d.get("input_tokens", getattr(t, "input_tokens", 0))))
+            out_tokens = int(d.get("outputTokens", d.get("output_tokens", getattr(t, "output_tokens", 0))))
+            cached_read = int(d.get("cachedReadTokens", d.get("cached_read_tokens", getattr(t, "cached_read_tokens", 0))))
+            cached_created = int(d.get("cachedCreatedTokens", d.get("cached_created_tokens", getattr(t, "cached_created_tokens", 0))))
+            cost_val = float(d.get("cost", d.get("turnCostUSD", d.get("turn_cost_usd", getattr(t, "turn_cost_usd", 0.0)))))
+            wasted_val = float(d.get("wastedCost", d.get("wastedCostUSD", d.get("wasted_cost_usd", getattr(t, "wasted_cost_usd", 0.0)))))
 
-            all_b = d.get("blocks", d.get("all_blocks", []))
-            if hasattr(t, "all_blocks") and not all_b:
-                all_b = [b.to_dict() for b in getattr(t, "all_blocks", [])]
+            raw_tokens = d.get("tokens")
+            if isinstance(raw_tokens, dict):
+                tot_tokens = sum(int(v) for v in raw_tokens.values() if isinstance(v, (int, float)))
+            elif isinstance(raw_tokens, (int, float)) and raw_tokens > 0:
+                tot_tokens = int(raw_tokens)
+            else:
+                tot_tokens = int(d.get("total_tokens", d.get("totalTokens", 0)))
+            if tot_tokens == 0:
+                tot_tokens = inp_tokens + out_tokens
+
+            def _extract_blocks(attr_name: str) -> List[Dict[str, Any]]:
+                raw_list = getattr(t, attr_name, d.get(attr_name, []))
+                res = []
+                for b in (raw_list or []):
+                    if hasattr(b, "to_dict"):
+                        res.append(b.to_dict())
+                    elif isinstance(b, dict):
+                        res.append(dict(b))
+                return res
+
+            sys_b = _extract_blocks("system_blocks")
+            tool_b = _extract_blocks("tool_defs")
+            hist_b = _extract_blocks("conversation_history")
+            res_b = _extract_blocks("tool_results")
+            asst_b = _extract_blocks("assistant_blocks")
+            all_b = _extract_blocks("all_blocks") or (sys_b + tool_b + hist_b + res_b + asst_b)
+
+            tok_bd = d.get("tokenBreakdown", d.get("token_breakdown", {}))
+            if not tok_bd or not isinstance(tok_bd, dict) or all(v == 0 for v in tok_bd.values()):
+                tok_bd = {
+                    "system": sum(int(b.get("token_count", b.get("tokenCount", 0))) for b in sys_b),
+                    "tools": sum(int(b.get("token_count", b.get("tokenCount", 0))) for b in tool_b),
+                    "history": sum(int(b.get("token_count", b.get("tokenCount", 0))) for b in hist_b),
+                    "toolResults": sum(int(b.get("token_count", b.get("tokenCount", 0))) for b in res_b),
+                    "assistant": sum(int(b.get("token_count", b.get("tokenCount", 0))) for b in asst_b),
+                    "cache": cached_read,
+                }
 
             viols = d.get("violations", [])
             if hasattr(t, "violations") and not viols:
@@ -418,26 +460,26 @@ class TUIState:
                 "turnId": d.get("turnId", d.get("turn_id", f"turn_{t_idx}")),
                 "correlationId": d.get("correlationId", d.get("correlation_id", "")),
                 "status": d.get("status", "completed"),
-                "model": d.get("model", self.model),
-                "provider": d.get("provider", self.provider),
-                "timestamp": d.get("timestamp", 0.0),
-                "durationMs": float(d.get("durationMs", d.get("duration_ms", 0.0))),
-                "ttftMs": d.get("ttftMs", d.get("ttft_ms")),
-                "tokens": int(d.get("tokens", d.get("total_tokens", 0))),
-                "inputTokens": int(d.get("inputTokens", d.get("input_tokens", 0))),
-                "outputTokens": int(d.get("outputTokens", d.get("output_tokens", 0))),
-                "cachedReadTokens": int(d.get("cachedReadTokens", d.get("cached_read_tokens", 0))),
-                "cachedCreatedTokens": int(d.get("cachedCreatedTokens", d.get("cached_created_tokens", 0))),
-                "cost": float(d.get("cost", d.get("turnCostUSD", d.get("turn_cost_usd", 0.0)))),
-                "wastedCost": float(d.get("wastedCost", d.get("wastedCostUSD", d.get("wasted_cost_usd", 0.0)))),
+                "model": d.get("model", getattr(t, "model", self.model)),
+                "provider": d.get("provider", getattr(t, "provider", self.provider)),
+                "timestamp": d.get("timestamp", getattr(t, "timestamp", 0.0)),
+                "durationMs": float(d.get("durationMs", d.get("duration_ms", getattr(t, "duration_ms", 0.0)))),
+                "ttftMs": d.get("ttftMs", d.get("ttft_ms", getattr(t, "ttft_ms", None))),
+                "tokens": tot_tokens,
+                "inputTokens": inp_tokens,
+                "outputTokens": out_tokens,
+                "cachedReadTokens": cached_read,
+                "cachedCreatedTokens": cached_created,
+                "cost": cost_val,
+                "wastedCost": wasted_val,
                 "violations": viols,
                 "tokenBreakdown": tok_bd,
                 "blocks": all_b,
-                "system_blocks": [b.to_dict() for b in getattr(t, "system_blocks", [])],
-                "tool_defs": [b.to_dict() for b in getattr(t, "tool_defs", [])],
-                "conversation_history": [b.to_dict() for b in getattr(t, "conversation_history", [])],
-                "tool_results": [b.to_dict() for b in getattr(t, "tool_results", [])],
-                "assistant_blocks": [b.to_dict() for b in getattr(t, "assistant_blocks", [])],
+                "system_blocks": sys_b,
+                "tool_defs": tool_b,
+                "conversation_history": hist_b,
+                "tool_results": res_b,
+                "assistant_blocks": asst_b,
                 "all_blocks": all_b,
             }
             converted.append(turn_dict)
@@ -500,6 +542,22 @@ class TUIState:
         total_input = sum(int(t.get("inputTokens", 0)) for t in self.turns)
         if total_input > 0:
             self.cache_hit_ratio = round(self.cached_read_tokens / total_input, 3)
+
+        if self.turns:
+            try:
+                from src.core.analyzer.scorer import PollutionScorer
+                from src.schema.ast import CanonicalTurn
+                canonical_turns = []
+                for t in self.turns:
+                    try:
+                        canonical_turns.append(CanonicalTurn.from_dict(t))
+                    except Exception:
+                        pass
+                if canonical_turns:
+                    summary = PollutionScorer.calculate_summary(canonical_turns)
+                    self.pollution_score = float(summary.get("pollutionScore", 0.0))
+            except Exception:
+                pass
 
     # -------------------------------------------------------------------------
     # Helper Getters

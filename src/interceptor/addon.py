@@ -14,6 +14,7 @@ import urllib.parse
 import uuid
 from typing import Any, Dict, List, Optional
 
+from src.core.logging_config import configure_logging
 from src.interceptor.correlation.tracker import ActiveTurnTracker
 from src.interceptor.detection.process_detector import (
     AgentIdentity,
@@ -38,6 +39,7 @@ from src.schema.wire import (
     WireEventType,
 )
 
+configure_logging(mode="headless", enable_memory_buffer=False)
 logger = logging.getLogger(__name__)
 
 

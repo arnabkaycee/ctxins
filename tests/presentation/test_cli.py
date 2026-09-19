@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import time
 from typing import Any
 from unittest.mock import MagicMock, patch
@@ -309,6 +310,64 @@ async def test_shutdown_uvicorn_handles_none() -> None:
     from src.cli import _shutdown_uvicorn
 
     await _shutdown_uvicorn(None, None)
+
+
+def test_cli_logging_flags_parsing() -> None:
+    """Verify CLI parser properly parses --debug, --log-level, and --log-file."""
+    parser = build_parser()
+
+    # Subcommand level
+    args = parser.parse_args(["tui", "--debug", "--log-level", "DEBUG", "--log-file", "/tmp/test.log"])
+    assert args.debug is True
+    assert args.log_level == "DEBUG"
+    assert args.log_file == "/tmp/test.log"
+
+    # Root level
+    args2 = parser.parse_args(["--debug", "web", "--log-file", "/tmp/web.log"])
+    assert args2.log_file == "/tmp/web.log"
+
+
+def test_main_configures_logging(monkeypatch: pytest.MonkeyPatch, tmp_path: Any) -> None:
+    """Verify main() sets os.environ and configures logging from CLI arguments."""
+    called_tui = []
+    log_file = tmp_path / "test_main.log"
+
+    monkeypatch.setattr("src.cli.run_tui", lambda **kwargs: called_tui.append(kwargs))
+    monkeypatch.delenv("CTXINS_DEBUG", raising=False)
+    monkeypatch.delenv("CTXINS_LOG_LEVEL", raising=False)
+    monkeypatch.delenv("CTXINS_LOG_FILE", raising=False)
+
+    res = main(["tui", "--debug", "--log-file", str(log_file)])
+    assert res == 0
+    assert len(called_tui) == 1
+    assert os.environ.get("CTXINS_DEBUG") == "1"
+    assert os.environ.get("CTXINS_LOG_FILE") == str(log_file)
+
+
+def test_spawn_mitmproxy_forwards_log_env(tmp_path: Any) -> None:
+    """Verify spawn_mitmproxy forwards log level and file into mitm_env."""
+    from src.cli import spawn_mitmproxy
+
+    log_file = str(tmp_path / "mitm.log")
+    with patch("socket.create_connection", side_effect=OSError("not listening")), \
+         patch("subprocess.Popen") as mock_popen, \
+         patch("shutil.which", return_value="/usr/local/bin/mitmdump"):
+        mock_proc = MagicMock()
+        mock_proc.poll.return_value = 0
+        mock_popen.return_value = mock_proc
+
+        spawn_mitmproxy(
+            proxy_port=8080,
+            log_level="DEBUG",
+            log_file=log_file,
+        )
+
+        assert mock_popen.called
+        call_kwargs = mock_popen.call_args[1]
+        env = call_kwargs["env"]
+        assert env.get("CTXINS_LOG_LEVEL") == "DEBUG"
+        assert env.get("CTXINS_LOG_FILE") == log_file
+
 
 
 

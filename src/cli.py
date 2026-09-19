@@ -18,6 +18,7 @@ from typing import Any, Dict, List, Optional
 from src.core.analyzer.engine import PollutionAnalyzer
 from src.core.analyzer.scorer import PollutionScorer
 from src.core.ast.normalizers import get_normalizer
+from src.core.logging_config import configure_logging
 from src.core.server.uds_server import UDSFrameServer
 from src.core.store.session_store import SessionStore
 from src.presentation.broadcaster import PresentationBroadcaster
@@ -236,6 +237,17 @@ class CorePipelineBridge:
                     },
                 )
 
+            # Link scanner placeholder session if one was registered for this PID
+            pid = (
+                envelope.payload.get("client_metadata", {}).get("pid")
+                or (agent_info.get("pid") if isinstance(agent_info, dict) else None)
+                or getattr(agent_info, "pid", None)
+            )
+            if pid and harness != "unknown":
+                scan_sid = f"sess_{harness}_{pid}"
+                if scan_sid in self.store.list_sessions() and scan_sid != session_id:
+                    self.store.alias_session(scan_sid, session_id)
+
             existing_turns = self.store.get_session(session_id) or []
             if len(existing_turns) == 0:
                 self.broadcaster.publish_nowait(
@@ -343,7 +355,9 @@ class CorePipelineBridge:
                 "cost": turn.turn_cost_usd,
                 "wastedCost": turn.wasted_cost_usd,
                 "tokenBreakdown": token_breakdown,
-                "tokens": token_breakdown,
+                "tokens": turn.total_tokens,
+                "total_tokens": turn.total_tokens,
+                "totalTokens": turn.total_tokens,
                 "violations": [v.to_dict() for v in violations],
                 "blocks": [b.to_dict() for b in turn.all_blocks],
             }
@@ -407,6 +421,8 @@ def spawn_mitmproxy(
     socket_path: str = DEFAULT_SOCKET_PATH,
     target: Optional[str] = None,
     target_port: Optional[int] = None,
+    log_level: Optional[str] = None,
+    log_file: Optional[str] = None,
 ) -> Optional[subprocess.Popen[Any]]:
     """Spawn mitmdump interceptor process if proxy_port is not already listening."""
     try:
@@ -425,6 +441,11 @@ def spawn_mitmproxy(
         mitm_env["CTXINS_TARGET"] = target
     elif target_port is not None:
         mitm_env["CTXINS_TARGET"] = f"http://127.0.0.1:{target_port}"
+
+    if log_level:
+        mitm_env["CTXINS_LOG_LEVEL"] = log_level
+    if log_file:
+        mitm_env["CTXINS_LOG_FILE"] = str(log_file)
 
     existing_py_path = mitm_env.get("PYTHONPATH", "")
     mitm_env["PYTHONPATH"] = f"{repo_root}:{existing_py_path}" if existing_py_path else repo_root
@@ -759,16 +780,43 @@ def run_with_harness(
     asyncio.run(_run_pipeline())
 
 
+def _build_log_parser() -> argparse.ArgumentParser:
+    """Build shared parser defining logging and debug CLI arguments."""
+    p = argparse.ArgumentParser(add_help=False)
+    p.add_argument(
+        "--debug",
+        "-d",
+        action="store_true",
+        help="Enable verbose debug logging (sets level to DEBUG and writes to log file)",
+    )
+    p.add_argument(
+        "--log-level",
+        type=str.upper,
+        choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
+        default=None,
+        help="Explicit logging level (default: WARNING)",
+    )
+    p.add_argument(
+        "--log-file",
+        type=str,
+        default=None,
+        help="Path to write log file (default: ~/.ctxins/ctxins.log in debug/TUI mode)",
+    )
+    return p
+
+
 def build_parser() -> argparse.ArgumentParser:
     """Build argparse parser for ctxins CLI."""
+    log_p = _build_log_parser()
     parser = argparse.ArgumentParser(
         prog="ctxins",
         description="Context Inspector & Optimizer for Agentic Harnesses",
+        parents=[log_p],
     )
     subparsers = parser.add_subparsers(dest="subcommand", help="Subcommands")
 
     # 1. tui
-    tui_p = subparsers.add_parser("tui", help="Launch interactive Terminal UI")
+    tui_p = subparsers.add_parser("tui", parents=[log_p], help="Launch interactive Terminal UI")
     tui_p.add_argument("--socket", default=DEFAULT_SOCKET_PATH, help="UDS socket path")
     tui_p.add_argument("--proxy-port", type=int, default=DEFAULT_PROXY_PORT, help="Proxy port")
     tui_p.add_argument("--target-port", type=int, default=None, help="Target port for local LLM")
@@ -777,7 +825,7 @@ def build_parser() -> argparse.ArgumentParser:
     tui_p.add_argument("--web-port", type=int, default=DEFAULT_WEB_PORT, help="Web Dashboard port")
 
     # 2. web
-    web_p = subparsers.add_parser("web", help="Launch Web Dashboard")
+    web_p = subparsers.add_parser("web", parents=[log_p], help="Launch Web Dashboard")
     web_p.add_argument("--port", type=int, default=DEFAULT_WEB_PORT, help="Web server port")
     web_p.add_argument("--host", default=DEFAULT_WEB_HOST, help="Web server host")
     web_p.add_argument("--socket", default=DEFAULT_SOCKET_PATH, help="UDS socket path")
@@ -786,7 +834,7 @@ def build_parser() -> argparse.ArgumentParser:
     web_p.add_argument("--target", default=None, help="Target upstream URL (e.g. http://localhost:8000)")
 
     # 3. live
-    live_p = subparsers.add_parser("live", help="Start Core Engine and presentation UI")
+    live_p = subparsers.add_parser("live", parents=[log_p], help="Start Core Engine and presentation UI")
     ui_group = live_p.add_mutually_exclusive_group()
     ui_group.add_argument("--tui", dest="ui_mode", action="store_const", const="tui", default="tui", help="Use Terminal UI (default)")
     ui_group.add_argument("--web", dest="ui_mode", action="store_const", const="web", help="Use Web Dashboard")
@@ -800,7 +848,7 @@ def build_parser() -> argparse.ArgumentParser:
     live_p.add_argument("--web-port", type=int, default=DEFAULT_WEB_PORT, help="Web Dashboard port")
 
     # 4. run
-    run_p = subparsers.add_parser("run", help="Start proxy and execute agent harness wrapped in ctxins")
+    run_p = subparsers.add_parser("run", parents=[log_p], help="Start proxy and execute agent harness wrapped in ctxins")
     run_ui_group = run_p.add_mutually_exclusive_group()
     run_ui_group.add_argument("--tui", dest="ui_mode", action="store_const", const="tui", default="tui", help="Use Terminal UI (default)")
     run_ui_group.add_argument("--web", dest="ui_mode", action="store_const", const="web", help="Use Web Dashboard")
@@ -815,7 +863,7 @@ def build_parser() -> argparse.ArgumentParser:
     run_p.add_argument("command", nargs=argparse.REMAINDER, help="Command to execute after --")
 
     # 5. env
-    env_p = subparsers.add_parser("env", help="Generate shell export commands for proxy & certs")
+    env_p = subparsers.add_parser("env", parents=[log_p], help="Generate shell export commands for proxy & certs")
     env_p.add_argument("--proxy-port", type=int, default=DEFAULT_PROXY_PORT, help="Proxy port")
     env_p.add_argument("--json", action="store_true", help="Output JSON format instead of shell export")
 
@@ -835,7 +883,37 @@ def main(args: Optional[List[str]] = None) -> int:
     if not raw_args:
         raw_args = ["tui"]
 
+    # Extract any top-level logging options that might precede subcommands
+    log_p = _build_log_parser()
+    top_opts, _ = log_p.parse_known_args(raw_args)
+
     parsed = parser.parse_args(raw_args)
+
+    effective_debug = bool(getattr(parsed, "debug", False) or top_opts.debug)
+    effective_log_level = getattr(parsed, "log_level", None) or top_opts.log_level
+    effective_log_file = getattr(parsed, "log_file", None) or top_opts.log_file
+
+    # Propagate into environment so child subprocesses automatically inherit them
+    if effective_debug:
+        os.environ["CTXINS_DEBUG"] = "1"
+    if effective_log_level:
+        os.environ["CTXINS_LOG_LEVEL"] = str(effective_log_level)
+    if effective_log_file:
+        os.environ["CTXINS_LOG_FILE"] = str(effective_log_file)
+
+    subcmd = parsed.subcommand or "tui"
+    mode = (
+        "env"
+        if subcmd == "env"
+        else ("web" if subcmd == "web" or getattr(parsed, "ui_mode", "") == "web" else subcmd)
+    )
+
+    configure_logging(
+        level=effective_log_level,
+        debug=effective_debug,
+        log_file=effective_log_file,
+        mode=mode,
+    )
 
     if not parsed.subcommand:
         parser.print_help()

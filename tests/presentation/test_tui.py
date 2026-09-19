@@ -883,3 +883,105 @@ async def test_session_modal_screen() -> None:
         assert dismissed_sid[0] in ["sess_1", "sess_2"]
 
 
+@pytest.mark.asyncio
+async def test_session_selection_populates_data_and_widgets() -> None:
+    """Verify selecting a session populates turns, tokens, costs, and updates all TUI panes."""
+    from src.core.store.session_store import SessionStore
+    from src.presentation.tui.widgets.context_breakdown import ContextBreakdownWidget
+    from src.presentation.tui.widgets.header_bar import HeaderBarWidget
+    from src.presentation.tui.widgets.sessions_panel import SessionChosen, SessionsPanelWidget
+    from src.presentation.tui.widgets.turn_timeline import TurnTimelineWidget
+    from src.schema.ast import BlockType, CanonicalTurn, ContextBlock
+
+    store = SessionStore()
+    sid1 = "sess_agy_48219"
+    t1 = CanonicalTurn(
+        turn_id="t1",
+        correlation_id="c1",
+        session_id=sid1,
+        turn_index=0,
+        timestamp=100.0,
+        provider="google",
+        model="gemini-2.0",
+        input_tokens=1500,
+        output_tokens=300,
+        cached_read_tokens=1000,
+        turn_cost_usd=0.005,
+        wasted_cost_usd=0.001,
+        system_blocks=[ContextBlock("b1", BlockType.SYSTEM, "h1", 500, "system prompt")],
+        conversation_history=[ContextBlock("b2", BlockType.USER_MSG, "h2", 1000, "user question")],
+        assistant_blocks=[ContextBlock("b3", BlockType.ASSISTANT_MSG, "h3", 300, "assistant answer")],
+    )
+    store.append_turn(t1)
+    store.register_session(
+        sid1,
+        metadata={"agentHarness": "agy", "agent": {"display_name": "Antigravity", "pid": 48219}},
+    )
+
+    sid2 = "sess_claude_9999"
+    t2 = CanonicalTurn(
+        turn_id="t2",
+        correlation_id="c2",
+        session_id=sid2,
+        turn_index=0,
+        timestamp=200.0,
+        provider="anthropic",
+        model="claude-3-5-sonnet",
+        input_tokens=2000,
+        output_tokens=400,
+        cached_read_tokens=1500,
+        turn_cost_usd=0.015,
+        wasted_cost_usd=0.002,
+        system_blocks=[ContextBlock("b4", BlockType.SYSTEM, "h4", 800, "system prompt 2")],
+        conversation_history=[ContextBlock("b5", BlockType.USER_MSG, "h5", 1200, "user query 2")],
+        assistant_blocks=[ContextBlock("b6", BlockType.ASSISTANT_MSG, "h6", 400, "assistant reply 2")],
+    )
+    store.append_turn(t2)
+    store.register_session(
+        sid2,
+        metadata={"agentHarness": "claude", "agent": {"display_name": "Claude Code", "pid": 9999}},
+    )
+
+    app = CtxinsTUIApp(store=store)
+    async with app.run_test() as pilot:
+        await pilot.pause(0.05)
+
+        # Initial session should be sid1
+        assert app.state.session_id == sid1
+        assert len(app.state.turns) == 1
+        assert app.state.turns[0]["tokens"] == 1800
+        assert app.state.total_tokens == 1800
+        assert app.state.total_spend_usd == 0.005
+        assert app.state.cached_read_tokens == 1000
+        assert app.state.cache_hit_ratio == 0.667
+        assert app.state.turns[0]["tokenBreakdown"]["system"] == 500
+        assert app.state.turns[0]["tokenBreakdown"]["history"] == 1000
+        assert app.state.turns[0]["tokenBreakdown"]["assistant"] == 300
+
+        # Verify widgets display session 1 data
+        timeline = app.query_one(TurnTimelineWidget)
+        header = app.query_one(HeaderBarWidget)
+        breakdown = app.query_one(ContextBreakdownWidget)
+        assert timeline is not None
+        assert header is not None
+        assert breakdown is not None
+
+        # Switch to sid2
+        panel = app.query_one(SessionsPanelWidget)
+        panel.post_message(SessionChosen(sid2))
+        await pilot.pause(0.05)
+
+        # Verify session 2 state and data
+        assert app.state.session_id == sid2
+        assert len(app.state.turns) == 1
+        assert app.state.turns[0]["tokens"] == 2400
+        assert app.state.total_tokens == 2400
+        assert app.state.total_spend_usd == 0.015
+        assert app.state.cached_read_tokens == 1500
+        assert app.state.cache_hit_ratio == 0.75
+        assert app.state.turns[0]["tokenBreakdown"]["system"] == 800
+        assert app.state.turns[0]["tokenBreakdown"]["history"] == 1200
+        assert app.state.turns[0]["tokenBreakdown"]["assistant"] == 400
+
+
+

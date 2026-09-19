@@ -82,6 +82,9 @@ class CtxinsTUIApp(App[None]):
             if sid not in self.state.available_sessions:
                 self.state.available_sessions.append(sid)
             self.state.sessions_metadata[sid] = dict(meta)
+            store_turns = self.store.get_session(sid) or []
+            if store_turns and sid not in self.state.sessions_turns:
+                self.state._load_turns_from_store(self.store, sid)
             if not self.state.session_id or self.state.session_id == "sess_default":
                 self.state.session_id = sid
                 self.state.agent_harness = meta.get(

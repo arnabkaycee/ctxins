@@ -30,6 +30,16 @@ class SessionStore:
         self._violation_to_sessions: Dict[str, Set[str]] = {}
         self._exported_sessions: Set[str] = set()
         self.session_metadata: Dict[str, Dict[str, Any]] = {}
+        self._session_aliases: Dict[str, str] = {}
+
+    def alias_session(self, alias_id: str, target_session_id: str) -> None:
+        """Alias a placeholder or scanner session ID to an active session ID."""
+        with self.lock:
+            self._session_aliases[alias_id] = target_session_id
+
+    def _resolve_session_id(self, session_id: str) -> str:
+        """Resolve session ID through aliases if defined."""
+        return self._session_aliases.get(session_id, session_id)
 
     def append_turn(
         self,
@@ -102,18 +112,25 @@ class SessionStore:
     def get_session_metadata(self, session_id: str) -> Optional[Dict[str, Any]]:
         """Retrieve stored metadata for a session."""
         with self.lock:
-            return dict(self.session_metadata[session_id]) if session_id in self.session_metadata else None
+            resolved = self._resolve_session_id(session_id)
+            meta = self.session_metadata.get(resolved) or self.session_metadata.get(session_id)
+            return dict(meta) if meta is not None else None
 
     def get_session(self, session_id: str) -> Optional[List[CanonicalTurn]]:
         """Retrieve copy of all CanonicalTurns for a session."""
         with self.lock:
-            turns = self.sessions.get(session_id)
+            resolved = self._resolve_session_id(session_id)
+            turns = self.sessions.get(resolved)
+            if turns is None and resolved != session_id:
+                turns = self.sessions.get(session_id)
             return list(turns) if turns is not None else None
 
     def get_graph(self, session_id: str) -> Optional[ContextGraph]:
         """Retrieve ContextGraph instance for a session."""
         with self.lock:
-            return self.graphs.get(session_id)
+            resolved = self._resolve_session_id(session_id)
+            g = self.graphs.get(resolved)
+            return g if g is not None else self.graphs.get(session_id)
 
     def get_violations(
         self,
@@ -122,7 +139,8 @@ class SessionStore:
     ) -> List[RuleViolation]:
         """Retrieve all violations detected in a session, optionally filtered by rule_id."""
         with self.lock:
-            turns = self.sessions.get(session_id, [])
+            resolved = self._resolve_session_id(session_id)
+            turns = self.sessions.get(resolved) or self.sessions.get(session_id, [])
             violations: List[RuleViolation] = []
             for t in turns:
                 for v in t.violations:
@@ -133,7 +151,8 @@ class SessionStore:
     def get_timeline(self, session_id: str) -> List[Dict[str, Any]]:
         """Retrieve turn-by-turn timeline metrics for visualization and analysis."""
         with self.lock:
-            turns = self.sessions.get(session_id, [])
+            resolved = self._resolve_session_id(session_id)
+            turns = self.sessions.get(resolved) or self.sessions.get(session_id, [])
             timeline = []
             for t in turns:
                 timeline.append(
