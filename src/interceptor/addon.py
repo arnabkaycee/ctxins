@@ -517,6 +517,7 @@ class CtxinsAddon:
         """Called by mitmproxy when the proxy starts up."""
         try:
             self.start()
+            logger.info("Ctxins mitmproxy addon initialized on port %s", os.environ.get("CTXINS_PROXY_PORT", "8080"))
         except Exception as e:
             logger.error("Error starting CtxinsAddon in running hook: %s", e)
 
@@ -596,6 +597,7 @@ class CtxinsAddon:
                 is_match, provider = self.router.match(parsed_target.netloc, path)
 
             if not is_match:
+                logger.debug("Proxy pass-through non-LLM request: host=%s path=%s", host, path)
                 return
 
             if is_gateway or target_env:
@@ -612,6 +614,7 @@ class CtxinsAddon:
             )
 
             session_id, correlation_id = self._extract_ids(flow)
+            logger.info("Intercepting %s LLM request: %s %s (session=%s)", provider.value, host, path, session_id)
 
             # Format default session_id with detected agent name and pid
             if session_id == self.default_session_id and agent_identity.is_known:
@@ -924,6 +927,14 @@ class CtxinsAddon:
                 },
             )
             self.emit_envelope(completed_envelope)
+            tot_tok = usage.input_tokens + usage.output_tokens
+            logger.info(
+                "Completed %s turn for session '%s' (tokens=%d, model=%s)",
+                turn.provider.value,
+                turn.session_id,
+                tot_tok,
+                turn.model,
+            )
 
             # Free turn context from tracker
             self.tracker.remove(corr_id)
@@ -978,10 +989,6 @@ class CtxinsAddon:
         except Exception as e:
             logger.debug("Error in client_connected: %s", e)
 
-    def clientconnect(self, client: Any) -> None:
-        """Alias for client_connected."""
-        self.client_connected(client)
-
     def client_disconnected(self, client: Any) -> None:
         """Hook called by mitmproxy when a client connection drops."""
         try:
@@ -1018,9 +1025,19 @@ class CtxinsAddon:
         except Exception as e:
             logger.error("Error in CtxinsAddon.client_disconnected: %s", e, exc_info=True)
 
-    def clientdisconnect(self, client: Any) -> None:
-        """Alias for client_disconnected."""
-        self.client_disconnected(client)
+    def tls_failed_client(self, data: Any) -> None:
+        """Hook called when a client TLS handshake fails."""
+        try:
+            conn = getattr(data, "conn", None) or getattr(data, "client", None)
+            peer = getattr(conn, "peername", None) or getattr(conn, "address", None)
+            err = getattr(conn, "error", None) or getattr(data, "error", None)
+            logger.warning(
+                "Client TLS handshake failed for %s (error: %s). Agent may need ~/.mitmproxy/mitmproxy-ca-cert.pem in CA bundle (export SSL_CERT_FILE, REQUESTS_CA_BUNDLE, or NODE_EXTRA_CA_CERTS).",
+                peer or "local client",
+                err or "unknown TLS error",
+            )
+        except Exception as e:
+            logger.debug("Error in tls_failed_client hook: %s", e)
 
 
 # Mitmproxy entrypoint

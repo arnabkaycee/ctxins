@@ -27,11 +27,14 @@ def clean_env() -> Generator[None, None, None]:
         k: os.environ.get(k)
         for k in ["CTXINS_LOG_LEVEL", "CTXINS_LOG_FILE", "CTXINS_DEBUG"]
     }
+    import src.core.logging_config as lc
+    lc._CONFIGURED_MODE = None
     for k in orig_env:
         os.environ.pop(k, None)
 
     yield
 
+    lc._CONFIGURED_MODE = None
     for k, v in orig_env.items():
         if v is None:
             os.environ.pop(k, None)
@@ -151,3 +154,23 @@ def test_suppress_external_loggers() -> None:
     assert logging.getLogger("uvicorn").level >= logging.WARNING
     assert logging.getLogger("mitmproxy").level >= logging.WARNING
     assert logging.getLogger("httpx").level >= logging.WARNING
+
+
+def test_headless_mode_inherits_env_log_file(tmp_path: Path) -> None:
+    target_log = tmp_path / "inherited.log"
+    os.environ["CTXINS_LOG_FILE"] = str(target_log)
+    os.environ["CTXINS_LOG_LEVEL"] = "INFO"
+
+    resolved = resolve_log_file(mode="headless", debug=False)
+    assert resolved == target_log.resolve()
+
+    configure_logging(mode="headless", enable_memory_buffer=False)
+    test_logger = logging.getLogger("ctxins.headless")
+    test_logger.info("Headless log entry via env var")
+
+    for h in logging.getLogger().handlers:
+        h.flush()
+
+    assert target_log.exists()
+    content = target_log.read_text(encoding="utf-8")
+    assert "Headless log entry via env var" in content

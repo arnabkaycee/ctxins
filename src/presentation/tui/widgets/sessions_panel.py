@@ -142,6 +142,12 @@ class SessionsPanelWidget(Widget):
             sid = str(event.option.id)
             self.post_message(SessionChosen(sid))
 
+    def on_option_list_option_highlighted(self, event: OptionList.OptionHighlighted) -> None:
+        if event.option and not event.option.disabled and event.option.id:
+            sid = str(event.option.id)
+            if sid != self.state.session_id:
+                self.post_message(SessionChosen(sid))
+
     def action_cursor_down(self) -> None:
         try:
             self.query_one("#sessions-option-list", OptionList).action_cursor_down()

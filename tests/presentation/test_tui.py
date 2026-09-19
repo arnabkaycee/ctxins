@@ -886,6 +886,8 @@ async def test_session_modal_screen() -> None:
 @pytest.mark.asyncio
 async def test_session_selection_populates_data_and_widgets() -> None:
     """Verify selecting a session populates turns, tokens, costs, and updates all TUI panes."""
+    from textual.widgets import OptionList
+
     from src.core.store.session_store import SessionStore
     from src.presentation.tui.widgets.context_breakdown import ContextBreakdownWidget
     from src.presentation.tui.widgets.header_bar import HeaderBarWidget
@@ -982,6 +984,17 @@ async def test_session_selection_populates_data_and_widgets() -> None:
         assert app.state.turns[0]["tokenBreakdown"]["system"] == 800
         assert app.state.turns[0]["tokenBreakdown"]["history"] == 1200
         assert app.state.turns[0]["tokenBreakdown"]["assistant"] == 400
+
+        # Switch back to sid1 via option highlighting (cursor navigation)
+        opt_list = panel.query_one(OptionList)
+        opt_sid1 = opt_list.get_option(sid1)
+        panel.on_option_list_option_highlighted(
+            OptionList.OptionHighlighted(opt_list, option=opt_sid1, index=0)
+        )
+        await pilot.pause(0.05)
+
+        assert app.state.session_id == sid1
+        assert app.state.total_tokens == 1800
 
 
 

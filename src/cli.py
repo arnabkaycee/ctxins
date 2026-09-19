@@ -18,7 +18,7 @@ from typing import Any, Dict, List, Optional
 from src.core.analyzer.engine import PollutionAnalyzer
 from src.core.analyzer.scorer import PollutionScorer
 from src.core.ast.normalizers import get_normalizer
-from src.core.logging_config import configure_logging
+from src.core.logging_config import DEFAULT_LOG_FILE, configure_logging
 from src.core.server.uds_server import UDSFrameServer
 from src.core.store.session_store import SessionStore
 from src.presentation.broadcaster import PresentationBroadcaster
@@ -150,6 +150,7 @@ class CorePipelineBridge:
                         },
                     )
                 )
+                logger.info("Detected running agent: %s (PID: %s) -> registered session '%s'", ag.name, ag.pid, sess_id)
                 new_sessions.append(sess_id)
         return new_sessions
 
@@ -370,6 +371,14 @@ class CorePipelineBridge:
                     payload=turn_payload,
                 )
             )
+            logger.info(
+                "Processed turn #%d for session '%s' (tokens=%d, cost=$%.4f, model=%s)",
+                turn.turn_index,
+                session_id,
+                turn.total_tokens,
+                turn.turn_cost_usd,
+                turn.model,
+            )
 
             for v in violations:
                 self.broadcaster.publish_nowait(
@@ -442,10 +451,15 @@ def spawn_mitmproxy(
     elif target_port is not None:
         mitm_env["CTXINS_TARGET"] = f"http://127.0.0.1:{target_port}"
 
-    if log_level:
-        mitm_env["CTXINS_LOG_LEVEL"] = log_level
-    if log_file:
-        mitm_env["CTXINS_LOG_FILE"] = str(log_file)
+    eff_log_file = log_file or os.environ.get("CTXINS_LOG_FILE") or str(DEFAULT_LOG_FILE.resolve())
+    mitm_env["CTXINS_LOG_FILE"] = str(eff_log_file)
+
+    eff_log_level = (
+        log_level
+        or os.environ.get("CTXINS_LOG_LEVEL")
+        or ("DEBUG" if os.environ.get("CTXINS_DEBUG") in ("1", "true", "yes") else "INFO")
+    )
+    mitm_env["CTXINS_LOG_LEVEL"] = str(eff_log_level)
 
     existing_py_path = mitm_env.get("PYTHONPATH", "")
     mitm_env["PYTHONPATH"] = f"{repo_root}:{existing_py_path}" if existing_py_path else repo_root
@@ -518,6 +532,8 @@ def run_tui(
         target=target,
         target_port=target_port,
     )
+
+    logger.info("Launching Ctxins TUI (proxy port: %s, socket: %s)", actual_proxy_port, socket_path)
 
     async def _start_and_run() -> None:
         await server.start()
@@ -896,10 +912,16 @@ def main(args: Optional[List[str]] = None) -> int:
     # Propagate into environment so child subprocesses automatically inherit them
     if effective_debug:
         os.environ["CTXINS_DEBUG"] = "1"
-    if effective_log_level:
+        os.environ["CTXINS_LOG_LEVEL"] = "DEBUG"
+    elif effective_log_level:
         os.environ["CTXINS_LOG_LEVEL"] = str(effective_log_level)
+    else:
+        os.environ["CTXINS_LOG_LEVEL"] = "INFO"
+
     if effective_log_file:
         os.environ["CTXINS_LOG_FILE"] = str(effective_log_file)
+    else:
+        os.environ["CTXINS_LOG_FILE"] = str(DEFAULT_LOG_FILE.resolve())
 
     subcmd = parsed.subcommand or "tui"
     mode = (
@@ -909,9 +931,9 @@ def main(args: Optional[List[str]] = None) -> int:
     )
 
     configure_logging(
-        level=effective_log_level,
+        level=os.environ["CTXINS_LOG_LEVEL"],
         debug=effective_debug,
-        log_file=effective_log_file,
+        log_file=os.environ["CTXINS_LOG_FILE"],
         mode=mode,
     )
 

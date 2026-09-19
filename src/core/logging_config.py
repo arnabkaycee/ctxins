@@ -62,6 +62,7 @@ class InMemoryLogHandler(logging.Handler):
 
 # Global in-memory handler singleton
 _MEMORY_HANDLER: Optional[InMemoryLogHandler] = None
+_CONFIGURED_MODE: Optional[str] = None
 
 
 def get_memory_handler(capacity: int = 1000) -> InMemoryLogHandler:
@@ -148,6 +149,7 @@ def configure_logging(
     stream: Optional[bool] = None,
     mode: str = "tui",
     enable_memory_buffer: bool = True,
+    force: bool = False,
 ) -> logging.Logger:
     """Configure unified logging for ctxins.
 
@@ -160,10 +162,16 @@ def configure_logging(
                 unless a log_file is explicitly provided.
         mode: Operational mode: 'tui', 'run', 'web', 'headless', 'env'.
         enable_memory_buffer: If True, attaches the global in-memory ring buffer handler.
+        force: If True, forces reconfiguration even if an active UI mode is already set.
 
     Returns:
         The configured root logger.
     """
+    global _CONFIGURED_MODE
+    # Prevent headless mode imports from clobbering active interactive modes
+    if not force and _CONFIGURED_MODE in ("tui", "run", "web", "env") and mode == "headless":
+        return logging.getLogger()
+    _CONFIGURED_MODE = mode
     effective_level = resolve_log_level(level=level, debug=debug)
     is_debug_active = effective_level <= logging.DEBUG
 
