@@ -53,15 +53,18 @@ uv sync --extra dev
 # Starts TUI cockpit in terminal & Web Dashboard on http://localhost:8484
 uv run ctxins
 
-# In your agent's terminal, attach instantly:
-eval $(uv run ctxins env) && agy
-# Or with Claude Code:
-eval $(uv run ctxins env) && claude
+# In your agent's terminal, route traffic to ctxins:
+eval $(uv run ctxins env)
+agy
+
+# When ctxins is stopped or inspection is complete, unset proxy variables:
+eval $(uv run ctxins env --unset)
 ```
 
 > **Keybindings in TUI:**
 > - `[h]`: Open interactive Hook Guide for CLI agents, local ports, and SDKs.
-> - `[c]`: Copy proxy environment variables (`HTTP_PROXY`, certs) to clipboard.
+> - `[c]`: Copy proxy environment export command to clipboard (`export HTTP_PROXY=...`).
+> - `[u]`: Copy proxy environment unset command to clipboard (`unset HTTP_PROXY ...`).
 > - `[w]`: Open the Web Dashboard in your default browser.
 
 ### Option B: Local Models & Port Gateway (`--target-port`)
@@ -73,12 +76,46 @@ uv run ctxins --target-port 8000
 ```
 
 ### Option C: Harness Subprocess Runner (`ctxins run`)
-Execute your agent harness wrapped with an automatic interceptor proxy without terminal conflicts:
+Execute your agent harness wrapped with an automatic interceptor proxy without terminal conflicts or shell environment mutation:
 
 ```bash
 # Run agent in foreground with live web dashboard in background
 uv run ctxins run -- agy
 uv run ctxins run -- claude
+```
+
+> [!TIP]
+> **Recommended:** `ctxins run -- <agent>` automatically configures proxy and TLS certificates *only* inside that child process. When the agent exits, your terminal environment remains 100% clean—no `eval` or `unset` required.
+
+---
+
+### 🌐 Proxy Environment Configuration (Setting & Unsetting)
+
+When running agents in a separate terminal or shell session alongside `ctxins`, use the following commands to configure or clear proxy routing:
+
+#### 1. Setting Proxy Environment Variables
+Route outbound agent traffic through the `ctxins` interceptor proxy and trust the local CA cert:
+
+```bash
+# Evaluate export commands in your current shell
+eval $(uv run ctxins env)
+
+# Or copy from TUI with [c], or copy & paste directly:
+export HTTP_PROXY="http://127.0.0.1:8080" HTTPS_PROXY="http://127.0.0.1:8080" ALL_PROXY="http://127.0.0.1:8080" http_proxy="http://127.0.0.1:8080" https_proxy="http://127.0.0.1:8080" all_proxy="http://127.0.0.1:8080" SSL_CERT_FILE="$HOME/.mitmproxy/mitmproxy-ca-cert.pem" REQUESTS_CA_BUNDLE="$HOME/.mitmproxy/mitmproxy-ca-cert.pem" NODE_EXTRA_CA_CERTS="$HOME/.mitmproxy/mitmproxy-ca-cert.pem"
+```
+
+#### 2. Unsetting Proxy Environment Variables
+> [!IMPORTANT]
+> If proxy variables remain set when `ctxins` is stopped, agents will fail with `connection refused` because port 8080 is closed. Always unset when finished!
+
+```bash
+# Evaluate unset commands in your current shell
+eval $(uv run ctxins env --unset)
+# Or use the dedicated unset-env alias:
+eval $(uv run ctxins unset-env)
+
+# Or copy from TUI with [u], or copy & paste directly:
+unset HTTP_PROXY HTTPS_PROXY ALL_PROXY GRPC_PROXY http_proxy https_proxy all_proxy grpc_proxy NO_PROXY no_proxy SSL_CERT_FILE SSL_CERT_DIR REQUESTS_CA_BUNDLE NODE_EXTRA_CA_CERTS CTXINS_TARGET
 ```
 
 ---
@@ -88,7 +125,8 @@ uv run ctxins run -- claude
 | Subcommand | Description | Key Options |
 | :--- | :--- | :--- |
 | `ctxins` / `ctxins tui` | Launch single-window TUI cockpit with concurrent background Web Dashboard | `--proxy-port PORT` (8080), `--web-port PORT` (8484), `--no-web`, `--target-port PORT`, `--target URL` |
-| `ctxins env` | Output shell export commands for instant agent hooking (`eval $(ctxins env)`) | `--proxy-port PORT` (8080), `--json` |
+| `ctxins env` | Output shell export commands (`eval $(ctxins env)`) or unset commands (`--unset` / `-u`) | `--proxy-port PORT` (8080), `--unset` / `-u`, `--json` |
+| `ctxins unset-env` | Output shell unset commands to remove proxy & cert variables (`eval $(ctxins unset-env)`) | `--json` |
 | `ctxins run` | Spawn proxy and execute agent harness subprocess with auto-configured environment | `--web`, `--tui`, `--port PORT`, `--proxy-port PORT`, `--target-port PORT`, `-- COMMAND...` |
 | `ctxins web` | Launch standalone Web Dashboard server and auto-spawned mitmproxy interceptor | `--port PORT` (8484), `--host HOST`, `--proxy-port PORT` (8080), `--target-port PORT` |
 | `ctxins live` | Start Core Engine + selected UI mode (`web` or `tui`) | `--web`, `--tui`, `--port PORT`, `--proxy-port PORT`, `--target-port PORT` |
