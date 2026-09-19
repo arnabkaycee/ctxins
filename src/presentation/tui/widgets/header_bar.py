@@ -71,6 +71,8 @@ class HeaderBarWidget(Widget):
             row1.append(" [w]", style=f"{COLOR_MUTED}")
         row1.append(" │ Session: ", style=COLOR_MUTED)
         row1.append(f"{sess_id} ({harness})", style="bold white")
+        if len(self.state.available_sessions) > 1:
+            row1.append(f" [{len(self.state.available_sessions)} active, [s]]", style=f"bold {COLOR_ACCENT}")
         row1.append(" │ Model: ", style=COLOR_MUTED)
         row1.append(f"{provider}/{model}", style="white")
         row1.append(" │ Status: ", style=COLOR_MUTED)

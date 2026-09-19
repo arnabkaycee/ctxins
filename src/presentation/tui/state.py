@@ -41,6 +41,10 @@ class TUIState:
     selected_block_index: int = 0
     is_exported: bool = False
 
+    # Multi-session tracking
+    available_sessions: List[str] = field(default_factory=list)
+    sessions_metadata: Dict[str, Dict[str, Any]] = field(default_factory=dict)
+
     def _find_or_create_turn(self, turn_index: int) -> Dict[str, Any]:
         """Find existing turn dict by turnIndex or insert a new one."""
         for turn in self.turns:
@@ -85,14 +89,21 @@ class TUIState:
         payload = event.payload or {}
 
         if etype == UIEventType.SESSION_CREATED:
-            self.session_id = event.session_id or payload.get("sessionId", self.session_id)
-            self.model = payload.get("model", self.model)
-            self.provider = payload.get("provider", self.provider)
-            self.agent_harness = payload.get(
-                "agentHarness",
-                payload.get("agent_harness", payload.get("harness", self.agent_harness)),
-            )
-            self.status = "Idle"
+            sid = event.session_id or payload.get("sessionId", self.session_id)
+            if sid and sid not in self.available_sessions:
+                self.available_sessions.append(sid)
+            if sid:
+                self.sessions_metadata[sid] = dict(payload)
+
+            if not self.session_id or self.session_id == "sess_default" or self.session_id == sid:
+                self.session_id = sid
+                self.model = payload.get("model", self.model)
+                self.provider = payload.get("provider", self.provider)
+                self.agent_harness = payload.get(
+                    "agentHarness",
+                    payload.get("agent_harness", payload.get("harness", self.agent_harness)),
+                )
+                self.status = payload.get("status", "Idle")
 
         elif etype == UIEventType.TURN_STARTED:
             self.status = "Streaming"
@@ -266,7 +277,13 @@ class TUIState:
             self.status = "Ended"
 
         elif etype == UIEventType.SESSION_ERASED:
-            if event.session_id == self.session_id or not self.session_id:
+            sid = event.session_id
+            if sid and sid in self.available_sessions:
+                self.available_sessions.remove(sid)
+            if sid:
+                self.sessions_metadata.pop(sid, None)
+
+            if sid == self.session_id or not self.session_id:
                 self.turns.clear()
                 self.cumulative_violations.clear()
                 self.total_tokens = 0
@@ -280,12 +297,43 @@ class TUIState:
                 self.pollution_score = 0.0
                 self.selected_turn_index = 0
                 self.selected_block_id = None
-                self.status = "Erased (Unexported)"
                 self.is_exported = False
+                if self.available_sessions:
+                    self.switch_session(self.available_sessions[0])
+                else:
+                    self.session_id = "sess_default"
+                    self.status = "Erased (Unexported)"
+                    self.agent_harness = "unknown"
+                    self.model = "unknown"
+                    self.provider = "unknown"
 
         elif etype == UIEventType.SESSION_DISCONNECTED:
-            if event.session_id == self.session_id or not self.session_id:
+            sid = event.session_id
+            if sid and sid in self.sessions_metadata:
+                self.sessions_metadata[sid]["status"] = "disconnected"
+            if sid == self.session_id or not self.session_id:
                 self.status = "Disconnected (Exported)"
+
+    def switch_session(self, target_session_id: Optional[str] = None) -> Optional[str]:
+        """Switch active TUI session to target_session_id or cycle to next available session."""
+        if not self.available_sessions:
+            return None
+        if target_session_id and target_session_id in self.available_sessions:
+            next_sid = target_session_id
+        else:
+            try:
+                curr_idx = self.available_sessions.index(self.session_id)
+                next_sid = self.available_sessions[(curr_idx + 1) % len(self.available_sessions)]
+            except (ValueError, IndexError):
+                next_sid = self.available_sessions[0]
+
+        self.session_id = next_sid
+        meta = self.sessions_metadata.get(next_sid, {})
+        self.agent_harness = meta.get("agentHarness", meta.get("harness", self.agent_harness))
+        self.model = meta.get("model", self.model)
+        self.provider = meta.get("provider", self.provider)
+        self.status = meta.get("status", "Active")
+        return next_sid
 
     def _normalize_violation(self, raw_v: Any, turn_idx: int) -> Dict[str, Any]:
         """Normalize raw violation object/dict into standard dictionary."""

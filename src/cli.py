@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import errno
 import logging
 import os
 import shutil
@@ -93,8 +94,6 @@ async def _shutdown_uvicorn(
             except (asyncio.CancelledError, Exception):
                 pass
 
-
-
 class CorePipelineBridge:
     """Bridges Core UDS telemetry ingestion to PresentationBroadcaster and SessionStore."""
 
@@ -103,10 +102,117 @@ class CorePipelineBridge:
         store: Optional[SessionStore] = None,
         broadcaster: Optional[PresentationBroadcaster] = None,
         analyzer: Optional[PollutionAnalyzer] = None,
+        auto_scan: bool = True,
     ) -> None:
         self.store = store or SessionStore()
         self.broadcaster = broadcaster or PresentationBroadcaster()
         self.analyzer = analyzer or PollutionAnalyzer()
+        if auto_scan:
+            self.scan_and_register_agents()
+
+    def scan_and_register_agents(self) -> List[str]:
+        """Scan running agents immediately and register newly detected sessions."""
+        from src.interceptor.detection.process_detector import ProcessDetector
+
+        detector = ProcessDetector()
+        agents = detector.scan_running_agents()
+        new_sessions: List[str] = []
+        for ag in agents:
+            if ag.pid is None:
+                continue
+            sess_id = f"sess_{ag.name}_{ag.pid}"
+            if sess_id not in self.store.list_sessions():
+                self.store.register_session(
+                    sess_id,
+                    metadata={
+                        "sessionId": sess_id,
+                        "harness": ag.name,
+                        "agentHarness": ag.name,
+                        "agent": ag.to_dict(),
+                        "status": "detected",
+                        "model": "auto-detect",
+                        "provider": "auto-detect",
+                    },
+                )
+                self.broadcaster.publish_nowait(
+                    UIEvent(
+                        event_type=UIEventType.SESSION_CREATED,
+                        session_id=sess_id,
+                        payload={
+                            "sessionId": sess_id,
+                            "agentHarness": ag.name,
+                            "harness": ag.name,
+                            "agent": ag.to_dict(),
+                            "status": "detected",
+                            "model": "auto-detect",
+                            "provider": "auto-detect",
+                        },
+                    )
+                )
+                new_sessions.append(sess_id)
+        return new_sessions
+
+    def cleanup_dead_agent_sessions(self) -> List[str]:
+        """Check registered sessions with a known PID and handle disconnect if process exited."""
+        dead_sessions: List[str] = []
+        for sess_id in list(self.store.session_metadata.keys()):
+            meta = self.store.get_session_metadata(sess_id) or {}
+            agent_info = meta.get("agent")
+            if not isinstance(agent_info, dict):
+                continue
+            pid = agent_info.get("pid")
+            if not pid or not isinstance(pid, int):
+                continue
+
+            is_alive = True
+            try:
+                os.kill(pid, 0)
+            except ProcessLookupError:
+                is_alive = False
+            except PermissionError:
+                is_alive = True
+            except OSError as err:
+                if err.errno == errno.ESRCH:
+                    is_alive = False
+
+            if not is_alive:
+                dead_sessions.append(sess_id)
+                erased = self.store.handle_disconnect(sess_id)
+                if erased:
+                    logger.info(
+                        "Process %s for session '%s' exited without JSONC export. Erased session data.",
+                        pid,
+                        sess_id,
+                    )
+                    self.broadcaster.publish_nowait(
+                        UIEvent(
+                            event_type=UIEventType.SESSION_ERASED,
+                            session_id=sess_id,
+                            payload={
+                                "sessionId": sess_id,
+                                "reason": "process_exit",
+                                "message": f"Process {pid} exited without JSONC export; session data erased.",
+                            },
+                        )
+                    )
+                else:
+                    logger.info(
+                        "Process %s for session '%s' exited. Preserved because it was exported to JSONC.",
+                        pid,
+                        sess_id,
+                    )
+                    self.broadcaster.publish_nowait(
+                        UIEvent(
+                            event_type=UIEventType.SESSION_DISCONNECTED,
+                            session_id=sess_id,
+                            payload={
+                                "sessionId": sess_id,
+                                "preserved": True,
+                                "message": f"Process {pid} exited. Preserved because it was exported to JSONC.",
+                            },
+                        )
+                    )
+        return dead_sessions
 
     async def handle_wire_envelope(self, data: WireEnvelope | Dict[str, Any]) -> None:
         """Process incoming wire envelope, update SessionStore, and broadcast UIEvents."""
@@ -373,6 +479,22 @@ def spawn_mitmproxy(
     return proc
 
 
+async def _agent_scanner_loop(bridge: CorePipelineBridge, interval: float = 2.0) -> None:
+    """Periodically scan for running agent processes and clean up exited ones."""
+    while True:
+        try:
+            bridge.scan_and_register_agents()
+            bridge.cleanup_dead_agent_sessions()
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            logger.debug("Error in agent scanner loop: %s", e)
+        try:
+            await asyncio.sleep(interval)
+        except asyncio.CancelledError:
+            break
+
+
 def run_tui(
     socket_path: str = DEFAULT_SOCKET_PATH,
     proxy_port: int = DEFAULT_PROXY_PORT,
@@ -394,6 +516,10 @@ def run_tui(
 
     async def _start_and_run() -> None:
         await server.start()
+        # Immediately detect running agents and start background scanner
+        bridge.scan_and_register_agents()
+        scanner_task = asyncio.create_task(_agent_scanner_loop(bridge))
+
         uvi_task: Optional[asyncio.Task[Any]] = None
         uvi_server: Optional[Any] = None
         actual_web_port = find_available_port(web_port)
@@ -415,11 +541,17 @@ def run_tui(
             app = CtxinsTUIApp(
                 state=state,
                 broadcaster=bridge.broadcaster,
+                store=bridge.store,
                 proxy_port=actual_proxy_port,
                 web_url=f"http://127.0.0.1:{actual_web_port}" if not no_web else None,
             )
             await app.run_async()
         finally:
+            scanner_task.cancel()
+            try:
+                await scanner_task
+            except asyncio.CancelledError:
+                pass
             await _shutdown_uvicorn(uvi_server, uvi_task)
             if mitm_proc is not None and mitm_proc.poll() is None:
                 mitm_proc.terminate()
@@ -456,6 +588,9 @@ def run_web(
 
     async def _run_web_pipeline() -> None:
         await server.start()
+        # Immediately detect running agents and start background scanner
+        bridge.scan_and_register_agents()
+        scanner_task = asyncio.create_task(_agent_scanner_loop(bridge))
         uvi_server: Optional[Any] = None
         try:
             web_app = create_app(store=bridge.store, broadcaster=bridge.broadcaster)
@@ -463,6 +598,11 @@ def run_web(
             uvi_server = uvicorn.Server(config)
             await uvi_server.serve()
         finally:
+            scanner_task.cancel()
+            try:
+                await scanner_task
+            except asyncio.CancelledError:
+                pass
             if uvi_server is not None:
                 uvi_server.should_exit = True
             if mitm_proc is not None and mitm_proc.poll() is None:
@@ -549,6 +689,10 @@ def run_with_harness(
 
     async def _run_pipeline() -> None:
         await server.start()
+        # Immediately detect running agents and start background scanner
+        bridge.scan_and_register_agents()
+        scanner_task = asyncio.create_task(_agent_scanner_loop(bridge))
+
         mitm_proc = spawn_mitmproxy(
             proxy_port=actual_proxy_port,
             socket_path=socket_path,
@@ -601,12 +745,18 @@ def run_with_harness(
                     tui_app = CtxinsTUIApp(
                         state=state,
                         broadcaster=bridge.broadcaster,
+                        store=bridge.store,
                         proxy_port=actual_proxy_port,
                         web_url=f"http://127.0.0.1:{actual_web_port}" if not no_web else None,
                     )
                     await tui_app.run_async()
 
         finally:
+            scanner_task.cancel()
+            try:
+                await scanner_task
+            except asyncio.CancelledError:
+                pass
             if harness_proc is not None and harness_proc.poll() is None:
                 harness_proc.terminate()
                 try:

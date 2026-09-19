@@ -164,8 +164,10 @@ class DashboardApp {
     this.sessions.forEach((s) => {
       const opt = document.createElement('option');
       opt.value = s.sessionId;
-      const model = s.model && s.model !== 'unknown' ? ` (${s.model})` : '';
-      opt.textContent = `${s.sessionId}${model}`;
+      const harness = s.agentHarness || s.harness || '';
+      const harnessTag = harness && harness !== 'unknown' ? ` [${harness}]` : '';
+      const model = s.model && s.model !== 'unknown' && s.model !== 'auto-detect' ? ` (${s.model})` : '';
+      opt.textContent = `${s.sessionId}${harnessTag}${model}`;
       this.sessionSelect.appendChild(opt);
     });
 
@@ -215,9 +217,14 @@ class DashboardApp {
       this.refreshSessions();
     }
 
-    // Ignore events for other sessions if activeSessionId is set, except session_created
+    // Ignore events for other sessions if activeSessionId is set, except session_created and session_erased
     if (this.activeSessionId && sid && this.activeSessionId !== sid) {
-      if (type === 'session_created' || type === 'SESSION_CREATED') {
+      if (
+        type === 'session_created' ||
+        type === 'SESSION_CREATED' ||
+        type === 'session_erased' ||
+        type === 'SESSION_ERASED'
+      ) {
         this.refreshSessions();
       }
       return;
@@ -285,6 +292,24 @@ class DashboardApp {
         this.renderKPIs();
       }
     } else if (type === 'session_created' || type === 'SESSION_CREATED') {
+      this.refreshSessions();
+    } else if (type === 'session_erased' || type === 'SESSION_ERASED') {
+      if (sid === this.activeSessionId) {
+        this.turns = [];
+        this.violations = [];
+        this.summary = null;
+        if (this.statusText) {
+          this.statusText.textContent = 'Erased (Unexported)';
+        }
+        this.renderAll();
+      }
+      this.refreshSessions();
+    } else if (type === 'session_disconnected' || type === 'SESSION_DISCONNECTED') {
+      if (sid === this.activeSessionId) {
+        if (this.statusText) {
+          this.statusText.textContent = 'Disconnected (Preserved)';
+        }
+      }
       this.refreshSessions();
     }
   }

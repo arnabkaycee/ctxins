@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 from textual.app import App, ComposeResult
 from textual.containers import Horizontal
@@ -22,6 +22,9 @@ from src.presentation.tui.widgets.hook_modal import HookModalScreen, copy_to_cli
 from src.presentation.tui.widgets.recommendations import RecommendationsWidget
 from src.presentation.tui.widgets.turn_timeline import TurnSelected, TurnTimelineWidget
 
+if TYPE_CHECKING:
+    from src.core.store.session_store import SessionStore
+
 logger = logging.getLogger(__name__)
 
 
@@ -36,6 +39,7 @@ class CtxinsTUIApp(App[None]):
         ("shift+tab", "focus_previous", "Prev Pane"),
         ("r", "toggle_rule_filter", "Filter Violations"),
         ("e", "export_jsonc", "Export .jsonc"),
+        ("s", "switch_session", "Switch Session"),
         ("h", "show_hook_modal", "Hook Guide"),
         ("c", "copy_env", "Copy Env"),
         ("w", "open_web", "Open Web"),
@@ -49,14 +53,36 @@ class CtxinsTUIApp(App[None]):
         self,
         state: Optional[TUIState] = None,
         broadcaster: Optional[PresentationBroadcaster] = None,
+        store: Optional[SessionStore] = None,
         proxy_port: int = 8080,
         web_url: Optional[str] = None,
     ) -> None:
         super().__init__()
         self.state = state if state is not None else TUIState()
         self.broadcaster = broadcaster if broadcaster is not None else PresentationBroadcaster()
+        self.store = store
         self.proxy_port = proxy_port
         self.web_url = web_url
+        if self.store is not None:
+            self._sync_store_sessions()
+
+    def _sync_store_sessions(self) -> None:
+        """Sync known sessions and metadata from SessionStore into state."""
+        if self.store is None:
+            return
+        for sid in self.store.list_sessions():
+            meta = self.store.get_session_metadata(sid) or {}
+            if sid not in self.state.available_sessions:
+                self.state.available_sessions.append(sid)
+            self.state.sessions_metadata[sid] = dict(meta)
+            if not self.state.session_id or self.state.session_id == "sess_default":
+                self.state.session_id = sid
+                self.state.agent_harness = meta.get(
+                    "agentHarness", meta.get("harness", self.state.agent_harness)
+                )
+                self.state.model = meta.get("model", self.state.model)
+                self.state.provider = meta.get("provider", self.state.provider)
+                self.state.status = meta.get("status", "Idle")
 
     def compose(self) -> ComposeResult:
         yield HeaderBarWidget(self.state, proxy_port=self.proxy_port, web_url=self.web_url)
@@ -68,6 +94,8 @@ class CtxinsTUIApp(App[None]):
 
     async def on_mount(self) -> None:
         """Start listening for real-time events on mount."""
+        self._sync_store_sessions()
+        self._refresh_all_widgets()
         self.run_worker(self._listen_events(), exclusive=False, name="tui_event_listener")
 
     async def _listen_events(self) -> None:
@@ -135,6 +163,16 @@ class CtxinsTUIApp(App[None]):
     def action_show_help_modal(self) -> None:
         """Display interactive help and keyboard shortcuts modal."""
         self.push_screen(HelpModalScreen())
+
+    def action_switch_session(self) -> None:
+        """Cycle to next active or auto-detected agent session."""
+        next_sid = self.state.switch_session()
+        if next_sid:
+            harness = self.state.agent_harness
+            self._refresh_all_widgets()
+            self.notify(f"Active Session: {next_sid} ({harness})")
+        else:
+            self.notify("No other detected sessions available")
 
     def _refresh_inspectors(self) -> None:
         """Refresh context breakdown, recommendations, and footer widgets."""

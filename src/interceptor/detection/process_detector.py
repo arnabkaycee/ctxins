@@ -9,7 +9,7 @@ import shutil
 import subprocess
 import time
 from dataclasses import dataclass
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -428,3 +428,48 @@ class ProcessDetector:
             confidence=0.0,
             detection_source="none",
         )
+
+    def scan_running_agents(self) -> List[AgentIdentity]:
+        """Scan the local system for currently running known agent processes."""
+        agents: List[AgentIdentity] = []
+        my_pid = os.getpid()
+
+        if shutil.which("ps"):
+            try:
+                out = subprocess.check_output(
+                    ["ps", "-e", "-o", "pid=,comm=,args="],
+                    stderr=subprocess.DEVNULL,
+                    timeout=1.5,
+                ).decode("utf-8", errors="replace")
+                for line in out.splitlines():
+                    line = line.strip()
+                    if not line:
+                        continue
+                    parts = line.split(None, 2)
+                    if len(parts) < 2:
+                        continue
+                    try:
+                        pid = int(parts[0])
+                    except ValueError:
+                        continue
+                    if pid == my_pid:
+                        continue
+                    comm = parts[1]
+                    args = parts[2] if len(parts) > 2 else comm
+
+                    # Ignore greps, test runners, linters, ctxins itself
+                    args_lower = args.lower()
+                    if any(
+                        skip in args_lower
+                        for skip in ("grep", "pytest", "test_", "ruff", "mypy", "ctxins")
+                    ):
+                        continue
+
+                    proc = ProcessInfo(pid=pid, name=comm, cmdline=args)
+                    identity = self.identify_from_process(proc)
+                    if identity.is_known:
+                        agents.append(identity)
+            except Exception as e:
+                logger.debug("Failed to scan processes via ps: %s", e)
+
+        return agents

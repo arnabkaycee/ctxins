@@ -29,6 +29,7 @@ class SessionStore:
         self._model_to_sessions: Dict[str, Set[str]] = {}
         self._violation_to_sessions: Dict[str, Set[str]] = {}
         self._exported_sessions: Set[str] = set()
+        self.session_metadata: Dict[str, Dict[str, Any]] = {}
 
     def append_turn(
         self,
@@ -80,6 +81,28 @@ class SessionStore:
                 self._violation_to_sessions[rule_id].add(session_id)
 
             return delta
+
+    def register_session(
+        self,
+        session_id: str,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        """Register an active or auto-detected session with optional metadata."""
+        with self.lock:
+            if session_id not in self.sessions:
+                if len(self.sessions) >= self.max_sessions:
+                    oldest_session_id = next(iter(self.sessions))
+                    self._evict_session(oldest_session_id)
+                self.sessions[session_id] = []
+                self.graphs[session_id] = ContextGraph(session_id=session_id)
+            if metadata:
+                self.session_metadata[session_id] = dict(metadata)
+            self.sessions.move_to_end(session_id)
+
+    def get_session_metadata(self, session_id: str) -> Optional[Dict[str, Any]]:
+        """Retrieve stored metadata for a session."""
+        with self.lock:
+            return dict(self.session_metadata[session_id]) if session_id in self.session_metadata else None
 
     def get_session(self, session_id: str) -> Optional[List[CanonicalTurn]]:
         """Retrieve copy of all CanonicalTurns for a session."""
@@ -198,6 +221,7 @@ class SessionStore:
             self._model_to_sessions.clear()
             self._violation_to_sessions.clear()
             self._exported_sessions.clear()
+            self.session_metadata.clear()
 
     def _evict_session(self, session_id: str) -> None:
         """Internal helper to remove a session and purge its index references."""
@@ -205,6 +229,8 @@ class SessionStore:
             del self.sessions[session_id]
         if session_id in self.graphs:
             del self.graphs[session_id]
+        if session_id in self.session_metadata:
+            del self.session_metadata[session_id]
 
         for s_set in self._model_to_sessions.values():
             s_set.discard(session_id)

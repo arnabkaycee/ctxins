@@ -19,18 +19,34 @@ def create_api_router(store: SessionStore, ws_hub: WebSocketHub) -> APIRouter:
 
     @router.get("/sessions")
     def list_sessions() -> List[Dict[str, Any]]:
-        """List active sessions with summary metrics."""
+        """List active sessions with summary metrics and detected agent harness."""
         results: List[Dict[str, Any]] = []
         for session_id in store.list_sessions():
             turns = store.get_session(session_id) or []
-            summary = PollutionScorer.calculate_summary(turns)
+            meta = store.get_session_metadata(session_id) or {}
+            summary = PollutionScorer.calculate_summary(turns) if turns else {
+                "totalTurns": 0,
+                "totalInputTokens": 0,
+                "totalOutputTokens": 0,
+                "cachedInputTokens": 0,
+                "cacheHitRatio": 0.0,
+                "totalDurationMs": 0.0,
+                "estimatedCostUSD": 0.0,
+                "pollutionScore": 0.0,
+                "potentialSavingsUSD": 0.0,
+                "activeViolationsCount": 0,
+            }
             first_turn = turns[0] if turns else None
             results.append(
                 {
                     "sessionId": session_id,
                     "turnsCount": len(turns),
-                    "provider": first_turn.provider if first_turn else "unknown",
-                    "model": first_turn.model if first_turn else "unknown",
+                    "provider": first_turn.provider if first_turn else meta.get("provider", "unknown"),
+                    "model": first_turn.model if first_turn else meta.get("model", "unknown"),
+                    "harness": meta.get("harness") or meta.get("agentHarness", "unknown"),
+                    "agentHarness": meta.get("agentHarness") or meta.get("harness", "unknown"),
+                    "agent": meta.get("agent"),
+                    "status": meta.get("status", "active"),
                     "summary": summary,
                 }
             )
@@ -42,12 +58,28 @@ def create_api_router(store: SessionStore, ws_hub: WebSocketHub) -> APIRouter:
         turns = store.get_session(id)
         if turns is None:
             raise HTTPException(status_code=404, detail=f"Session '{id}' not found")
-        summary = PollutionScorer.calculate_summary(turns)
+        meta = store.get_session_metadata(id) or {}
+        summary = PollutionScorer.calculate_summary(turns) if turns else {
+            "totalTurns": 0,
+            "totalInputTokens": 0,
+            "totalOutputTokens": 0,
+            "cachedInputTokens": 0,
+            "cacheHitRatio": 0.0,
+            "totalDurationMs": 0.0,
+            "estimatedCostUSD": 0.0,
+            "pollutionScore": 0.0,
+            "potentialSavingsUSD": 0.0,
+            "activeViolationsCount": 0,
+        }
         first_turn = turns[0] if turns else None
         return {
             "sessionId": id,
-            "provider": first_turn.provider if first_turn else "unknown",
-            "model": first_turn.model if first_turn else "unknown",
+            "provider": first_turn.provider if first_turn else meta.get("provider", "unknown"),
+            "model": first_turn.model if first_turn else meta.get("model", "unknown"),
+            "harness": meta.get("harness") or meta.get("agentHarness", "unknown"),
+            "agentHarness": meta.get("agentHarness") or meta.get("harness", "unknown"),
+            "agent": meta.get("agent"),
+            "status": meta.get("status", "active"),
             "summary": summary,
             "turnIndices": [t.turn_index for t in turns],
             "turns": [t.to_dict() for t in turns],

@@ -24,6 +24,14 @@ from src.presentation.broadcaster import PresentationBroadcaster
 from src.schema.wire import WireEnvelope, WireEventType
 
 
+@pytest.fixture(autouse=True)
+def mock_agent_scanner():
+    """Isolate CLI subprocess assertions from proactive background agent process scanner."""
+    with patch("src.cli.CorePipelineBridge.scan_and_register_agents", return_value=[]), \
+         patch("src.cli._agent_scanner_loop", return_value=None):
+        yield
+
+
 def test_build_parser_defaults() -> None:
     """Verify CLI argument parsing defaults."""
     parser = build_parser()
