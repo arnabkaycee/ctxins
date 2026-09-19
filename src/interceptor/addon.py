@@ -9,6 +9,7 @@ import queue
 import re
 import threading
 import time
+import urllib.parse
 import uuid
 from typing import Any, Dict, List, Optional
 
@@ -457,6 +458,49 @@ class CtxinsAddon:
         except Exception as e:
             logger.error("Error stopping CtxinsAddon in done hook: %s", e)
 
+    def _rewrite_gateway_request(
+        self, flow: Any, provider: Provider, target_env: Optional[str] = None
+    ) -> None:
+        """Rewrite destination when acting as a transparent reverse-proxy gateway."""
+        req = getattr(flow, "request", None)
+        if req is None:
+            return
+
+        headers = getattr(req, "headers", {})
+        target = headers.get("x-ctxins-target") or target_env
+        if target:
+            if "://" not in target:
+                target = f"http://{target}"
+            parsed = urllib.parse.urlsplit(target)
+            if hasattr(req, "scheme"):
+                req.scheme = parsed.scheme or "http"
+            req.host = parsed.hostname or "127.0.0.1"
+            req.port = parsed.port or (443 if getattr(req, "scheme", "http") == "https" else 80)
+            if hasattr(req, "headers"):
+                req.headers["host"] = req.host if not parsed.port else f"{req.host}:{req.port}"
+        else:
+            if provider == Provider.ANTHROPIC:
+                if hasattr(req, "scheme"):
+                    req.scheme = "https"
+                req.host = "api.anthropic.com"
+                req.port = 443
+                if hasattr(req, "headers"):
+                    req.headers["host"] = "api.anthropic.com"
+            elif provider in (Provider.OPENAI, Provider.AZURE_OPENAI, Provider.OPENROUTER):
+                if hasattr(req, "scheme"):
+                    req.scheme = "https"
+                req.host = "api.openai.com"
+                req.port = 443
+                if hasattr(req, "headers"):
+                    req.headers["host"] = "api.openai.com"
+            elif provider == Provider.OLLAMA:
+                if hasattr(req, "scheme"):
+                    req.scheme = "http"
+                req.host = "127.0.0.1"
+                req.port = 11434
+                if hasattr(req, "headers"):
+                    req.headers["host"] = "127.0.0.1:11434"
+
     def requestheaders(self, flow: Any) -> None:
         """Hook called when request headers are received."""
         try:
@@ -468,9 +512,25 @@ class CtxinsAddon:
             path = getattr(req, "path", "")
             port = getattr(req, "port", None)
 
+            # Check if this is a direct gateway request to ctxins proxy itself
+            proxy_port = int(os.environ.get("CTXINS_PROXY_PORT", "8080"))
+            is_gateway = (
+                host.lower() in ("localhost", "127.0.0.1") and port == proxy_port
+            )
+            target_env = os.environ.get("CTXINS_TARGET")
+
             is_match, provider = self.router.match(host, path, port)
+            if not is_match and is_gateway and target_env:
+                parsed_target = urllib.parse.urlsplit(
+                    target_env if "://" in target_env else f"http://{target_env}"
+                )
+                is_match, provider = self.router.match(parsed_target.netloc, path)
+
             if not is_match:
                 return
+
+            if is_gateway or target_env:
+                self._rewrite_gateway_request(flow, provider, target_env)
 
             session_id, correlation_id = self._extract_ids(flow)
 

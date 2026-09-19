@@ -17,6 +17,7 @@ class MockRequest:
         method: str = "POST",
         headers: dict[str, str] | None = None,
         content: bytes = b"",
+        scheme: str = "http",
     ):
         self.host = host
         self.pretty_host = host
@@ -25,6 +26,7 @@ class MockRequest:
         self.method = method
         self.headers = headers or {}
         self.content = content
+        self.scheme = scheme
 
     @property
     def text(self) -> str:
@@ -521,5 +523,64 @@ class TestCtxinsAddon:
         assert turn_env.payload["usage"]["input_tokens"] == 50
         assert turn_env.payload["usage"]["output_tokens"] == 4
         assert turn_env.payload["usage"]["reasoning_tokens"] == 8
+
+    def test_gateway_mode_default_upstream_rewrite(self):
+        buffer = BoundedRingBuffer(100)
+        addon = CtxinsAddon(ring_buffer=buffer)
+
+        req = MockRequest(
+            host="127.0.0.1",
+            path="/v1/chat/completions",
+            port=8080,
+            content=json.dumps({"model": "gpt-4o", "messages": []}).encode("utf-8"),
+        )
+        flow = MockFlow(request=req)
+
+        addon.requestheaders(flow)
+
+        assert flow.metadata.get("ctxins_intercepted") is True
+        assert req.host == "api.openai.com"
+        assert req.port == 443
+        assert req.scheme == "https"
+
+    def test_gateway_mode_custom_target_rewrite(self, monkeypatch):
+        monkeypatch.setenv("CTXINS_TARGET", "http://localhost:8000")
+        buffer = BoundedRingBuffer(100)
+        addon = CtxinsAddon(ring_buffer=buffer)
+
+        req = MockRequest(
+            host="127.0.0.1",
+            path="/v1/chat/completions",
+            port=8080,
+            content=json.dumps({"model": "local-model", "messages": []}).encode("utf-8"),
+        )
+        flow = MockFlow(request=req)
+
+        addon.requestheaders(flow)
+
+        assert flow.metadata.get("ctxins_intercepted") is True
+        assert req.host == "localhost"
+        assert req.port == 8000
+        assert req.scheme == "http"
+
+    def test_gateway_mode_header_target_rewrite(self):
+        buffer = BoundedRingBuffer(100)
+        addon = CtxinsAddon(ring_buffer=buffer)
+
+        req = MockRequest(
+            host="localhost",
+            path="/v1/messages",
+            port=8080,
+            headers={"x-ctxins-target": "http://127.0.0.1:1234"},
+            content=json.dumps({"model": "claude-3-haiku", "messages": []}).encode("utf-8"),
+        )
+        flow = MockFlow(request=req)
+
+        addon.requestheaders(flow)
+
+        assert flow.metadata.get("ctxins_intercepted") is True
+        assert req.host == "127.0.0.1"
+        assert req.port == 1234
+        assert req.scheme == "http"
 
 
