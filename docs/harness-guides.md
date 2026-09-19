@@ -8,45 +8,37 @@
 
 ## 1. Execution Modes
 
-`ctxins` can be executed using either the **all-in-one runner** or the **decoupled pipeline**:
+`ctxins` provides a zero-config, single-window experience where the interceptor, listener, and concurrent Web UI run automatically:
 
-### Option 1: Unified One-Command Runner (`ctxins run`)
-Launches the proxy, configures certificate/proxy environment variables, runs the agent command, and opens the presentation UI automatically:
+### Option 1: Zero-Config Cockpit & Instant Shell Attach (Recommended)
+Start the TUI cockpit and background Web Dashboard together with a single command:
 
 ```bash
-# Wrap agent execution in the interactive Terminal UI (TUI)
-uv run ctxins run --tui -- claude
-uv run ctxins run --tui -- agy
-uv run ctxins run --tui -- aider
+# Starts TUI in foreground and Web Dashboard on http://localhost:8484
+uv run ctxins
 
-# Wrap agent execution and launch the Web Dashboard (http://localhost:8484)
-uv run ctxins run --web --port 8484 -- claude
+# In your agent terminal, connect immediately with zero manual exports:
+eval $(uv run ctxins env) && agy
+# Or with Claude Code:
+eval $(uv run ctxins env) && claude
+# Or with any local model/port:
+uv run ctxins --target-port 8000
 ```
+
+Inside the TUI:
+- Press `[h]` to open the interactive Hook Guide.
+- Press `[c]` to copy proxy environment variables to your clipboard.
+- Press `[w]` to open the Web Dashboard in your browser.
 
 ---
 
-### Option 2: Decoupled Pipeline (`ctxins live` or Daemons)
-
-When running agents in existing terminal sessions, remote servers, or persistent setups:
-
-#### Step 1: Start the Core Engine & UI
-```bash
-# Start Core Engine with interactive Terminal UI
-uv run ctxins live --tui
-
-# Or start Core Engine with Web Dashboard
-uv run ctxins live --web --port 8484
-```
-
-#### Step 2: Start the Interceptor Proxy
-Run `mitmdump` (headless) or `mitmweb` / `mitmproxy` loading `src/interceptor/addon.py`:
+### Option 2: Unified Harness Runner (`ctxins run`)
+Execute your agent harness wrapped with an automatic interceptor proxy without terminal clashes:
 
 ```bash
-# Headless proxy (recommended for scripts & automation)
-CTXINS_SOCKET_PATH=/tmp/ctxins.sock uv run mitmdump -p 8080 -s src/interceptor/addon.py
-
-# Or with raw mitmproxy traffic inspectors:
-CTXINS_SOCKET_PATH=/tmp/ctxins.sock uv run mitmweb -p 8080 -s src/interceptor/addon.py
+uv run ctxins run -- agy
+uv run ctxins run -- claude
+uv run ctxins run -- aider
 ```
 
 > **First Run Note:** When `mitmproxy` starts for the first time, it automatically generates a local CA certificate at `~/.mitmproxy/mitmproxy-ca-cert.pem`.

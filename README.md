@@ -43,38 +43,43 @@ flowchart LR
 
 ## 🚀 Quick Start
 
-### Option A: One-Command Runner (`ctxins run`)
-Execute your agent harness wrapped with an automatic interceptor proxy and interactive presentation UI:
+### Option A: Zero-Config Cockpit (`ctxins`)
+Launch the interactive Terminal UI and background Web Dashboard together with a single command:
 
 ```bash
 git clone https://github.com/arnabkaycee/ctxins.git && cd ctxins
 uv sync --extra dev
 
-# Run with Web Dashboard (http://localhost:8484)
-uv run ctxins run --web --port 8484 -- agy
-uv run ctxins run --web --port 8484 -- claude
+# Starts TUI cockpit in terminal & Web Dashboard on http://localhost:8484
+uv run ctxins
 
-# Run with Terminal UI (TUI)
-uv run ctxins run --tui -- agy
-uv run ctxins run --tui -- claude
+# In your agent's terminal, attach instantly:
+eval $(uv run ctxins env) && agy
+# Or with Claude Code:
+eval $(uv run ctxins env) && claude
 ```
 
-### Option B: Standalone Dashboard Server (`ctxins web`)
-Launch the Web Dashboard and background proxy daemon attached to the Core Engine:
+> **Keybindings in TUI:**
+> - `[h]`: Open interactive Hook Guide for CLI agents, local ports, and SDKs.
+> - `[c]`: Copy proxy environment variables (`HTTP_PROXY`, certs) to clipboard.
+> - `[w]`: Open the Web Dashboard in your default browser.
+
+### Option B: Local Models & Port Gateway (`--target-port`)
+Hook any local agent or local model (Ollama, vLLM, LM Studio) running on any local port:
 
 ```bash
-# Start Web Dashboard on port 8484 and proxy interceptor on port 8080
-uv run ctxins web --port 8484 --proxy-port 8080
-
-# In your agent's terminal, route traffic through ctxins:
-HTTP_PROXY="http://127.0.0.1:8080" HTTPS_PROXY="http://127.0.0.1:8080" SSL_CERT_FILE="$HOME/.mitmproxy/mitmproxy-ca-cert.pem" agy
-
-# Or using the with-ctxins helper:
-with-ctxins claude
-with-ctxins agy
+# Hook an agent or local LLM server running on port 8000
+uv run ctxins --target-port 8000
 ```
 
-> **Tip:** See [Harness Integration Guides](docs/harness-guides.md) for framework-specific proxy configuration details (Claude Code, Antigravity, Aider, AutoGen, CrewAI, etc.).
+### Option C: Harness Subprocess Runner (`ctxins run`)
+Execute your agent harness wrapped with an automatic interceptor proxy without terminal conflicts:
+
+```bash
+# Run agent in foreground with live web dashboard in background
+uv run ctxins run -- agy
+uv run ctxins run -- claude
+```
 
 ---
 
@@ -82,10 +87,11 @@ with-ctxins agy
 
 | Subcommand | Description | Key Options |
 | :--- | :--- | :--- |
-| `ctxins run` | Spawn proxy, launch agent harness subprocess with auto-configured environment, and open UI | `--web`, `--tui`, `--port PORT`, `--proxy-port PORT`, `--socket PATH`, `-- COMMAND...` |
-| `ctxins web` | Launch real-time Web Dashboard server and auto-spawned mitmproxy interceptor | `--port PORT` (8484), `--host HOST`, `--proxy-port PORT` (8080), `--socket PATH` |
-| `ctxins tui` | Launch interactive Terminal UI (Textual) attached to Core Engine | `--socket PATH`, `--proxy-port PORT` (8080) |
-| `ctxins live` | Start Core Engine + selected UI mode (`web` or `tui`) | `--web`, `--tui`, `--port PORT`, `--proxy-port PORT`, `--socket PATH` |
+| `ctxins` / `ctxins tui` | Launch single-window TUI cockpit with concurrent background Web Dashboard | `--proxy-port PORT` (8080), `--web-port PORT` (8484), `--no-web`, `--target-port PORT`, `--target URL` |
+| `ctxins env` | Output shell export commands for instant agent hooking (`eval $(ctxins env)`) | `--proxy-port PORT` (8080), `--json` |
+| `ctxins run` | Spawn proxy and execute agent harness subprocess with auto-configured environment | `--web`, `--tui`, `--port PORT`, `--proxy-port PORT`, `--target-port PORT`, `-- COMMAND...` |
+| `ctxins web` | Launch standalone Web Dashboard server and auto-spawned mitmproxy interceptor | `--port PORT` (8484), `--host HOST`, `--proxy-port PORT` (8080), `--target-port PORT` |
+| `ctxins live` | Start Core Engine + selected UI mode (`web` or `tui`) | `--web`, `--tui`, `--port PORT`, `--proxy-port PORT`, `--target-port PORT` |
 
 ---
 
