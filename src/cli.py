@@ -34,6 +34,49 @@ DEFAULT_WEB_HOST = "127.0.0.1"
 DEFAULT_PROXY_PORT = 8080
 
 
+def find_available_port(start_port: int, max_attempts: int = 50) -> int:
+    """Find the first open TCP port starting from start_port."""
+    for port in range(start_port, start_port + max_attempts):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            try:
+                s.bind(("127.0.0.1", port))
+                return port
+            except OSError:
+                continue
+    return start_port
+
+
+def get_env_exports(proxy_port: int = DEFAULT_PROXY_PORT) -> Dict[str, str]:
+    """Return dictionary of environment variables for proxy and certificate configuration."""
+    cert_path = os.path.expanduser("~/.mitmproxy/mitmproxy-ca-cert.pem")
+    proxy_url = f"http://127.0.0.1:{proxy_port}"
+    exports: Dict[str, str] = {
+        "HTTP_PROXY": proxy_url,
+        "HTTPS_PROXY": proxy_url,
+        "ALL_PROXY": proxy_url,
+        "http_proxy": proxy_url,
+        "https_proxy": proxy_url,
+        "all_proxy": proxy_url,
+    }
+    if os.path.exists(cert_path):
+        exports["SSL_CERT_FILE"] = cert_path
+        exports["REQUESTS_CA_BUNDLE"] = cert_path
+        exports["NODE_EXTRA_CA_CERTS"] = cert_path
+    return exports
+
+
+def run_env(proxy_port: int = DEFAULT_PROXY_PORT, as_json: bool = False) -> None:
+    """Print proxy and cert environment configuration to stdout."""
+    exports = get_env_exports(proxy_port=proxy_port)
+    if as_json:
+        import json
+
+        print(json.dumps(exports, indent=2))
+    else:
+        for k, v in exports.items():
+            print(f'export {k}="{v}"')
+
+
 class CorePipelineBridge:
     """Bridges Core UDS telemetry ingestion to PresentationBroadcaster and SessionStore."""
 
@@ -201,6 +244,8 @@ class CorePipelineBridge:
 def spawn_mitmproxy(
     proxy_port: int = DEFAULT_PROXY_PORT,
     socket_path: str = DEFAULT_SOCKET_PATH,
+    target: Optional[str] = None,
+    target_port: Optional[int] = None,
 ) -> Optional[subprocess.Popen[Any]]:
     """Spawn mitmdump interceptor process if proxy_port is not already listening."""
     try:
@@ -214,6 +259,12 @@ def spawn_mitmproxy(
 
     mitm_env = os.environ.copy()
     mitm_env["CTXINS_SOCKET_PATH"] = socket_path
+    mitm_env["CTXINS_PROXY_PORT"] = str(proxy_port)
+    if target:
+        mitm_env["CTXINS_TARGET"] = target
+    elif target_port is not None:
+        mitm_env["CTXINS_TARGET"] = f"http://127.0.0.1:{target_port}"
+
     existing_py_path = mitm_env.get("PYTHONPATH", "")
     mitm_env["PYTHONPATH"] = f"{repo_root}:{existing_py_path}" if existing_py_path else repo_root
 
@@ -254,19 +305,55 @@ def spawn_mitmproxy(
 def run_tui(
     socket_path: str = DEFAULT_SOCKET_PATH,
     proxy_port: int = DEFAULT_PROXY_PORT,
+    target: Optional[str] = None,
+    target_port: Optional[int] = None,
+    no_web: bool = False,
+    web_port: int = DEFAULT_WEB_PORT,
 ) -> None:
     """Launch standalone Textual TUI attached to running Core Engine."""
     bridge = CorePipelineBridge()
     server = UDSFrameServer(socket_path=socket_path, on_turn_callback=bridge.handle_wire_envelope)
-    mitm_proc = spawn_mitmproxy(proxy_port=proxy_port, socket_path=socket_path)
+    actual_proxy_port = find_available_port(proxy_port)
+    mitm_proc = spawn_mitmproxy(
+        proxy_port=actual_proxy_port,
+        socket_path=socket_path,
+        target=target,
+        target_port=target_port,
+    )
 
     async def _start_and_run() -> None:
         await server.start()
+        uvi_task: Optional[asyncio.Task[Any]] = None
+        actual_web_port = find_available_port(web_port)
+        if not no_web:
+            try:
+                import uvicorn
+
+                web_app = create_app(store=bridge.store, broadcaster=bridge.broadcaster)
+                config = uvicorn.Config(
+                    app=web_app, host="127.0.0.1", port=actual_web_port, log_level="error"
+                )
+                uvi_server = uvicorn.Server(config)
+                uvi_task = asyncio.create_task(uvi_server.serve())
+            except Exception as e:
+                logger.warning("Could not start background Web Dashboard: %s", e)
+
         try:
             state = TUIState()
-            app = CtxinsTUIApp(state=state, broadcaster=bridge.broadcaster)
+            app = CtxinsTUIApp(
+                state=state,
+                broadcaster=bridge.broadcaster,
+                proxy_port=actual_proxy_port,
+                web_url=f"http://127.0.0.1:{actual_web_port}" if not no_web else None,
+            )
             await app.run_async()
         finally:
+            if uvi_task is not None and not uvi_task.done():
+                uvi_task.cancel()
+                try:
+                    await uvi_task
+                except asyncio.CancelledError:
+                    pass
             if mitm_proc is not None and mitm_proc.poll() is None:
                 mitm_proc.terminate()
                 try:
@@ -283,19 +370,28 @@ def run_web(
     host: str = DEFAULT_WEB_HOST,
     socket_path: str = DEFAULT_SOCKET_PATH,
     proxy_port: int = DEFAULT_PROXY_PORT,
+    target: Optional[str] = None,
+    target_port: Optional[int] = None,
 ) -> None:
     """Launch standalone Web Dashboard attached to running Core Engine."""
     import uvicorn
 
     bridge = CorePipelineBridge()
     server = UDSFrameServer(socket_path=socket_path, on_turn_callback=bridge.handle_wire_envelope)
-    mitm_proc = spawn_mitmproxy(proxy_port=proxy_port, socket_path=socket_path)
+    actual_proxy_port = find_available_port(proxy_port)
+    actual_web_port = find_available_port(port)
+    mitm_proc = spawn_mitmproxy(
+        proxy_port=actual_proxy_port,
+        socket_path=socket_path,
+        target=target,
+        target_port=target_port,
+    )
 
     async def _run_web_pipeline() -> None:
         await server.start()
         try:
             web_app = create_app(store=bridge.store, broadcaster=bridge.broadcaster)
-            config = uvicorn.Config(app=web_app, host=host, port=port, log_level="warning")
+            config = uvicorn.Config(app=web_app, host=host, port=actual_web_port, log_level="warning")
             uvi_server = uvicorn.Server(config)
             await uvi_server.serve()
         finally:
@@ -316,12 +412,30 @@ def run_live(
     host: str = DEFAULT_WEB_HOST,
     socket_path: str = DEFAULT_SOCKET_PATH,
     proxy_port: int = DEFAULT_PROXY_PORT,
+    target: Optional[str] = None,
+    target_port: Optional[int] = None,
+    no_web: bool = False,
+    web_port: int = DEFAULT_WEB_PORT,
 ) -> None:
     """Start Core Engine + selected UI."""
     if ui_mode == "web":
-        run_web(port=port, host=host, socket_path=socket_path, proxy_port=proxy_port)
+        run_web(
+            port=port,
+            host=host,
+            socket_path=socket_path,
+            proxy_port=proxy_port,
+            target=target,
+            target_port=target_port,
+        )
     else:
-        run_tui(socket_path=socket_path, proxy_port=proxy_port)
+        run_tui(
+            socket_path=socket_path,
+            proxy_port=proxy_port,
+            target=target,
+            target_port=target_port,
+            no_web=no_web,
+            web_port=web_port,
+        )
 
 
 def run_with_harness(
@@ -331,22 +445,32 @@ def run_with_harness(
     host: str = DEFAULT_WEB_HOST,
     socket_path: str = DEFAULT_SOCKET_PATH,
     proxy_port: int = DEFAULT_PROXY_PORT,
+    target: Optional[str] = None,
+    target_port: Optional[int] = None,
+    no_web: bool = False,
+    web_port: int = DEFAULT_WEB_PORT,
 ) -> None:
     """Start proxy, launch agent harness command, and run interactive UI."""
     bridge = CorePipelineBridge()
     server = UDSFrameServer(socket_path=socket_path, on_turn_callback=bridge.handle_wire_envelope)
+    actual_proxy_port = find_available_port(proxy_port)
 
     cert_path = os.path.expanduser("~/.mitmproxy/mitmproxy-ca-cert.pem")
 
     # Configure proxy environment variables (both upper and lowercase for Go/Python/Node)
     env = os.environ.copy()
-    proxy_url = f"http://127.0.0.1:{proxy_port}"
+    proxy_url = f"http://127.0.0.1:{actual_proxy_port}"
     env["HTTP_PROXY"] = proxy_url
     env["HTTPS_PROXY"] = proxy_url
     env["ALL_PROXY"] = proxy_url
     env["http_proxy"] = proxy_url
     env["https_proxy"] = proxy_url
     env["all_proxy"] = proxy_url
+    if target:
+        env["CTXINS_TARGET"] = target
+    elif target_port is not None:
+        env["CTXINS_TARGET"] = f"http://127.0.0.1:{target_port}"
+
     if os.path.exists(cert_path):
         env["SSL_CERT_FILE"] = cert_path
         env["REQUESTS_CA_BUNDLE"] = cert_path
@@ -354,7 +478,12 @@ def run_with_harness(
 
     async def _run_pipeline() -> None:
         await server.start()
-        mitm_proc = spawn_mitmproxy(proxy_port=proxy_port, socket_path=socket_path)
+        mitm_proc = spawn_mitmproxy(
+            proxy_port=actual_proxy_port,
+            socket_path=socket_path,
+            target=target,
+            target_port=target_port,
+        )
         harness_proc: Optional[subprocess.Popen[Any]] = None
         try:
             # Launch harness subprocess if command is specified
@@ -363,14 +492,44 @@ def run_with_harness(
 
             if ui_mode == "web":
                 import uvicorn
+
+                actual_web_port = find_available_port(port)
                 web_app = create_app(store=bridge.store, broadcaster=bridge.broadcaster)
-                config = uvicorn.Config(app=web_app, host=host, port=port, log_level="warning")
+                config = uvicorn.Config(app=web_app, host=host, port=actual_web_port, log_level="warning")
                 uvi_server = uvicorn.Server(config)
                 await uvi_server.serve()
             else:
+                actual_web_port = find_available_port(web_port)
+                uvi_task: Optional[asyncio.Task[Any]] = None
+                if not no_web:
+                    try:
+                        import uvicorn
+
+                        web_app = create_app(store=bridge.store, broadcaster=bridge.broadcaster)
+                        config = uvicorn.Config(
+                            app=web_app, host="127.0.0.1", port=actual_web_port, log_level="error"
+                        )
+                        uvi_server = uvicorn.Server(config)
+                        uvi_task = asyncio.create_task(uvi_server.serve())
+                    except Exception as e:
+                        logger.warning("Could not start background Web Dashboard: %s", e)
+
                 state = TUIState()
-                tui_app = CtxinsTUIApp(state=state, broadcaster=bridge.broadcaster)
-                await tui_app.run_async()
+                tui_app = CtxinsTUIApp(
+                    state=state,
+                    broadcaster=bridge.broadcaster,
+                    proxy_port=actual_proxy_port,
+                    web_url=f"http://127.0.0.1:{actual_web_port}" if not no_web else None,
+                )
+                try:
+                    await tui_app.run_async()
+                finally:
+                    if uvi_task is not None and not uvi_task.done():
+                        uvi_task.cancel()
+                        try:
+                            await uvi_task
+                        except asyncio.CancelledError:
+                            pass
 
         finally:
             if harness_proc is not None and harness_proc.poll() is None:
@@ -402,6 +561,10 @@ def build_parser() -> argparse.ArgumentParser:
     tui_p = subparsers.add_parser("tui", help="Launch interactive Terminal UI")
     tui_p.add_argument("--socket", default=DEFAULT_SOCKET_PATH, help="UDS socket path")
     tui_p.add_argument("--proxy-port", type=int, default=DEFAULT_PROXY_PORT, help="Proxy port")
+    tui_p.add_argument("--target-port", type=int, default=None, help="Target port for local LLM")
+    tui_p.add_argument("--target", default=None, help="Target upstream URL (e.g. http://localhost:8000)")
+    tui_p.add_argument("--no-web", action="store_true", help="Disable concurrent background Web Dashboard")
+    tui_p.add_argument("--web-port", type=int, default=DEFAULT_WEB_PORT, help="Web Dashboard port")
 
     # 2. web
     web_p = subparsers.add_parser("web", help="Launch Web Dashboard")
@@ -409,6 +572,8 @@ def build_parser() -> argparse.ArgumentParser:
     web_p.add_argument("--host", default=DEFAULT_WEB_HOST, help="Web server host")
     web_p.add_argument("--socket", default=DEFAULT_SOCKET_PATH, help="UDS socket path")
     web_p.add_argument("--proxy-port", type=int, default=DEFAULT_PROXY_PORT, help="Proxy port")
+    web_p.add_argument("--target-port", type=int, default=None, help="Target port for local LLM")
+    web_p.add_argument("--target", default=None, help="Target upstream URL (e.g. http://localhost:8000)")
 
     # 3. live
     live_p = subparsers.add_parser("live", help="Start Core Engine and presentation UI")
@@ -419,6 +584,10 @@ def build_parser() -> argparse.ArgumentParser:
     live_p.add_argument("--host", default=DEFAULT_WEB_HOST, help="Web host")
     live_p.add_argument("--socket", default=DEFAULT_SOCKET_PATH, help="UDS socket path")
     live_p.add_argument("--proxy-port", type=int, default=DEFAULT_PROXY_PORT, help="Proxy port")
+    live_p.add_argument("--target-port", type=int, default=None, help="Target port for local LLM")
+    live_p.add_argument("--target", default=None, help="Target upstream URL (e.g. http://localhost:8000)")
+    live_p.add_argument("--no-web", action="store_true", help="Disable concurrent background Web Dashboard")
+    live_p.add_argument("--web-port", type=int, default=DEFAULT_WEB_PORT, help="Web Dashboard port")
 
     # 4. run
     run_p = subparsers.add_parser("run", help="Start proxy and execute agent harness wrapped in ctxins")
@@ -429,7 +598,16 @@ def build_parser() -> argparse.ArgumentParser:
     run_p.add_argument("--host", default=DEFAULT_WEB_HOST, help="Web host")
     run_p.add_argument("--proxy-port", type=int, default=DEFAULT_PROXY_PORT, help="Proxy port")
     run_p.add_argument("--socket", default=DEFAULT_SOCKET_PATH, help="UDS socket path")
+    run_p.add_argument("--target-port", type=int, default=None, help="Target port for local LLM")
+    run_p.add_argument("--target", default=None, help="Target upstream URL (e.g. http://localhost:8000)")
+    run_p.add_argument("--no-web", action="store_true", help="Disable concurrent background Web Dashboard")
+    run_p.add_argument("--web-port", type=int, default=DEFAULT_WEB_PORT, help="Web Dashboard port")
     run_p.add_argument("command", nargs=argparse.REMAINDER, help="Command to execute after --")
+
+    # 5. env
+    env_p = subparsers.add_parser("env", help="Generate shell export commands for proxy & certs")
+    env_p.add_argument("--proxy-port", type=int, default=DEFAULT_PROXY_PORT, help="Proxy port")
+    env_p.add_argument("--json", action="store_true", help="Output JSON format instead of shell export")
 
     return parser
 
@@ -437,20 +615,42 @@ def build_parser() -> argparse.ArgumentParser:
 def main(args: Optional[List[str]] = None) -> int:
     """CLI entry point for ctxins."""
     parser = build_parser()
-    parsed = parser.parse_args(args)
+
+    if args is None:
+        raw_args = sys.argv[1:]
+    else:
+        raw_args = list(args)
+
+    # If no subcommand specified, default to "tui"
+    if not raw_args:
+        raw_args = ["tui"]
+
+    parsed = parser.parse_args(raw_args)
 
     if not parsed.subcommand:
         parser.print_help()
         return 0
 
-    if parsed.subcommand == "tui":
-        run_tui(socket_path=parsed.socket, proxy_port=parsed.proxy_port)
+    if parsed.subcommand == "env":
+        run_env(proxy_port=parsed.proxy_port, as_json=parsed.json)
+        return 0
+    elif parsed.subcommand == "tui":
+        run_tui(
+            socket_path=parsed.socket,
+            proxy_port=parsed.proxy_port,
+            target=getattr(parsed, "target", None),
+            target_port=getattr(parsed, "target_port", None),
+            no_web=getattr(parsed, "no_web", False),
+            web_port=getattr(parsed, "web_port", DEFAULT_WEB_PORT),
+        )
     elif parsed.subcommand == "web":
         run_web(
             port=parsed.port,
             host=parsed.host,
             socket_path=parsed.socket,
             proxy_port=parsed.proxy_port,
+            target=getattr(parsed, "target", None),
+            target_port=getattr(parsed, "target_port", None),
         )
     elif parsed.subcommand == "live":
         run_live(
@@ -459,6 +659,10 @@ def main(args: Optional[List[str]] = None) -> int:
             host=parsed.host,
             socket_path=parsed.socket,
             proxy_port=parsed.proxy_port,
+            target=getattr(parsed, "target", None),
+            target_port=getattr(parsed, "target_port", None),
+            no_web=getattr(parsed, "no_web", False),
+            web_port=getattr(parsed, "web_port", DEFAULT_WEB_PORT),
         )
     elif parsed.subcommand == "run":
         cmd = parsed.command
@@ -471,6 +675,10 @@ def main(args: Optional[List[str]] = None) -> int:
             host=parsed.host,
             socket_path=parsed.socket,
             proxy_port=parsed.proxy_port,
+            target=getattr(parsed, "target", None),
+            target_port=getattr(parsed, "target_port", None),
+            no_web=getattr(parsed, "no_web", False),
+            web_port=getattr(parsed, "web_port", DEFAULT_WEB_PORT),
         )
 
     return 0

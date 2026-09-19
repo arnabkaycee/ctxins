@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import time
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -54,9 +55,46 @@ def test_build_parser_defaults() -> None:
     assert args.proxy_port == DEFAULT_PROXY_PORT
 
 
-def test_main_help_invocation(capsys: pytest.CaptureFixture[str]) -> None:
-    """Verify main returns 0 on empty or help args."""
+def test_find_available_port() -> None:
+    from src.cli import find_available_port
+
+    port = find_available_port(8080)
+    assert isinstance(port, int)
+    assert port >= 8080
+
+
+def test_env_subcommand(capsys: pytest.CaptureFixture[str]) -> None:
+    assert main(["env"]) == 0
+    captured = capsys.readouterr()
+    assert 'export HTTP_PROXY="http://127.0.0.1:8080"' in captured.out
+    assert 'export HTTPS_PROXY="http://127.0.0.1:8080"' in captured.out
+
+
+def test_env_json_subcommand(capsys: pytest.CaptureFixture[str]) -> None:
+    import json
+
+    assert main(["env", "--json", "--proxy-port", "9999"]) == 0
+    captured = capsys.readouterr()
+    data = json.loads(captured.out)
+    assert data["HTTP_PROXY"] == "http://127.0.0.1:9999"
+
+
+def test_main_default_to_tui(monkeypatch: pytest.MonkeyPatch) -> None:
+    called = []
+
+    def mock_run_tui(**kwargs: Any) -> None:
+        called.append(kwargs)
+
+    monkeypatch.setattr("src.cli.run_tui", mock_run_tui)
     assert main([]) == 0
+    assert len(called) == 1
+
+
+def test_main_help_invocation(capsys: pytest.CaptureFixture[str]) -> None:
+    """Verify main --help prints usage."""
+    with pytest.raises(SystemExit) as excinfo:
+        main(["--help"])
+    assert excinfo.value.code == 0
     captured = capsys.readouterr()
     assert "usage: ctxins" in captured.out
 
