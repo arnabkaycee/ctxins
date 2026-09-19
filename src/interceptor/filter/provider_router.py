@@ -44,6 +44,21 @@ class ProviderRouter:
             re.compile(r"^/(api/chat|v1/chat/completions)(?=[/?#]|$)"),
             Provider.OLLAMA,
         ),
+        (
+            re.compile(r"^(localhost|127\.0\.0\.1)(:\d+)?$", re.IGNORECASE),
+            re.compile(r"^/v1/messages(?=[/?#]|$)"),
+            Provider.ANTHROPIC,
+        ),
+        (
+            re.compile(r"^(localhost|127\.0\.0\.1)(:\d+)?$", re.IGNORECASE),
+            re.compile(r"^/v1/(chat/completions|responses)(?=[/?#]|$)"),
+            Provider.OPENAI,
+        ),
+        (
+            re.compile(r"^(localhost|127\.0\.0\.1)(:\d+)?$", re.IGNORECASE),
+            re.compile(r"^/api/chat(?=[/?#]|$)"),
+            Provider.OLLAMA,
+        ),
     ]
 
     def _normalize_host(self, host: str, port: int | None = None) -> str:

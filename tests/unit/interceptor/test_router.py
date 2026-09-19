@@ -65,6 +65,11 @@ class TestProviderRouter:
             ("127.0.0.1:11434", "/v1/chat/completions", Provider.OLLAMA),
             ("localhost", "/api/chat", Provider.OLLAMA),
             ("127.0.0.1", "/api/chat", Provider.OLLAMA),
+            ("127.0.0.1:8000", "/v1/chat/completions", Provider.OPENAI),
+            ("localhost:8000", "/v1/chat/completions", Provider.OPENAI),
+            ("localhost:1234", "/v1/messages", Provider.ANTHROPIC),
+            ("127.0.0.1:5000", "/v1/responses", Provider.OPENAI),
+            ("localhost:9000", "/api/chat", Provider.OLLAMA),
         ],
     )
     def test_known_llm_routes_match(
