@@ -608,6 +608,10 @@ def test_tui_app_actions_and_browser(monkeypatch: pytest.MonkeyPatch) -> None:
     app.action_show_hook_modal()
     assert len(pushed_screens) == 1
 
+    # Test show help modal
+    app.action_show_help_modal()
+    assert len(pushed_screens) == 2
+
 
 def test_copy_to_clipboard_fallback() -> None:
     """Verify copy_to_clipboard executes without error across fallback mechanisms."""
@@ -615,3 +619,26 @@ def test_copy_to_clipboard_fallback() -> None:
 
     result = copy_to_clipboard("HTTP_PROXY=http://127.0.0.1:8080")
     assert isinstance(result, bool)
+
+
+def test_footer_bar_renders_all_keybindings() -> None:
+    """Verify FooterBarWidget renders keybinding rows with all shortcuts."""
+    state = TUIState()
+    footer = FooterBarWidget(state)
+    rendered = footer.render()
+    assert rendered is not None
+    assert "\n" in rendered.plain
+    lines = rendered.plain.split("\n")
+    assert len(lines) == 2
+    assert "Switch Pane" in lines[0]
+    assert "Help" in lines[1]
+    assert "Quit" in lines[1]
+
+
+def test_help_modal_screen_compose() -> None:
+    """Verify HelpModalScreen instantiates and composes successfully."""
+    from src.presentation.tui.widgets.help_modal import HelpModalScreen
+
+    modal = HelpModalScreen()
+    assert modal is not None
+

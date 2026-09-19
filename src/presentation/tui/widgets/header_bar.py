@@ -83,6 +83,8 @@ class HeaderBarWidget(Widget):
         else:
             row1.append("● Idle", style=f"bold {COLOR_SUCCESS}")
 
+        row1.append(" │ [?] Help", style="bold #e3b341")
+
         # Row 2: Aggregate Metrics
         tokens = summary["totalTokens"]
         tok_str = f"{tokens / 1000:.1f}k" if tokens >= 1000 else str(tokens)

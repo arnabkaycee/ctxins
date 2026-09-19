@@ -182,6 +182,7 @@ async def test_core_pipeline_bridge_turn_lifecycle() -> None:
 def test_run_with_harness_lifecycle():
     with patch("subprocess.Popen") as mock_popen, \
          patch("socket.create_connection") as mock_conn, \
+         patch("src.cli.find_available_port", side_effect=lambda p, **kw: p), \
          patch("uvicorn.Server.serve"), \
          patch("src.core.server.uds_server.UDSFrameServer.start"), \
          patch("src.core.server.uds_server.UDSFrameServer.stop"):

@@ -8,7 +8,7 @@ from rich.text import Text
 from textual.widget import Widget
 
 from src.presentation.tui.state import TUIState
-from src.presentation.tui.theme import COLOR_ACCENT, COLOR_MUTED
+from src.presentation.tui.theme import COLOR_ACCENT, COLOR_MUTED, COLOR_SUCCESS
 
 
 class FooterBarWidget(Widget):
@@ -16,9 +16,10 @@ class FooterBarWidget(Widget):
 
     DEFAULT_CSS = """
     FooterBarWidget {
-        height: 1;
+        height: 2;
         dock: bottom;
         background: #161b22;
+        border-top: solid #30363d;
         color: #8b949e;
         padding: 0 1;
     }
@@ -36,21 +37,27 @@ class FooterBarWidget(Widget):
         filter_mode = "ALL VIOLATIONS" if self.state.show_all_violations else "TURN VIOLATIONS"
 
         text = Text()
+        # Row 1: Timeline and Content Navigation
         text.append("[Tab] ", style=f"bold {COLOR_ACCENT}")
         text.append("Switch Pane  │  ", style=COLOR_MUTED)
-
         text.append("[↑/↓/j/k] ", style=f"bold {COLOR_ACCENT}")
         text.append("Select Turn  │  ", style=COLOR_MUTED)
-
         text.append("[n/p] ", style=f"bold {COLOR_ACCENT}")
         text.append("Select Block  │  ", style=COLOR_MUTED)
-
         text.append("[r] ", style=f"bold {COLOR_ACCENT}")
         text.append(f"Filter ({filter_mode})  │  ", style="bold #d29922" if self.state.show_all_violations else COLOR_MUTED)
-
         text.append("[e] ", style=f"bold {COLOR_ACCENT}")
-        text.append("Export .jsonc  │  ", style=COLOR_MUTED)
+        text.append("Export .jsonc\n", style=COLOR_MUTED)
 
+        # Row 2: Integration Actions, Help, and Exit
+        text.append("[h] ", style=f"bold {COLOR_ACCENT}")
+        text.append("Hook Guide  │  ", style=COLOR_MUTED)
+        text.append("[c] ", style=f"bold {COLOR_SUCCESS}")
+        text.append("Copy Env  │  ", style=COLOR_MUTED)
+        text.append("[w] ", style=f"bold {COLOR_ACCENT}")
+        text.append("Open Web  │  ", style=COLOR_MUTED)
+        text.append("[?] ", style="bold #e3b341")
+        text.append("Help  │  ", style=COLOR_MUTED)
         text.append("[q] ", style="bold #f85149")
         text.append("Quit", style=COLOR_MUTED)
 

@@ -17,6 +17,7 @@ from src.presentation.tui.theme import TUI_THEME_CSS
 from src.presentation.tui.widgets.context_breakdown import ContextBreakdownWidget
 from src.presentation.tui.widgets.footer_bar import FooterBarWidget
 from src.presentation.tui.widgets.header_bar import HeaderBarWidget
+from src.presentation.tui.widgets.help_modal import HelpModalScreen
 from src.presentation.tui.widgets.hook_modal import HookModalScreen, copy_to_clipboard
 from src.presentation.tui.widgets.recommendations import RecommendationsWidget
 from src.presentation.tui.widgets.turn_timeline import TurnSelected, TurnTimelineWidget
@@ -38,6 +39,8 @@ class CtxinsTUIApp(App[None]):
         ("h", "show_hook_modal", "Hook Guide"),
         ("c", "copy_env", "Copy Env"),
         ("w", "open_web", "Open Web"),
+        ("?", "show_help_modal", "Help"),
+        ("f1", "show_help_modal", "Help"),
     ]
 
     selected_turn_index: reactive[int] = reactive(0)
@@ -128,6 +131,10 @@ class CtxinsTUIApp(App[None]):
             self.notify(f"Opened {self.web_url} in browser")
         else:
             self.notify("Web Dashboard is disabled (--no-web active)", severity="warning")
+
+    def action_show_help_modal(self) -> None:
+        """Display interactive help and keyboard shortcuts modal."""
+        self.push_screen(HelpModalScreen())
 
     def _refresh_inspectors(self) -> None:
         """Refresh context breakdown, recommendations, and footer widgets."""
