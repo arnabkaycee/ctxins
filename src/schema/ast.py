@@ -14,6 +14,9 @@ class BlockType(str, Enum):
     ASSISTANT_MSG = "assistant_msg"
     TOOL_RESULT = "tool_result"
     INJECTED_CONTEXT = "injected_context"
+    SKILL = "skill"
+    THOUGHT = "thought"
+    INJECTED_STATE = "injected_state"
 
 
 class ViolationSeverity(str, Enum):
@@ -32,6 +35,7 @@ class ContextBlock:
     token_count: int
     content: str
     metadata: Dict[str, Any] = field(default_factory=dict)
+    identity_key: str = ""
 
     # Lineage tracking
     first_seen_turn: int = 0
@@ -51,6 +55,7 @@ class ContextBlock:
             token_count=data["token_count"],
             content=data["content"],
             metadata=data.get("metadata", {}),
+            identity_key=data.get("identity_key", ""),
             first_seen_turn=data.get("first_seen_turn", 0),
             turns_survived=data.get("turns_survived", 0),
         )
@@ -194,6 +199,8 @@ class TurnDelta:
     added_block_ids: List[str] = field(default_factory=list)
     removed_block_ids: List[str] = field(default_factory=list)
     persisted_block_ids: List[str] = field(default_factory=list)
+    mutated_block_ids: List[str] = field(default_factory=list)
+    cache_breakpoint_block_id: Optional[str] = None
     token_growth: int = 0
 
     def to_dict(self) -> Dict[str, Any]:
@@ -206,5 +213,7 @@ class TurnDelta:
             added_block_ids=data.get("added_block_ids", []),
             removed_block_ids=data.get("removed_block_ids", []),
             persisted_block_ids=data.get("persisted_block_ids", []),
+            mutated_block_ids=data.get("mutated_block_ids", []),
+            cache_breakpoint_block_id=data.get("cache_breakpoint_block_id"),
             token_growth=data.get("token_growth", 0),
         )

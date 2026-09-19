@@ -190,8 +190,33 @@ def test_turn_delta():
         added_block_ids=["b3"],
         removed_block_ids=["b1"],
         persisted_block_ids=["b2"],
+        mutated_block_ids=["b0"],
+        cache_breakpoint_block_id="b0",
         token_growth=50,
     )
     data = delta.to_dict()
     recovered = TurnDelta.from_dict(data)
     assert recovered == delta
+    assert recovered.mutated_block_ids == ["b0"]
+    assert recovered.cache_breakpoint_block_id == "b0"
+
+
+def test_new_block_types_and_identity_key():
+    assert BlockType.SKILL == "skill"
+    assert BlockType.THOUGHT == "thought"
+    assert BlockType.INJECTED_STATE == "injected_state"
+
+    blk = ContextBlock(
+        block_id="skill_1",
+        block_type=BlockType.SKILL,
+        content_hash="hash-skill",
+        token_count=120,
+        content="Instructions for git workflow",
+        identity_key="skill:git-workflow",
+    )
+    d = blk.to_dict()
+    assert d["identity_key"] == "skill:git-workflow"
+    assert d["block_type"] == "skill"
+    recovered = ContextBlock.from_dict(d)
+    assert recovered.identity_key == "skill:git-workflow"
+    assert recovered.block_type == BlockType.SKILL
