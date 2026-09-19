@@ -59,6 +59,8 @@ class FooterBarWidget(Widget):
         text.append("Hook Guide │ ", style=COLOR_MUTED)
         text.append("[c] ", style=f"bold {COLOR_SUCCESS}")
         text.append("Copy Env │ ", style=COLOR_MUTED)
+        text.append("[u] ", style="bold #e3b341")
+        text.append("Unset Env │ ", style=COLOR_MUTED)
         text.append("[w] ", style=f"bold {COLOR_ACCENT}")
         text.append("Open Web │ ", style=COLOR_MUTED)
         text.append("[?] ", style="bold #e3b341")

@@ -49,6 +49,7 @@ class CtxinsTUIApp(App[None]):
         ("a", "show_session_modal", "Agent Picker"),
         ("h", "show_hook_modal", "Hook Guide"),
         ("c", "copy_env", "Copy Env"),
+        ("u", "copy_unset_env", "Unset Env"),
         ("w", "open_web", "Open Web"),
         ("?", "show_help_modal", "Help"),
         ("f1", "show_help_modal", "Help"),
@@ -171,6 +172,15 @@ class CtxinsTUIApp(App[None]):
         export_str = " ".join(f'{k}="{v}"' for k, v in exports.items())
         copy_to_clipboard(export_str)
         self.notify("Copied proxy environment exports to clipboard!")
+
+    def action_copy_unset_env(self) -> None:
+        """Copy proxy environment unset snippet to system clipboard."""
+        from src.cli import get_unset_env_exports
+
+        var_names = get_unset_env_exports()
+        unset_str = f"unset {' '.join(var_names)}"
+        copy_to_clipboard(unset_str)
+        self.notify("Copied unset proxy environment command to clipboard!")
 
     def action_open_web(self) -> None:
         """Open web dashboard in default browser."""

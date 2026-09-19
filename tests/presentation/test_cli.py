@@ -89,6 +89,36 @@ def test_env_json_subcommand(capsys: pytest.CaptureFixture[str]) -> None:
     assert data["HTTP_PROXY"] == "http://127.0.0.1:9999"
 
 
+def test_env_unset_subcommand(capsys: pytest.CaptureFixture[str]) -> None:
+    """Verify ctxins env --unset outputs unset commands for proxy and certs."""
+    assert main(["env", "--unset"]) == 0
+    captured = capsys.readouterr()
+    assert "unset HTTP_PROXY HTTPS_PROXY ALL_PROXY http_proxy https_proxy all_proxy" in captured.out
+    assert "SSL_CERT_FILE REQUESTS_CA_BUNDLE NODE_EXTRA_CA_CERTS CTXINS_TARGET" in captured.out
+
+
+def test_env_unset_json_subcommand(capsys: pytest.CaptureFixture[str]) -> None:
+    """Verify ctxins env -u --json outputs dictionary of nulls."""
+    import json
+
+    assert main(["env", "-u", "--json"]) == 0
+    captured = capsys.readouterr()
+    data = json.loads(captured.out)
+    assert "HTTP_PROXY" in data
+    assert data["HTTP_PROXY"] is None
+    assert "NODE_EXTRA_CA_CERTS" in data
+    assert data["NODE_EXTRA_CA_CERTS"] is None
+
+
+def test_unset_env_subcommand(capsys: pytest.CaptureFixture[str]) -> None:
+    """Verify ctxins unset-env alias outputs unset shell string."""
+    assert main(["unset-env"]) == 0
+    captured = capsys.readouterr()
+    assert captured.out.startswith("unset ")
+    assert "HTTP_PROXY" in captured.out
+    assert "CTXINS_TARGET" in captured.out
+
+
 def test_main_default_to_tui(monkeypatch: pytest.MonkeyPatch) -> None:
     called = []
 

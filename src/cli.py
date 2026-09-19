@@ -67,8 +67,38 @@ def get_env_exports(proxy_port: int = DEFAULT_PROXY_PORT) -> Dict[str, str]:
     return exports
 
 
-def run_env(proxy_port: int = DEFAULT_PROXY_PORT, as_json: bool = False) -> None:
-    """Print proxy and cert environment configuration to stdout."""
+def get_unset_env_exports() -> List[str]:
+    """Return list of proxy and TLS certificate environment variables to unset."""
+    return [
+        "HTTP_PROXY",
+        "HTTPS_PROXY",
+        "ALL_PROXY",
+        "http_proxy",
+        "https_proxy",
+        "all_proxy",
+        "SSL_CERT_FILE",
+        "REQUESTS_CA_BUNDLE",
+        "NODE_EXTRA_CA_CERTS",
+        "CTXINS_TARGET",
+    ]
+
+
+def run_env(
+    proxy_port: int = DEFAULT_PROXY_PORT,
+    as_json: bool = False,
+    unset: bool = False,
+) -> None:
+    """Print proxy and cert environment configuration or unset commands to stdout."""
+    if unset:
+        var_names = get_unset_env_exports()
+        if as_json:
+            import json
+
+            print(json.dumps({k: None for k in var_names}, indent=2))
+        else:
+            print(f"unset {' '.join(var_names)}")
+        return
+
     exports = get_env_exports(proxy_port=proxy_port)
     if as_json:
         import json
@@ -103,7 +133,7 @@ class CorePipelineBridge:
         store: Optional[SessionStore] = None,
         broadcaster: Optional[PresentationBroadcaster] = None,
         analyzer: Optional[PollutionAnalyzer] = None,
-        auto_scan: bool = True,
+        auto_scan: bool = False,
     ) -> None:
         self.store = store or SessionStore()
         self.broadcaster = broadcaster or PresentationBroadcaster()
@@ -538,9 +568,6 @@ def run_tui(
 
     async def _start_and_run() -> None:
         await server.start()
-        # Immediately detect running agents and start background scanner
-        bridge.scan_and_register_agents()
-        scanner_task = asyncio.create_task(_agent_scanner_loop(bridge))
 
         uvi_task: Optional[asyncio.Task[Any]] = None
         uvi_server: Optional[Any] = None
@@ -569,11 +596,6 @@ def run_tui(
             )
             await app.run_async()
         finally:
-            scanner_task.cancel()
-            try:
-                await scanner_task
-            except asyncio.CancelledError:
-                pass
             await _shutdown_uvicorn(uvi_server, uvi_task)
             if mitm_proc is not None and mitm_proc.poll() is None:
                 mitm_proc.terminate()
@@ -610,9 +632,6 @@ def run_web(
 
     async def _run_web_pipeline() -> None:
         await server.start()
-        # Immediately detect running agents and start background scanner
-        bridge.scan_and_register_agents()
-        scanner_task = asyncio.create_task(_agent_scanner_loop(bridge))
         uvi_server: Optional[Any] = None
         try:
             web_app = create_app(store=bridge.store, broadcaster=bridge.broadcaster)
@@ -620,11 +639,6 @@ def run_web(
             uvi_server = uvicorn.Server(config)
             await uvi_server.serve()
         finally:
-            scanner_task.cancel()
-            try:
-                await scanner_task
-            except asyncio.CancelledError:
-                pass
             if uvi_server is not None:
                 uvi_server.should_exit = True
             if mitm_proc is not None and mitm_proc.poll() is None:
@@ -711,9 +725,6 @@ def run_with_harness(
 
     async def _run_pipeline() -> None:
         await server.start()
-        # Immediately detect running agents and start background scanner
-        bridge.scan_and_register_agents()
-        scanner_task = asyncio.create_task(_agent_scanner_loop(bridge))
 
         mitm_proc = spawn_mitmproxy(
             proxy_port=actual_proxy_port,
@@ -774,11 +785,6 @@ def run_with_harness(
                     await tui_app.run_async()
 
         finally:
-            scanner_task.cancel()
-            try:
-                await scanner_task
-            except asyncio.CancelledError:
-                pass
             if harness_proc is not None and harness_proc.poll() is None:
                 harness_proc.terminate()
                 try:
@@ -883,6 +889,18 @@ def build_parser() -> argparse.ArgumentParser:
     env_p = subparsers.add_parser("env", parents=[log_p], help="Generate shell export commands for proxy & certs")
     env_p.add_argument("--proxy-port", type=int, default=DEFAULT_PROXY_PORT, help="Proxy port")
     env_p.add_argument("--json", action="store_true", help="Output JSON format instead of shell export")
+    env_p.add_argument(
+        "-u",
+        "--unset",
+        action="store_true",
+        help="Generate shell unset commands to remove proxy and cert env vars",
+    )
+
+    # 6. unset-env
+    unset_p = subparsers.add_parser(
+        "unset-env", parents=[log_p], help="Generate shell unset commands to remove proxy & cert env vars"
+    )
+    unset_p.add_argument("--json", action="store_true", help="Output JSON format")
 
     return parser
 
@@ -927,7 +945,7 @@ def main(args: Optional[List[str]] = None) -> int:
     subcmd = parsed.subcommand or "tui"
     mode = (
         "env"
-        if subcmd == "env"
+        if subcmd in ("env", "unset-env")
         else ("web" if subcmd == "web" or getattr(parsed, "ui_mode", "") == "web" else subcmd)
     )
 
@@ -942,8 +960,12 @@ def main(args: Optional[List[str]] = None) -> int:
         parser.print_help()
         return 0
 
-    if parsed.subcommand == "env":
-        run_env(proxy_port=parsed.proxy_port, as_json=parsed.json)
+    if parsed.subcommand in ("env", "unset-env"):
+        run_env(
+            proxy_port=getattr(parsed, "proxy_port", DEFAULT_PROXY_PORT),
+            as_json=bool(getattr(parsed, "json", False)),
+            unset=bool(getattr(parsed, "unset", False) or parsed.subcommand == "unset-env"),
+        )
         return 0
     elif parsed.subcommand == "tui":
         run_tui(

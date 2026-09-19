@@ -156,7 +156,7 @@ class DashboardApp {
     if (!this.sessions || this.sessions.length === 0) {
       const opt = document.createElement('option');
       opt.value = '';
-      opt.textContent = 'No active sessions';
+      opt.textContent = 'Waiting for agent traffic on proxy...';
       this.sessionSelect.appendChild(opt);
       return;
     }
@@ -545,12 +545,27 @@ class DashboardApp {
 
   renderEmptyTurnInspector() {
     if (this.turnTitle) this.turnTitle.textContent = 'Turn Inspector';
-    if (this.turnMetaRibbon) this.turnMetaRibbon.innerHTML = '<span>No turn selected</span>';
+    if (this.turnMetaRibbon) this.turnMetaRibbon.innerHTML = '<span>Waiting for proxied agent traffic...</span>';
     if (this.blocksTableBody) {
       this.blocksTableBody.innerHTML = `
         <tr>
-          <td colspan="6" style="text-align: center; color: var(--text-secondary); padding: 24px;">
-            No turns available in this session.
+          <td colspan="6" style="text-align: center; color: var(--text-secondary); padding: 36px 20px; line-height: 1.6;">
+            <div style="font-weight: 600; font-size: 14px; color: #e3b341; margin-bottom: 8px;">
+              Notice: Unproxied requests are not detected
+            </div>
+            <div style="font-size: 12px; max-width: 500px; margin: 0 auto; color: var(--text-muted);">
+              Automatic OS-level packet proxying without root/VPN is not supported.
+              Sessions and turns appear dynamically as soon as an agent routes traffic through ctxins:
+              <br><br>
+              <div style="text-align: left; background: #161b22; border: 1px solid #30363d; border-radius: 6px; padding: 12px; font-family: monospace; font-size: 11px;">
+                <div style="color: #8b949e; margin-bottom: 4px;"># Launch agent directly through ctxins proxy:</div>
+                <div style="color: #58a6ff; margin-bottom: 8px;">ctxins run -- &lt;agent-command&gt;</div>
+                <div style="color: #8b949e; margin-bottom: 4px;"># Or export proxy environment in your agent terminal:</div>
+                <div style="color: #58a6ff; margin-bottom: 8px;">eval $(ctxins env)</div>
+                <div style="color: #8b949e; margin-bottom: 4px;"># To unset proxy environment variables when finished:</div>
+                <div style="color: #e3b341;">eval $(ctxins env --unset)</div>
+              </div>
+            </div>
           </td>
         </tr>
       `;

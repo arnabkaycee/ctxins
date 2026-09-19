@@ -88,7 +88,13 @@ class SessionsPanelWidget(Widget):
         sessions = self.state.available_sessions
         if not sessions:
             ol.add_option(
-                Option(Text.from_markup("[dim italic](Scanning for agent processes...)[/]"), disabled=True)
+                Option(Text.from_markup("[dim italic](Waiting for agent traffic on :8080...)[/]"), disabled=True)
+            )
+            ol.add_option(
+                Option(Text.from_markup("[dim]Run: [bold #58a6ff]ctxins run -- <agent>[/][/]"), disabled=True)
+            )
+            ol.add_option(
+                Option(Text.from_markup("[dim]Or:  [bold #58a6ff]eval $(ctxins env)[/][/]"), disabled=True)
             )
             return
 

@@ -81,10 +81,22 @@ class TurnTimelineWidget(Widget):
                 Option(Text.from_markup("[dim italic](No LLM turns captured yet)[/]"), disabled=True)
             )
             ol.add_option(
-                Option(Text.from_markup("[dim]Turns will appear here as your agent makes requests.[/]"), disabled=True)
+                Option(Text.from_markup("[bold #e3b341]Notice: Unproxied requests are NOT auto-detected.[/]"), disabled=True)
             )
             ol.add_option(
-                Option(Text.from_markup("[dim]Proxy listening on :8080. Press [c] for env exports.[/]"), disabled=True)
+                Option(Text.from_markup("[dim]OS cannot auto-route traffic without root/VPN.[/]"), disabled=True)
+            )
+            ol.add_option(
+                Option(Text.from_markup("[dim]To capture traffic, launch agent via proxy:[/]"), disabled=True)
+            )
+            ol.add_option(
+                Option(Text.from_markup("[bold #58a6ff]  ctxins run -- <agent>[/]"), disabled=True)
+            )
+            ol.add_option(
+                Option(Text.from_markup("[dim]or eval: [bold #58a6ff]eval $(ctxins env)[/][/]"), disabled=True)
+            )
+            ol.add_option(
+                Option(Text.from_markup("[dim]Press [c] to copy env, [u] to unset env.[/]"), disabled=True)
             )
             return
 
