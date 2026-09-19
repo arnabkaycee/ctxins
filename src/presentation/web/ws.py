@@ -166,22 +166,28 @@ class WebSocketHub:
         async def _forward_events() -> None:
             if queue is None:
                 return
-            while True:
-                event = await queue.get()
-                try:
-                    client_sid = self._client_sessions.get(websocket)
-                    if (
-                        client_sid is None
-                        or not event.session_id
-                        or client_sid == event.session_id
-                    ):
-                        await websocket.send_json(event.to_dict())
-                finally:
-                    queue.task_done()
+            try:
+                while True:
+                    event = await queue.get()
+                    try:
+                        client_sid = self._client_sessions.get(websocket)
+                        if (
+                            client_sid is None
+                            or not event.session_id
+                            or client_sid == event.session_id
+                        ):
+                            await websocket.send_json(event.to_dict())
+                    finally:
+                        queue.task_done()
+            except (WebSocketDisconnect, RuntimeError, asyncio.CancelledError):
+                pass
 
         async def _listen_incoming() -> None:
-            while True:
-                await websocket.receive_text()
+            try:
+                while True:
+                    await websocket.receive_text()
+            except (WebSocketDisconnect, RuntimeError, asyncio.CancelledError):
+                pass
 
         try:
             if queue is not None:
@@ -193,6 +199,9 @@ class WebSocketHub:
                 )
                 for task in pending:
                     task.cancel()
+                for task in done:
+                    if not task.cancelled():
+                        task.exception()
             else:
                 await _listen_incoming()
         except (WebSocketDisconnect, RuntimeError, asyncio.CancelledError):

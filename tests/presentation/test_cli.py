@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import time
 from typing import Any
 from unittest.mock import MagicMock, patch
@@ -274,6 +275,33 @@ def test_run_with_harness_tmux_split(monkeypatch: pytest.MonkeyPatch):
         tmux_call = mock_run.call_args[0][0]
         assert tmux_call[0] == "tmux"
         assert tmux_call[1] == "split-window"
+
+
+@pytest.mark.asyncio
+async def test_shutdown_uvicorn_graceful() -> None:
+    """Verify _shutdown_uvicorn sets should_exit and completes task without errors."""
+    from src.cli import _shutdown_uvicorn
+
+    mock_server = MagicMock()
+    mock_server.should_exit = False
+
+    async def _dummy_serve() -> None:
+        while not mock_server.should_exit:
+            await asyncio.sleep(0.01)
+
+    task = asyncio.create_task(_dummy_serve())
+    await _shutdown_uvicorn(mock_server, task)
+    assert mock_server.should_exit is True
+    assert task.done()
+
+
+@pytest.mark.asyncio
+async def test_shutdown_uvicorn_handles_none() -> None:
+    """Verify _shutdown_uvicorn handles None parameters safely."""
+    from src.cli import _shutdown_uvicorn
+
+    await _shutdown_uvicorn(None, None)
+
 
 
 

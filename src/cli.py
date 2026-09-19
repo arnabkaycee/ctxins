@@ -77,6 +77,24 @@ def run_env(proxy_port: int = DEFAULT_PROXY_PORT, as_json: bool = False) -> None
             print(f'export {k}="{v}"')
 
 
+async def _shutdown_uvicorn(
+    server: Optional[Any], task: Optional[asyncio.Task[Any]]
+) -> None:
+    """Gracefully shutdown background uvicorn server and task without CancelledError noise."""
+    if server is not None:
+        server.should_exit = True
+    if task is not None and not task.done():
+        try:
+            await asyncio.wait_for(task, timeout=2.0)
+        except (asyncio.CancelledError, asyncio.TimeoutError, Exception):
+            task.cancel()
+            try:
+                await task
+            except (asyncio.CancelledError, Exception):
+                pass
+
+
+
 class CorePipelineBridge:
     """Bridges Core UDS telemetry ingestion to PresentationBroadcaster and SessionStore."""
 
@@ -104,6 +122,15 @@ class CorePipelineBridge:
 
         if envelope.event_type == WireEventType.REQUEST_INITIATED:
             existing_turns = self.store.get_session(session_id) or []
+            harness = (
+                envelope.payload.get("client_metadata", {}).get("harness")
+                or envelope.payload.get("harness")
+                or "unknown"
+            )
+            agent_info = (
+                envelope.payload.get("client_metadata", {}).get("agent")
+                or envelope.payload.get("agent")
+            )
             if len(existing_turns) == 0:
                 self.broadcaster.publish_nowait(
                     UIEvent(
@@ -114,6 +141,9 @@ class CorePipelineBridge:
                             "sessionId": session_id,
                             "model": envelope.payload.get("model", "unknown"),
                             "provider": envelope.payload.get("provider", "unknown"),
+                            "agentHarness": harness,
+                            "harness": harness,
+                            "agent": agent_info,
                         },
                     )
                 )
@@ -324,6 +354,7 @@ def run_tui(
     async def _start_and_run() -> None:
         await server.start()
         uvi_task: Optional[asyncio.Task[Any]] = None
+        uvi_server: Optional[Any] = None
         actual_web_port = find_available_port(web_port)
         if not no_web:
             try:
@@ -348,12 +379,7 @@ def run_tui(
             )
             await app.run_async()
         finally:
-            if uvi_task is not None and not uvi_task.done():
-                uvi_task.cancel()
-                try:
-                    await uvi_task
-                except asyncio.CancelledError:
-                    pass
+            await _shutdown_uvicorn(uvi_server, uvi_task)
             if mitm_proc is not None and mitm_proc.poll() is None:
                 mitm_proc.terminate()
                 try:
@@ -389,12 +415,15 @@ def run_web(
 
     async def _run_web_pipeline() -> None:
         await server.start()
+        uvi_server: Optional[Any] = None
         try:
             web_app = create_app(store=bridge.store, broadcaster=bridge.broadcaster)
             config = uvicorn.Config(app=web_app, host=host, port=actual_web_port, log_level="warning")
             uvi_server = uvicorn.Server(config)
             await uvi_server.serve()
         finally:
+            if uvi_server is not None:
+                uvi_server.should_exit = True
             if mitm_proc is not None and mitm_proc.poll() is None:
                 mitm_proc.terminate()
                 try:
@@ -486,6 +515,7 @@ def run_with_harness(
             target_port=target_port,
         )
         uvi_task: Optional[asyncio.Task[Any]] = None
+        uvi_server: Optional[Any] = None
         if not no_web:
             try:
                 import uvicorn
@@ -542,12 +572,7 @@ def run_with_harness(
                     harness_proc.wait(timeout=2.0)
                 except subprocess.TimeoutExpired:
                     harness_proc.kill()
-            if uvi_task is not None and not uvi_task.done():
-                uvi_task.cancel()
-                try:
-                    await uvi_task
-                except asyncio.CancelledError:
-                    pass
+            await _shutdown_uvicorn(uvi_server, uvi_task)
             if mitm_proc is not None and mitm_proc.poll() is None:
                 mitm_proc.terminate()
                 try:
