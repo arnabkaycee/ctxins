@@ -85,8 +85,12 @@ class JsoncExporter:
 
         summary = PollutionScorer.calculate_summary(turns)
 
+        detected_harness = "claude-code"
+        if first_turn and hasattr(first_turn, "metadata") and isinstance(first_turn.metadata, dict):
+            detected_harness = first_turn.metadata.get("harness") or first_turn.metadata.get("agent", {}).get("name", "claude-code")
+
         client_info = client_metadata or {
-            "harness": "claude-code",
+            "harness": detected_harness,
             "version": "1.0.0",
             "source": "uds-interceptor",
         }
@@ -224,6 +228,7 @@ class JsoncExporter:
         turns = store.get_session(session_id)
         if turns is None:
             raise ValueError(f"Session '{session_id}' not found in SessionStore.")
+        store.mark_exported(session_id)
         return cls.export_session(
             turns=turns,
             session_id=session_id,

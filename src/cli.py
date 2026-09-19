@@ -270,6 +270,47 @@ class CorePipelineBridge:
                 )
             )
 
+        elif envelope.event_type == WireEventType.SESSION_DISCONNECTED:
+            erased = self.store.handle_disconnect(session_id)
+            if erased:
+                logger.info(
+                    "Session '%s' disconnected without JSONC export. Erased all in-memory session data.",
+                    session_id,
+                )
+                self.broadcaster.publish_nowait(
+                    UIEvent(
+                        event_type=UIEventType.SESSION_ERASED,
+                        session_id=session_id,
+                        timestamp=envelope.timestamp,
+                        payload={
+                            "sessionId": session_id,
+                            "reason": "unexported_disconnect",
+                            "message": f"Session '{session_id}' disconnected without JSONC export; session data erased.",
+                        },
+                    )
+                )
+            else:
+                logger.info(
+                    "Session '%s' disconnected. Preserved because it was exported to JSONC.",
+                    session_id,
+                )
+                self.broadcaster.publish_nowait(
+                    UIEvent(
+                        event_type=UIEventType.SESSION_DISCONNECTED,
+                        session_id=session_id,
+                        timestamp=envelope.timestamp,
+                        payload={
+                            "sessionId": session_id,
+                            "preserved": True,
+                            "message": f"Session '{session_id}' disconnected. Preserved because it was exported to JSONC.",
+                        },
+                    )
+                )
+
+        elif envelope.event_type == WireEventType.SESSION_EXPORTED:
+            self.store.mark_exported(session_id)
+            logger.info("Session '%s' marked as exported via JSONC.", session_id)
+
 
 def spawn_mitmproxy(
     proxy_port: int = DEFAULT_PROXY_PORT,

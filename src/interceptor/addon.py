@@ -14,6 +14,10 @@ import uuid
 from typing import Any, Dict, List, Optional
 
 from src.interceptor.correlation.tracker import ActiveTurnTracker
+from src.interceptor.detection.process_detector import (
+    AgentIdentity,
+    ProcessDetector,
+)
 from src.interceptor.egress.ring_buffer import BoundedRingBuffer
 from src.interceptor.egress.uds_client import UDSClient
 from src.interceptor.filter.provider_router import ProviderRouter
@@ -62,6 +66,7 @@ class CtxinsAddon:
         socket_path: Optional[str] = None,
         buffer_capacity: int = 1000,
         default_session_id: Optional[str] = None,
+        process_detector: Optional[ProcessDetector] = None,
         auto_start: bool = False,
     ) -> None:
         self.buffer = ring_buffer if ring_buffer is not None else BoundedRingBuffer(capacity=buffer_capacity)
@@ -79,6 +84,14 @@ class CtxinsAddon:
 
         self.router = router if router is not None else ProviderRouter()
         self.sanitizer = sanitizer if sanitizer is not None else HeaderSanitizer()
+        self.process_detector = (
+            process_detector if process_detector is not None else ProcessDetector()
+        )
+
+        # Connection and session lifecycle tracking for auto-detection and erasure
+        self._client_to_session: Dict[tuple[str, int], str] = {}
+        self._session_to_clients: Dict[str, set[tuple[str, int]]] = {}
+        self._session_agents: Dict[str, AgentIdentity] = {}
 
         # Thread-safe chunk tee queue consumed by background worker or drained on response
         self.chunk_queue: queue.Queue[tuple[str, bytes, float]] = queue.Queue(maxsize=10000)
@@ -532,18 +545,43 @@ class CtxinsAddon:
             if is_gateway or target_env:
                 self._rewrite_gateway_request(flow, provider, target_env)
 
+            client_conn = getattr(flow, "client_conn", None)
+            peer = getattr(client_conn, "peername", None)
+            client_ip, client_port = (peer[0], peer[1]) if (peer and len(peer) >= 2) else ("127.0.0.1", 0)
+            raw_headers = dict(req.headers) if hasattr(req, "headers") else {}
+
+            # Identify client process FIRST before intercepting traffic
+            agent_identity = self.process_detector.identify_client(
+                client_ip, client_port, headers=raw_headers
+            )
+
             session_id, correlation_id = self._extract_ids(flow)
+
+            # Format default session_id with detected agent name and pid
+            if session_id == self.default_session_id and agent_identity.is_known:
+                session_id = f"sess_{agent_identity.name}_{agent_identity.pid or uuid.uuid4().hex[:6]}"
+
+            # Associate client connection with session
+            if client_port > 0:
+                peer_tuple = (client_ip, client_port)
+                self._client_to_session[peer_tuple] = session_id
+                self._session_to_clients.setdefault(session_id, set()).add(peer_tuple)
+                self._session_agents[session_id] = agent_identity
 
             if not hasattr(flow, "metadata"):
                 flow.metadata = {}
             flow.metadata["ctxins_intercepted"] = True
             flow.metadata["ctxins_correlation_id"] = correlation_id
             flow.metadata["ctxins_provider"] = provider
+            flow.metadata["ctxins_agent"] = agent_identity
 
             timing = TimingMetrics(request_dispatched_at=time.monotonic())
-            raw_headers = dict(req.headers) if hasattr(req, "headers") else {}
             sanitized = self.sanitizer.sanitize_headers(raw_headers)
             client_meta = self._extract_client_metadata(flow)
+            client_meta["agent"] = agent_identity.to_dict()
+            client_meta["harness"] = agent_identity.name
+            if agent_identity.process_info:
+                client_meta["process"] = agent_identity.process_info.to_dict()
 
             turn = ActiveTurnContext(
                 correlation_id=correlation_id,
@@ -605,6 +643,7 @@ class CtxinsAddon:
             if req is not None and hasattr(req, "headers"):
                 turn.sanitized_headers = self.sanitizer.sanitize_headers(dict(req.headers))
 
+            agent_identity = metadata.get("ctxins_agent")
             init_envelope = WireEnvelope(
                 event_type=WireEventType.REQUEST_INITIATED,
                 correlation_id=turn.correlation_id,
@@ -618,6 +657,8 @@ class CtxinsAddon:
                     "request_payload": turn.request_payload,
                     "timing": turn.timing.to_dict() if turn.timing is not None else None,
                     "client_metadata": turn.client_metadata,
+                    "harness": agent_identity.name if agent_identity else turn.client_metadata.get("harness", "unknown"),
+                    "agent": agent_identity.to_dict() if agent_identity else turn.client_metadata.get("agent"),
                 },
             )
             self.emit_envelope(init_envelope)
@@ -737,6 +778,7 @@ class CtxinsAddon:
                             "_raw": resp.text if hasattr(resp, "text") else ""
                         }
 
+            agent_identity = metadata.get("ctxins_agent")
             completed_envelope = WireEnvelope(
                 event_type=WireEventType.TURN_COMPLETED,
                 correlation_id=turn.correlation_id,
@@ -756,6 +798,8 @@ class CtxinsAddon:
                     "timing": turn.timing.to_dict() if turn.timing is not None else None,
                     "stop_reason": stop_reason,
                     "client_metadata": turn.client_metadata,
+                    "harness": agent_identity.name if agent_identity else turn.client_metadata.get("harness", "unknown"),
+                    "agent": agent_identity.to_dict() if agent_identity else turn.client_metadata.get("agent"),
                 },
             )
             self.emit_envelope(completed_envelope)
@@ -795,10 +839,67 @@ class CtxinsAddon:
         except Exception as e:
             logger.error("Error in CtxinsAddon.error: %s", e, exc_info=True)
 
-    def client_disconnect(self, client: Any) -> None:
+    def client_connected(self, client: Any) -> None:
+        """Hook called by mitmproxy when a client connects."""
+        try:
+            peer = getattr(client, "peername", None)
+            if peer and isinstance(peer, (tuple, list)) and len(peer) >= 2:
+                client_ip, client_port = peer[0], peer[1]
+                agent_identity = self.process_detector.identify_client(client_ip, client_port)
+                logger.info(
+                    "Client connected from %s:%s - Identified process: %s (PID: %s, Agent: %s)",
+                    client_ip,
+                    client_port,
+                    agent_identity.command,
+                    agent_identity.pid,
+                    agent_identity.display_name,
+                )
+        except Exception as e:
+            logger.debug("Error in client_connected: %s", e)
+
+    def clientconnect(self, client: Any) -> None:
+        """Alias for client_connected."""
+        self.client_connected(client)
+
+    def client_disconnected(self, client: Any) -> None:
         """Hook called by mitmproxy when a client connection drops."""
-        # Mitmproxy dispatches flow-level error() hooks for active flows on client drop.
-        pass
+        try:
+            peer = getattr(client, "peername", None)
+            if peer and isinstance(peer, (tuple, list)) and len(peer) >= 2:
+                peer_tuple = (peer[0], peer[1])
+                session_id = self._client_to_session.pop(peer_tuple, None)
+                if session_id:
+                    client_set = self._session_to_clients.get(session_id)
+                    if client_set:
+                        client_set.discard(peer_tuple)
+                        if len(client_set) == 0:
+                            self._session_to_clients.pop(session_id, None)
+                            agent_id = self._session_agents.pop(session_id, None)
+                            disc_envelope = WireEnvelope(
+                                event_type=WireEventType.SESSION_DISCONNECTED,
+                                correlation_id=f"disc-{session_id}",
+                                session_id=session_id,
+                                timestamp=time.time(),
+                                payload={
+                                    "sessionId": session_id,
+                                    "peer": peer_tuple,
+                                    "agent": agent_id.to_dict() if agent_id else None,
+                                    "reason": "client_disconnected",
+                                },
+                            )
+                            self.emit_envelope(disc_envelope)
+                            logger.info(
+                                "Session '%s' client disconnected from %s:%s",
+                                session_id,
+                                peer[0],
+                                peer[1],
+                            )
+        except Exception as e:
+            logger.error("Error in CtxinsAddon.client_disconnected: %s", e, exc_info=True)
+
+    def clientdisconnect(self, client: Any) -> None:
+        """Alias for client_disconnected."""
+        self.client_disconnected(client)
 
 
 # Mitmproxy entrypoint

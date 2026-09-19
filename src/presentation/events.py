@@ -18,6 +18,8 @@ class UIEventType(str, Enum):
     VIOLATION_DETECTED = "violation_detected"
     SESSION_SUMMARY_UPDATED = "session_summary_updated"
     SESSION_ENDED = "session_ended"
+    SESSION_ERASED = "session_erased"
+    SESSION_DISCONNECTED = "session_disconnected"
 
 
 @dataclass(slots=True)

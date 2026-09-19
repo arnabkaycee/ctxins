@@ -28,6 +28,7 @@ class SessionStore:
         # Secondary indexes
         self._model_to_sessions: Dict[str, Set[str]] = {}
         self._violation_to_sessions: Dict[str, Set[str]] = {}
+        self._exported_sessions: Set[str] = set()
 
     def append_turn(
         self,
@@ -167,13 +168,36 @@ class SessionStore:
                 return True
             return False
 
+    def mark_exported(self, session_id: str) -> None:
+        """Mark a session as exported via JSONC."""
+        with self.lock:
+            self._exported_sessions.add(session_id)
+
+    def is_exported(self, session_id: str) -> bool:
+        """Check if a session was exported via JSONC."""
+        with self.lock:
+            return session_id in self._exported_sessions
+
+    def handle_disconnect(self, session_id: str) -> bool:
+        """Handle client disconnection.
+
+        If session was NOT exported via JSONC, erases all session data from store.
+        Returns True if erased, False if preserved (because it was exported).
+        """
+        with self.lock:
+            if not self.is_exported(session_id):
+                self.delete_session(session_id)
+                return True
+            return False
+
     def clear(self) -> None:
-        """Clear all sessions, graphs, and indexes."""
+        """Clear all sessions, graphs, indexes, and export records."""
         with self.lock:
             self.sessions.clear()
             self.graphs.clear()
             self._model_to_sessions.clear()
             self._violation_to_sessions.clear()
+            self._exported_sessions.clear()
 
     def _evict_session(self, session_id: str) -> None:
         """Internal helper to remove a session and purge its index references."""

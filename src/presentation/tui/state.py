@@ -39,6 +39,7 @@ class TUIState:
 
     # Context block inspection selection
     selected_block_index: int = 0
+    is_exported: bool = False
 
     def _find_or_create_turn(self, turn_index: int) -> Dict[str, Any]:
         """Find existing turn dict by turnIndex or insert a new one."""
@@ -264,6 +265,28 @@ class TUIState:
         elif etype == UIEventType.SESSION_ENDED:
             self.status = "Ended"
 
+        elif etype == UIEventType.SESSION_ERASED:
+            if event.session_id == self.session_id or not self.session_id:
+                self.turns.clear()
+                self.cumulative_violations.clear()
+                self.total_tokens = 0
+                self.input_tokens = 0
+                self.output_tokens = 0
+                self.cached_read_tokens = 0
+                self.cached_created_tokens = 0
+                self.cache_hit_ratio = 0.0
+                self.total_spend_usd = 0.0
+                self.wasted_spend_usd = 0.0
+                self.pollution_score = 0.0
+                self.selected_turn_index = 0
+                self.selected_block_id = None
+                self.status = "Erased (Unexported)"
+                self.is_exported = False
+
+        elif etype == UIEventType.SESSION_DISCONNECTED:
+            if event.session_id == self.session_id or not self.session_id:
+                self.status = "Disconnected (Exported)"
+
     def _normalize_violation(self, raw_v: Any, turn_idx: int) -> Dict[str, Any]:
         """Normalize raw violation object/dict into standard dictionary."""
         if hasattr(raw_v, "to_dict"):
@@ -424,4 +447,5 @@ class TUIState:
             out_path = Path(filepath)
 
         out_path.write_text(content, encoding="utf-8")
+        self.is_exported = True
         return out_path
