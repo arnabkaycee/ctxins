@@ -58,41 +58,23 @@ class ContextBreakdownWidget(Widget):
 
         turn = self.state.get_selected_turn()
         if not turn:
-            meta = self.state.sessions_metadata.get(self.state.session_id, {})
-            agent_dict = meta.get("agent") or {}
-            harness = self.state.agent_harness
-            if self.state.session_id and harness != "unknown":
-                title_widget.update(f"[2] DETECTED AGENT: {harness.upper()}")
-                card = Text()
-                card.append("● AGENT PROCESS IDENTIFIED\n\n", style="bold green")
-                card.append(" Harness:      ", style="dim")
-                card.append(f"{harness}\n", style="bold cyan")
-                card.append(" Session:      ", style="dim")
-                card.append(f"{self.state.session_id}\n", style="bold white")
-                pid = agent_dict.get("pid") or meta.get("pid")
-                if pid:
-                    card.append(" Process PID:  ", style="dim")
-                    card.append(f"{pid}\n", style="bold yellow")
-                cmd = agent_dict.get("command") or meta.get("command")
-                if cmd:
-                    card.append(" Command:      ", style="dim")
-                    card.append(f"{cmd}\n", style="white")
-                cwd = agent_dict.get("cwd") or meta.get("cwd")
-                if cwd:
-                    card.append(" Working Dir:  ", style="dim")
-                    card.append(f"{cwd}\n", style="dim")
-                card.append(" Status:       ", style="dim")
-                card.append("Pre-intercepted; awaiting traffic\n\n", style="bold green")
-                card.append("──────────────────────────────────────────\n", style="dim")
-                card.append("Traffic Routing to Proxy:\n", style="bold #58a6ff")
-                card.append(" export HTTP_PROXY=http://127.0.0.1:8080\n", style="white")
-                card.append(" export HTTPS_PROXY=http://127.0.0.1:8080\n", style="white")
-                card.append("(Press [c] to copy export commands)\n", style="dim italic")
-                content_widget.update(card)
-                return
-
             title_widget.update("[2] CONTEXT COMPOSITION")
-            content_widget.update(Text.from_markup("[dim]No turn selected or no data available.[/dim]"))
+            card = Text()
+            card.append("AWAITING FIRST TURN TELEMETRY\n\n", style="bold #58a6ff")
+            card.append("This pane displays granular context & prompt cache metrics:\n\n", style="dim")
+            card.append("  • System Prompt & Developer instructions\n", style="cyan")
+            card.append("  • Tool Schemas & Function definitions\n", style="magenta")
+            card.append("  • Conversation History & User messages\n", style="green")
+            card.append("  • Tool Results & Execution outputs\n", style="yellow")
+            card.append("  • Assistant Output tokens\n", style="blue")
+            card.append("  • Prompt Cache Read & Creation tokens\n\n", style="bold green")
+            card.append("AST block inspector (with [n]/[p] navigation) activates on turn completion.\n\n", style="dim")
+            card.append("──────────────────────────────────────────\n", style="dim")
+            card.append("Traffic Routing to Proxy:\n", style="bold #58a6ff")
+            card.append(" export HTTP_PROXY=http://127.0.0.1:8080\n", style="white")
+            card.append(" export HTTPS_PROXY=http://127.0.0.1:8080\n", style="white")
+            card.append("(Press [c] to copy export commands)\n", style="dim italic")
+            content_widget.update(card)
             return
 
         turn_idx = turn.get("turnIndex", self.state.selected_turn_index)

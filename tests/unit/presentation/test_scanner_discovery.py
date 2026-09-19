@@ -271,23 +271,29 @@ async def test_tui_renders_detected_agent_details_when_no_turns() -> None:
     async with app.run_test() as pilot:
         await pilot.pause(0.1)
 
-        # 1. Timeline pane shows detected agent
-        tl = app.query_one(TurnTimelineWidget)
-        ol = tl.query_one("#turns-option-list", OptionList)
-        assert ol.option_count >= 2
-        first_opt = ol.get_option_at_index(1)
+        # 1. Dedicated Sessions panel shows detected agent
+        from src.presentation.tui.widgets.sessions_panel import SessionsPanelWidget
+        sp = app.query_one(SessionsPanelWidget)
+        ol = sp.query_one("#sessions-option-list", OptionList)
+        assert ol.option_count >= 1
+        first_opt = ol.get_option_at_index(0)
         assert "sess_agy_44444" in str(first_opt.prompt)
+        assert "44444" in str(first_opt.prompt)
+        assert "agy" in str(first_opt.prompt)
 
-        # 2. Context breakdown pane shows agent process card
+        # 2. Timeline pane shows awaiting turns
+        tl = app.query_one(TurnTimelineWidget)
+        tl_ol = tl.query_one("#turns-option-list", OptionList)
+        assert tl_ol.option_count >= 1
+        assert "sess_agy_44444" in str(tl_ol.get_option_at_index(0).prompt)
+
+        # 3. Context breakdown pane shows awaiting first turn telemetry
         bd = app.query_one(ContextBreakdownWidget)
         bd_content = bd.query_one("#breakdown-content", Static).render()
-        assert "AGENT PROCESS IDENTIFIED" in str(bd_content)
-        assert "44444" in str(bd_content)
-        assert "agy" in str(bd_content)
+        assert "AWAITING FIRST TURN" in str(bd_content)
 
-        # 3. Recommendations pane shows proactive scanner summary
+        # 4. Recommendations pane shows heuristics rules preview
         rec = app.query_one(RecommendationsWidget)
         rec_content = rec.query_one("#recommendations-content", Static).render()
-        assert "PROACTIVE SCANNER" in str(rec_content)
-        assert "sess_agy_44444" in str(rec_content)
+        assert "HEURISTIC RECOMMENDATIONS" in str(rec_content)
 

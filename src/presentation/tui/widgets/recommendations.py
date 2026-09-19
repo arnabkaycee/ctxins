@@ -64,25 +64,13 @@ class RecommendationsWidget(Widget):
         violations = self.state.get_violations_for_selected_turn()
         if not violations:
             msg = Text()
-            if not self.state.turns and self.state.available_sessions:
-                msg.append("● ZERO-HOOK PROACTIVE SCANNER\n\n", style="bold cyan")
-                msg.append(f"Auto-detected {len(self.state.available_sessions)} active agent(s) on macOS:\n\n", style="white")
-                for sid in self.state.available_sessions:
-                    meta = self.state.sessions_metadata.get(sid, {})
-                    h = meta.get("agentHarness", meta.get("harness", "agent"))
-                    ag = meta.get("agent") or {}
-                    p = ag.get("pid")
-                    p_info = f" (PID {p})" if p else ""
-                    is_active = (sid == self.state.session_id)
-                    marker = "▶" if is_active else "○"
-                    style = "bold green" if is_active else "dim"
-                    active_tag = " [ACTIVE]" if is_active else ""
-                    msg.append(f" {marker} {sid} [{h}]{p_info}{active_tag}\n", style=style)
-                msg.append("\nLifecycle & Erasure Policy:\n", style="bold #8b949e")
-                msg.append("• Process identified before intercepting traffic.\n", style="dim")
-                msg.append("• On disconnect, unexported sessions are automatically erased from memory.\n", style="dim")
-                msg.append("• Press [e] to export to .jsonc to preserve data.\n", style="dim")
-                msg.append("• Press [s] to open session picker or switch agent.\n", style="bold #58a6ff")
+            if not self.state.turns:
+                msg.append("HEURISTIC RECOMMENDATIONS & WASTE ANALYSIS\n\n", style="bold #58a6ff")
+                msg.append("ctxins continuously evaluates context hygiene rules:\n\n", style="dim")
+                msg.append("  • CTX-001: Stale Tool Output persistence\n", style="yellow")
+                msg.append("  • CTX-002: Tool Schema bloat & unused definitions\n", style="yellow")
+                msg.append("  • CACHE-001: Prompt cache prefix shifts & invalidations\n\n", style="yellow")
+                msg.append("Actionable recommendations, waste calculations ($), and\nremediation suggestions will appear here once turns execute.\n", style="dim")
             else:
                 msg.append("\n✓ No rule violations detected.\n", style=f"bold {COLOR_SUCCESS}")
                 msg.append("Context composition is clean and optimal.", style="dim")

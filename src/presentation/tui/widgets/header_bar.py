@@ -24,7 +24,8 @@ class HeaderBarWidget(Widget):
 
     DEFAULT_CSS = """
     HeaderBarWidget {
-        height: 4;
+        height: auto;
+        min-height: 3;
         dock: top;
         background: #0d1117;
         border-bottom: solid #30363d;

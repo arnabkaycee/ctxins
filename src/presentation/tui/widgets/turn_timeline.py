@@ -73,33 +73,19 @@ class TurnTimelineWidget(Widget):
 
         ol.clear_options()
         if not self.state.turns:
-            if self.state.available_sessions:
-                ol.add_option(
-                    Option(
-                        Text.from_markup(f"[bold cyan]── DETECTED AGENTS ({len(self.state.available_sessions)}) ──[/]"),
-                        disabled=True,
-                    )
-                )
-                for sid in self.state.available_sessions:
-                    meta = self.state.sessions_metadata.get(sid, {})
-                    harness = meta.get("agentHarness", meta.get("harness", "agent"))
-                    agent_dict = meta.get("agent") or {}
-                    pid = agent_dict.get("pid") or meta.get("pid")
-                    pid_str = f"PID:{pid} " if pid else ""
-                    is_active = (sid == self.state.session_id)
-                    if is_active:
-                        markup = f"[bold green]▶ ACTIVE:[/] [bold white]{sid}[/] [cyan]\\[{harness}\\][/] [dim]{pid_str}[/]"
-                    else:
-                        markup = f"  [dim]○ SWITCH:[/] [white]{sid}[/] [dim]\\[{harness}\\] {pid_str}[/]"
-                    ol.add_option(Option(Text.from_markup(markup), id=f"sess:{sid}"))
-                ol.add_option(
-                    Option(
-                        Text.from_markup("[dim italic](Press Enter to select agent │ Proxy listening on :8080)[/]"),
-                        disabled=True,
-                    )
-                )
-            else:
-                ol.add_option(Option(Text.from_markup("[dim](No turns yet; scanning for agents...)[/]"), disabled=True))
+            sid = self.state.session_id or "default"
+            ol.add_option(
+                Option(Text.from_markup(f"[dim bold]Session: {sid}[/]"), disabled=True)
+            )
+            ol.add_option(
+                Option(Text.from_markup("[dim italic](No LLM turns captured yet)[/]"), disabled=True)
+            )
+            ol.add_option(
+                Option(Text.from_markup("[dim]Turns will appear here as your agent makes requests.[/]"), disabled=True)
+            )
+            ol.add_option(
+                Option(Text.from_markup("[dim]Proxy listening on :8080. Press [c] for env exports.[/]"), disabled=True)
+            )
             return
 
         for turn in self.state.turns:
