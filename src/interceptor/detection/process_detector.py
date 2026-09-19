@@ -85,14 +85,11 @@ class ProcessDetector:
         return proc
 
     def _lookup_via_lsof(self, port: int) -> Optional[ProcessInfo]:
-        """Query lsof to find PID and command associated with a TCP port."""
+        """Lookup PID and process command for a local port via lsof."""
         if not shutil.which("lsof"):
             return None
 
         try:
-            # -nP: no host/port name resolution (fast)
-            # -iTCP:<port>: filter by TCP port
-            # -F pc: output machine-readable pid and command lines
             out = subprocess.check_output(
                 ["lsof", "-nP", f"-iTCP:{port}", "-F", "pc"],
                 stderr=subprocess.DEVNULL,
@@ -101,30 +98,44 @@ class ProcessDetector:
         except (subprocess.SubprocessError, OSError):
             return None
 
-        pid: Optional[int] = None
-        comm: Optional[str] = None
+        candidates: List[Tuple[int, str]] = []
+        current_pid: Optional[int] = None
+        my_pid = os.getpid()
 
         for line in out.splitlines():
             if line.startswith("p") and len(line) > 1:
                 try:
-                    pid = int(line[1:])
+                    current_pid = int(line[1:])
                 except ValueError:
-                    pass
-            elif line.startswith("c") and len(line) > 1:
+                    current_pid = None
+            elif line.startswith("c") and len(line) > 1 and current_pid is not None:
                 comm = line[1:].strip()
+                if current_pid != my_pid:
+                    candidates.append((current_pid, comm))
 
-        if pid is None:
+        if not candidates:
             return None
 
-        cmdline = self._get_cmdline_for_pid(pid) or comm or f"pid_{pid}"
-        cwd = self._get_cwd_for_pid(pid)
+        # Build candidate ProcessInfo objects excluding proxy itself
+        procs: List[ProcessInfo] = []
+        for pid, comm in candidates:
+            cmdline = self._get_cmdline_for_pid(pid) or comm or f"pid_{pid}"
+            cmd_lower = cmdline.lower()
+            if any(skip in cmd_lower for skip in ("mitmdump", "mitmproxy", "ctxins")):
+                continue
+            cwd = self._get_cwd_for_pid(pid)
+            procs.append(ProcessInfo(pid=pid, name=comm, cmdline=cmdline, cwd=cwd))
 
-        return ProcessInfo(
-            pid=pid,
-            name=comm or "unknown",
-            cmdline=cmdline,
-            cwd=cwd,
-        )
+        if not procs:
+            return None
+
+        # Prefer candidate that matches a known agent
+        for p in procs:
+            ident = self.identify_from_process(p)
+            if ident.is_known:
+                return p
+
+        return procs[0]
 
     def _get_cmdline_for_pid(self, pid: int) -> Optional[str]:
         """Fetch full command line for a PID using ps or /proc."""

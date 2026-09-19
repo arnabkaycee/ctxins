@@ -21,6 +21,7 @@ from src.presentation.tui.widgets.help_modal import HelpModalScreen
 from src.presentation.tui.widgets.hook_modal import HookModalScreen, copy_to_clipboard
 from src.presentation.tui.widgets.recommendations import RecommendationsWidget
 from src.presentation.tui.widgets.session_modal import SessionModalScreen
+from src.presentation.tui.widgets.sessions_panel import SessionChosen, SessionsPanelWidget
 from src.presentation.tui.widgets.turn_timeline import (
     SessionSelected,
     TurnSelected,
@@ -90,9 +91,14 @@ class CtxinsTUIApp(App[None]):
                 self.state.provider = meta.get("provider", self.state.provider)
                 self.state.status = meta.get("status", "Idle")
 
+        if self.state.session_id and self.store is not None:
+            self.state._load_turns_from_store(self.store, self.state.session_id)
+            self.selected_turn_index = self.state.selected_turn_index
+
     def compose(self) -> ComposeResult:
         yield HeaderBarWidget(self.state, proxy_port=self.proxy_port, web_url=self.web_url)
         with Horizontal(id="main-container"):
+            yield SessionsPanelWidget(self.state, id="sessions-pane")
             yield TurnTimelineWidget(self.state, id="timeline-pane")
             yield ContextBreakdownWidget(self.state, id="breakdown-pane")
             yield RecommendationsWidget(self.state, id="recommendations-pane")
@@ -119,6 +125,13 @@ class CtxinsTUIApp(App[None]):
 
     def _handle_ui_event(self, event: UIEvent) -> None:
         """Process incoming event, updating state and refreshing widgets."""
+        if self.store is not None:
+            for sid in self.store.list_sessions():
+                if sid not in self.state.available_sessions:
+                    self.state.available_sessions.append(sid)
+                if sid not in self.state.sessions_metadata:
+                    meta = self.store.get_session_metadata(sid) or {}
+                    self.state.sessions_metadata[sid] = dict(meta)
         self.state.apply_event(event)
         self._refresh_all_widgets()
 
@@ -172,7 +185,15 @@ class CtxinsTUIApp(App[None]):
 
     def on_session_selected(self, message: SessionSelected) -> None:
         """Handle session selection emitted from timeline."""
-        self.state.switch_session(message.session_id)
+        self.state.switch_session(message.session_id, store=self.store)
+        self.selected_turn_index = self.state.selected_turn_index
+        self._refresh_all_widgets()
+        self.notify(f"Active Session: {message.session_id} ({self.state.agent_harness})")
+
+    def on_session_chosen(self, message: SessionChosen) -> None:
+        """Handle session selection from the dedicated sessions panel."""
+        self.state.switch_session(message.session_id, store=self.store)
+        self.selected_turn_index = self.state.selected_turn_index
         self._refresh_all_widgets()
         self.notify(f"Active Session: {message.session_id} ({self.state.agent_harness})")
 
@@ -180,6 +201,8 @@ class CtxinsTUIApp(App[None]):
         """Display interactive detected agent sessions modal."""
         def _on_modal_dismiss(chosen_sid: Optional[str]) -> None:
             if chosen_sid:
+                self.state.switch_session(chosen_sid, store=self.store)
+                self.selected_turn_index = self.state.selected_turn_index
                 self._refresh_all_widgets()
                 self.notify(f"Active Session: {chosen_sid} ({self.state.agent_harness})")
 
@@ -187,8 +210,9 @@ class CtxinsTUIApp(App[None]):
 
     def action_switch_session(self) -> None:
         """Cycle to next active or auto-detected agent session."""
-        next_sid = self.state.switch_session()
+        next_sid = self.state.switch_session(store=self.store)
         if next_sid:
+            self.selected_turn_index = self.state.selected_turn_index
             harness = self.state.agent_harness
             self._refresh_all_widgets()
             self.notify(f"Active Session: {next_sid} ({harness})")
@@ -214,6 +238,10 @@ class CtxinsTUIApp(App[None]):
         """Refresh all top-level widgets upon state mutations."""
         try:
             self.query_one(HeaderBarWidget).update_from_state()
+        except Exception:
+            pass
+        try:
+            self.query_one(SessionsPanelWidget).update_from_state()
         except Exception:
             pass
         try:

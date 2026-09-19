@@ -73,20 +73,30 @@ Screen {
     layout: horizontal;
 }
 
+#sessions-pane {
+    width: 24%;
+    min-width: 22;
+    border-right: solid #30363d;
+    height: 100%;
+}
+
 #timeline-pane {
-    width: 25%;
+    width: 22%;
+    min-width: 20;
     border-right: solid #30363d;
     height: 100%;
 }
 
 #breakdown-pane {
-    width: 45%;
+    width: 32%;
+    min-width: 28;
     border-right: solid #30363d;
     height: 100%;
 }
 
 #recommendations-pane {
-    width: 30%;
+    width: 22%;
+    min-width: 20;
     height: 100%;
 }
 

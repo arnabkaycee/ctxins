@@ -104,6 +104,12 @@ class SessionModalScreen(ModalScreen[str]):
             )
             ol.add_option(Option(Text.from_markup(markup), id=sid))
 
+        if self.state.session_id in self.state.available_sessions:
+            ol.highlighted = self.state.available_sessions.index(self.state.session_id)
+        elif ol.option_count > 0:
+            ol.highlighted = 0
+        ol.focus()
+
     def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
         if event.option and not event.option.disabled and event.option.id:
             selected_sid = str(event.option.id)

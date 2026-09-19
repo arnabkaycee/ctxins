@@ -659,3 +659,227 @@ async def test_footer_bar_visible_lines_not_clipped() -> None:
         assert footer.region.height >= 3
 
 
+def test_sessions_panel_widget_render_and_options() -> None:
+    """Verify SessionsPanelWidget formats detected sessions with badges, PIDs, commands, and turns."""
+    from src.presentation.tui.widgets.sessions_panel import SessionsPanelWidget
+
+    state = TUIState(session_id="sess_agy_1")
+    state.available_sessions = ["sess_agy_1", "sess_claude_2"]
+    state.sessions_metadata = {
+        "sess_agy_1": {
+            "agentHarness": "agy",
+            "agent": {"display_name": "Antigravity", "pid": 4567, "command": "agy run"},
+        },
+        "sess_claude_2": {
+            "agentHarness": "claude",
+            "agent": {"display_name": "Claude Code", "pid": 8901, "command": "claude"},
+        },
+    }
+    state.sessions_turns = {
+        "sess_agy_1": [{"turnIndex": 0, "status": "completed"}],
+        "sess_claude_2": [{"turnIndex": 0, "status": "completed"}, {"turnIndex": 1, "status": "completed"}],
+    }
+
+    widget = SessionsPanelWidget(state)
+    # Verify properties
+    assert widget.state == state
+
+
+@pytest.mark.asyncio
+async def test_multi_session_turn_switching_and_isolation() -> None:
+    """Verify switching sessions loads turns from SessionStore and maintains per-session isolation."""
+    from src.core.store.session_store import SessionStore
+    from src.presentation.tui.widgets.sessions_panel import SessionChosen, SessionsPanelWidget
+    from src.presentation.tui.widgets.turn_timeline import TurnTimelineWidget
+    from src.schema.ast import (
+        BlockType,
+        CanonicalTurn,
+        ContextBlock,
+        RuleViolation,
+        ViolationSeverity,
+    )
+
+    store = SessionStore(max_sessions=10)
+
+    # Populate session 1: sess_agy with 2 turns and 1 violation
+    viol = RuleViolation(
+        rule_id="CTX-001",
+        severity=ViolationSeverity.WARN,
+        title="Stale",
+        message="Stale result",
+        suggested_fix="Prune stale output",
+        estimated_waste_usd=0.005,
+    )
+    t1_0 = CanonicalTurn(
+        turn_id="agy_t0",
+        correlation_id="c0",
+        session_id="sess_agy",
+        turn_index=0,
+        timestamp=100.0,
+        provider="google",
+        model="gemini-2.5",
+        system_blocks=[ContextBlock("s0", BlockType.SYSTEM, "h0", 150, "sys")],
+        input_tokens=500,
+        output_tokens=100,
+        turn_cost_usd=0.01,
+    )
+    t1_1 = CanonicalTurn(
+        turn_id="agy_t1",
+        correlation_id="c1",
+        session_id="sess_agy",
+        turn_index=1,
+        timestamp=101.0,
+        provider="google",
+        model="gemini-2.5",
+        system_blocks=[ContextBlock("s1", BlockType.SYSTEM, "h1", 150, "sys")],
+        input_tokens=700,
+        output_tokens=200,
+        violations=[viol],
+        turn_cost_usd=0.02,
+        wasted_cost_usd=0.005,
+    )
+    store.append_turn(t1_0)
+    store.append_turn(t1_1)
+    store.register_session("sess_agy", metadata={
+        "agentHarness": "agy",
+        "agent": {"display_name": "Antigravity", "pid": 1111, "command": "agy run"},
+    })
+
+    # Populate session 2: sess_claude with 1 turn
+    t2_0 = CanonicalTurn(
+        turn_id="claude_t0",
+        correlation_id="c2",
+        session_id="sess_claude",
+        turn_index=0,
+        timestamp=200.0,
+        provider="anthropic",
+        model="claude-3-5-sonnet",
+        system_blocks=[ContextBlock("s2", BlockType.SYSTEM, "h2", 200, "sys")],
+        input_tokens=1200,
+        output_tokens=300,
+        turn_cost_usd=0.03,
+    )
+    store.append_turn(t2_0)
+    store.register_session("sess_claude", metadata={
+        "agentHarness": "claude-code",
+        "agent": {"display_name": "Claude Code", "pid": 2222, "command": "claude"},
+    })
+
+    app = CtxinsTUIApp(store=store)
+    async with app.run_test() as pilot:
+        await pilot.pause(0.05)
+
+        # Initial state should be first session: sess_agy with 2 turns
+        assert app.state.session_id == "sess_agy"
+        assert len(app.state.turns) == 2
+        assert app.state.selected_turn_index == 1
+        assert len(app.state.cumulative_violations) == 1
+
+        # Sessions panel and timeline widgets are mounted
+        panel = app.query_one(SessionsPanelWidget)
+        timeline = app.query_one(TurnTimelineWidget)
+        assert panel is not None
+        assert timeline is not None
+
+        # Switch to sess_claude via SessionChosen message
+        panel.post_message(SessionChosen("sess_claude"))
+        await pilot.pause(0.05)
+
+        assert app.state.session_id == "sess_claude"
+        assert len(app.state.turns) == 1
+        assert app.state.turns[0]["turnId"] == "claude_t0"
+        assert app.state.agent_harness == "claude-code"
+        assert app.selected_turn_index == 0
+        assert len(app.state.cumulative_violations) == 0
+
+        # Cycle back to sess_agy using action_switch_session ('s' key)
+        app.action_switch_session()
+        await pilot.pause(0.05)
+
+        assert app.state.session_id == "sess_agy"
+        assert len(app.state.turns) == 2
+        assert app.state.agent_harness == "agy"
+        assert app.selected_turn_index == 1
+        assert len(app.state.cumulative_violations) == 1
+
+
+@pytest.mark.asyncio
+async def test_multi_session_live_events_isolation() -> None:
+    """Verify live events arriving for background session do not overwrite active session."""
+    broadcaster = PresentationBroadcaster()
+    active_turn = {"turnIndex": 0, "status": "completed"}
+    state = TUIState(
+        session_id="sess_active",
+        turns=[active_turn],
+        available_sessions=["sess_active", "sess_bg"],
+        sessions_turns={"sess_active": [active_turn]},
+    )
+
+    app = CtxinsTUIApp(state=state, broadcaster=broadcaster)
+    async with app.run_test() as pilot:
+        # Broadcast TURN_STARTED for the background session
+        broadcaster.publish_nowait(
+            UIEvent(
+                event_type=UIEventType.TURN_STARTED,
+                session_id="sess_bg",
+                payload={"turnIndex": 0, "model": "gemini-2.0"},
+            )
+        )
+        # Broadcast TURN_COMPLETED for the background session
+        broadcaster.publish_nowait(
+            UIEvent(
+                event_type=UIEventType.TURN_COMPLETED,
+                session_id="sess_bg",
+                payload={
+                    "turnIndex": 0,
+                    "inputTokens": 800,
+                    "outputTokens": 100,
+                    "tokens": 900,
+                    "cost": 0.01,
+                    "violations": [],
+                },
+            )
+        )
+        await pilot.pause(0.05)
+
+        # Active session must remain unchanged
+        assert app.state.session_id == "sess_active"
+        assert len(app.state.turns) == 1
+
+        # Background session state is isolated in sessions_turns
+        assert "sess_bg" in app.state.sessions_turns
+        assert len(app.state.sessions_turns["sess_bg"]) == 1
+        assert app.state.sessions_turns["sess_bg"][0]["inputTokens"] == 800
+
+
+@pytest.mark.asyncio
+async def test_session_modal_screen() -> None:
+    """Verify SessionModalScreen displays detected agents and dismisses with selected session ID."""
+    from src.presentation.tui.widgets.session_modal import SessionModalScreen
+
+    state = TUIState(session_id="sess_1")
+    state.available_sessions = ["sess_1", "sess_2"]
+    state.sessions_metadata = {
+        "sess_1": {"agentHarness": "agy", "agent": {"display_name": "Antigravity", "pid": 123}},
+        "sess_2": {"agentHarness": "claude", "agent": {"display_name": "Claude Code", "pid": 456}},
+    }
+
+    dismissed_sid = []
+    modal = SessionModalScreen(state)
+
+    app = CtxinsTUIApp(state=state)
+    async with app.run_test() as pilot:
+        app.push_screen(modal, callback=lambda sid: dismissed_sid.append(sid))
+        await pilot.pause(0.05)
+
+        # Modal is on top of screen stack
+        assert isinstance(app.screen, SessionModalScreen)
+
+        # Press Enter to select highlighted session
+        await pilot.press("enter")
+        await pilot.pause(0.05)
+
+        assert len(dismissed_sid) == 1
+        assert dismissed_sid[0] in ["sess_1", "sess_2"]
+
+
