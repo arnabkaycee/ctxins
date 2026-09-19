@@ -569,3 +569,49 @@ def test_default_export_jsonc_cleanup() -> None:
     finally:
         if out_path.exists():
             out_path.unlink()
+
+
+def test_header_bar_cockpit_badges() -> None:
+    """Verify HeaderBarWidget renders custom proxy port and web dashboard URL badges."""
+    state = TUIState(session_id="sess_cockpit_test")
+    header = HeaderBarWidget(state, proxy_port=8088, web_url="http://127.0.0.1:9090")
+    table = header.render()
+    assert table is not None
+    assert header.proxy_port == 8088
+    assert header.web_url == "http://127.0.0.1:9090"
+
+
+def test_tui_app_actions_and_browser(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Verify CtxinsTUIApp action_open_web, action_copy_env, and action_show_hook_modal."""
+    state = TUIState()
+    opened_urls = []
+    copied_texts = []
+    pushed_screens = []
+
+    monkeypatch.setattr("webbrowser.open", lambda url: opened_urls.append(url))
+    monkeypatch.setattr("src.presentation.tui.app.copy_to_clipboard", lambda text: copied_texts.append(text))
+
+    app = CtxinsTUIApp(state=state, proxy_port=8080, web_url="http://127.0.0.1:8484")
+    monkeypatch.setattr(app, "notify", lambda msg, **kwargs: None)
+    monkeypatch.setattr(app, "push_screen", lambda scr: pushed_screens.append(scr))
+
+    # Test open web
+    app.action_open_web()
+    assert opened_urls == ["http://127.0.0.1:8484"]
+
+    # Test copy env
+    app.action_copy_env()
+    assert len(copied_texts) == 1
+    assert "HTTP_PROXY" in copied_texts[0]
+
+    # Test show hook modal
+    app.action_show_hook_modal()
+    assert len(pushed_screens) == 1
+
+
+def test_copy_to_clipboard_fallback() -> None:
+    """Verify copy_to_clipboard executes without error across fallback mechanisms."""
+    from src.presentation.tui.widgets.hook_modal import copy_to_clipboard
+
+    result = copy_to_clipboard("HTTP_PROXY=http://127.0.0.1:8080")
+    assert isinstance(result, bool)

@@ -17,6 +17,7 @@ from src.presentation.tui.theme import TUI_THEME_CSS
 from src.presentation.tui.widgets.context_breakdown import ContextBreakdownWidget
 from src.presentation.tui.widgets.footer_bar import FooterBarWidget
 from src.presentation.tui.widgets.header_bar import HeaderBarWidget
+from src.presentation.tui.widgets.hook_modal import HookModalScreen, copy_to_clipboard
 from src.presentation.tui.widgets.recommendations import RecommendationsWidget
 from src.presentation.tui.widgets.turn_timeline import TurnSelected, TurnTimelineWidget
 
@@ -34,6 +35,9 @@ class CtxinsTUIApp(App[None]):
         ("shift+tab", "focus_previous", "Prev Pane"),
         ("r", "toggle_rule_filter", "Filter Violations"),
         ("e", "export_jsonc", "Export .jsonc"),
+        ("h", "show_hook_modal", "Hook Guide"),
+        ("c", "copy_env", "Copy Env"),
+        ("w", "open_web", "Open Web"),
     ]
 
     selected_turn_index: reactive[int] = reactive(0)
@@ -42,13 +46,17 @@ class CtxinsTUIApp(App[None]):
         self,
         state: Optional[TUIState] = None,
         broadcaster: Optional[PresentationBroadcaster] = None,
+        proxy_port: int = 8080,
+        web_url: Optional[str] = None,
     ) -> None:
         super().__init__()
         self.state = state if state is not None else TUIState()
         self.broadcaster = broadcaster if broadcaster is not None else PresentationBroadcaster()
+        self.proxy_port = proxy_port
+        self.web_url = web_url
 
     def compose(self) -> ComposeResult:
-        yield HeaderBarWidget(self.state)
+        yield HeaderBarWidget(self.state, proxy_port=self.proxy_port, web_url=self.web_url)
         with Horizontal(id="main-container"):
             yield TurnTimelineWidget(self.state, id="timeline-pane")
             yield ContextBreakdownWidget(self.state, id="breakdown-pane")
@@ -97,6 +105,29 @@ class CtxinsTUIApp(App[None]):
         """Export session timeline adhering to canonical .jsonc schema."""
         out_path = self.state.export_to_jsonc()
         self.notify(f"Exported session report: {out_path.name}")
+
+    def action_show_hook_modal(self) -> None:
+        """Display interactive agent connection modal."""
+        self.push_screen(HookModalScreen(proxy_port=self.proxy_port))
+
+    def action_copy_env(self) -> None:
+        """Copy proxy environment export snippet to system clipboard."""
+        from src.cli import get_env_exports
+
+        exports = get_env_exports(proxy_port=self.proxy_port)
+        export_str = " ".join(f'{k}="{v}"' for k, v in exports.items())
+        copy_to_clipboard(export_str)
+        self.notify("Copied proxy environment exports to clipboard!")
+
+    def action_open_web(self) -> None:
+        """Open web dashboard in default browser."""
+        if self.web_url:
+            import webbrowser
+
+            webbrowser.open(self.web_url)
+            self.notify(f"Opened {self.web_url} in browser")
+        else:
+            self.notify("Web Dashboard is disabled (--no-web active)", severity="warning")
 
     def _refresh_inspectors(self) -> None:
         """Refresh context breakdown, recommendations, and footer widgets."""

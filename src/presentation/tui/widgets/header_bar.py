@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Optional
 
 from rich.table import Table
 from rich.text import Text
@@ -32,9 +32,17 @@ class HeaderBarWidget(Widget):
     }
     """
 
-    def __init__(self, state: TUIState, **kwargs: Any) -> None:
+    def __init__(
+        self,
+        state: TUIState,
+        proxy_port: int = 8080,
+        web_url: Optional[str] = None,
+        **kwargs: Any,
+    ) -> None:
         super().__init__(**kwargs)
         self.state = state
+        self.proxy_port = proxy_port
+        self.web_url = web_url
 
     def update_from_state(self) -> None:
         """Trigger re-render with latest state values."""
@@ -52,9 +60,15 @@ class HeaderBarWidget(Widget):
         provider = summary["provider"] or "default-provider"
         status = summary["status"]
 
-        # Row 1: Session, Model, Status
+        # Row 1: Cockpit badges, Session, Model, Status
         row1 = Text()
         row1.append("ctxins v0.1.0", style=f"bold {COLOR_ACCENT}")
+        row1.append(" │ PROXY: ", style=COLOR_MUTED)
+        row1.append(f":{self.proxy_port}", style=f"bold {COLOR_SUCCESS}")
+        if self.web_url:
+            row1.append(" │ WEB: ", style=COLOR_MUTED)
+            row1.append(f"{self.web_url}", style=f"bold {COLOR_ACCENT}")
+            row1.append(" [w]", style=f"{COLOR_MUTED}")
         row1.append(" │ Session: ", style=COLOR_MUTED)
         row1.append(f"{sess_id} ({harness})", style="bold white")
         row1.append(" │ Model: ", style=COLOR_MUTED)
