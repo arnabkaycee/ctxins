@@ -73,10 +73,15 @@ def get_unset_env_exports() -> List[str]:
         "HTTP_PROXY",
         "HTTPS_PROXY",
         "ALL_PROXY",
+        "GRPC_PROXY",
         "http_proxy",
         "https_proxy",
         "all_proxy",
+        "grpc_proxy",
+        "NO_PROXY",
+        "no_proxy",
         "SSL_CERT_FILE",
+        "SSL_CERT_DIR",
         "REQUESTS_CA_BUNDLE",
         "NODE_EXTRA_CA_CERTS",
         "CTXINS_TARGET",
@@ -97,6 +102,13 @@ def run_env(
             print(json.dumps({k: None for k in var_names}, indent=2))
         else:
             print(f"unset {' '.join(var_names)}")
+            if sys.stdout.isatty():
+                sys.stderr.write(
+                    "\n# Note: A subprocess cannot directly modify your parent shell.\n"
+                    "# To apply this to your current terminal session, run:\n"
+                    "#   eval $(uv run ctxins env --unset)\n"
+                    "# Or copy and paste the unset command printed above directly into your terminal.\n"
+                )
         return
 
     exports = get_env_exports(proxy_port=proxy_port)
@@ -107,6 +119,14 @@ def run_env(
     else:
         for k, v in exports.items():
             print(f'export {k}="{v}"')
+        if sys.stdout.isatty():
+            sys.stderr.write(
+                "\n# Note: A subprocess cannot directly modify your parent shell.\n"
+                "# To apply this to your current terminal session, run:\n"
+                "#   eval $(uv run ctxins env)\n"
+                "# Or run your agent directly without altering shell variables:\n"
+                "#   uv run ctxins run -- <agent-command>\n"
+            )
 
 
 async def _shutdown_uvicorn(

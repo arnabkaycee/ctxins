@@ -169,7 +169,7 @@ class CtxinsTUIApp(App[None]):
         from src.cli import get_env_exports
 
         exports = get_env_exports(proxy_port=self.proxy_port)
-        export_str = " ".join(f'{k}="{v}"' for k, v in exports.items())
+        export_str = "export " + " ".join(f'{k}="{v}"' for k, v in exports.items())
         copy_to_clipboard(export_str)
         self.notify("Copied proxy environment exports to clipboard!")
 

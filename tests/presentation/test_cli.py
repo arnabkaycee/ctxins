@@ -93,8 +93,12 @@ def test_env_unset_subcommand(capsys: pytest.CaptureFixture[str]) -> None:
     """Verify ctxins env --unset outputs unset commands for proxy and certs."""
     assert main(["env", "--unset"]) == 0
     captured = capsys.readouterr()
-    assert "unset HTTP_PROXY HTTPS_PROXY ALL_PROXY http_proxy https_proxy all_proxy" in captured.out
-    assert "SSL_CERT_FILE REQUESTS_CA_BUNDLE NODE_EXTRA_CA_CERTS CTXINS_TARGET" in captured.out
+    assert "unset HTTP_PROXY HTTPS_PROXY ALL_PROXY" in captured.out
+    assert "http_proxy https_proxy all_proxy" in captured.out
+    assert "SSL_CERT_FILE" in captured.out
+    assert "REQUESTS_CA_BUNDLE" in captured.out
+    assert "NODE_EXTRA_CA_CERTS" in captured.out
+    assert "CTXINS_TARGET" in captured.out
 
 
 def test_env_unset_json_subcommand(capsys: pytest.CaptureFixture[str]) -> None:
@@ -117,6 +121,16 @@ def test_unset_env_subcommand(capsys: pytest.CaptureFixture[str]) -> None:
     assert captured.out.startswith("unset ")
     assert "HTTP_PROXY" in captured.out
     assert "CTXINS_TARGET" in captured.out
+
+
+def test_env_tty_guidance(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    """Verify run_env emits helpful stderr guidance when stdout is an interactive TTY."""
+    import sys
+
+    monkeypatch.setattr(sys.stdout, "isatty", lambda: True)
+    assert main(["env", "--unset"]) == 0
+    captured = capsys.readouterr()
+    assert "eval $(uv run ctxins env --unset)" in captured.err
 
 
 def test_main_default_to_tui(monkeypatch: pytest.MonkeyPatch) -> None:
