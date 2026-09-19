@@ -201,14 +201,15 @@ class SessionStore:
         with self.lock:
             return session_id in self._exported_sessions
 
-    def handle_disconnect(self, session_id: str) -> bool:
+    def handle_disconnect(self, session_id: str, erase_unexported: bool = False) -> bool:
         """Handle client disconnection.
 
-        If session was NOT exported via JSONC, erases all session data from store.
-        Returns True if erased, False if preserved (because it was exported).
+        As long as ctxins is open, session data is preserved in memory.
+        If erase_unexported is explicitly True and session was not exported, deletes the session.
+        Returns True if erased, False if preserved.
         """
         with self.lock:
-            if not self.is_exported(session_id):
+            if erase_unexported and not self.is_exported(session_id):
                 self.delete_session(session_id)
                 return True
             return False

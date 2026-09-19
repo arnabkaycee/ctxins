@@ -177,41 +177,25 @@ class CorePipelineBridge:
 
             if not is_alive:
                 dead_sessions.append(sess_id)
-                erased = self.store.handle_disconnect(sess_id)
-                if erased:
-                    logger.info(
-                        "Process %s for session '%s' exited without JSONC export. Erased session data.",
-                        pid,
-                        sess_id,
+                meta = self.store.get_session_metadata(sess_id) or {}
+                meta["status"] = "disconnected"
+                self.store.register_session(sess_id, metadata=meta)
+                logger.info(
+                    "Process %s for session '%s' exited. Preserving session data in memory as long as ctxins is open.",
+                    pid,
+                    sess_id,
+                )
+                self.broadcaster.publish_nowait(
+                    UIEvent(
+                        event_type=UIEventType.SESSION_DISCONNECTED,
+                        session_id=sess_id,
+                        payload={
+                            "sessionId": sess_id,
+                            "preserved": True,
+                            "message": f"Process {pid} exited. Preserved in memory as long as ctxins is open.",
+                        },
                     )
-                    self.broadcaster.publish_nowait(
-                        UIEvent(
-                            event_type=UIEventType.SESSION_ERASED,
-                            session_id=sess_id,
-                            payload={
-                                "sessionId": sess_id,
-                                "reason": "process_exit",
-                                "message": f"Process {pid} exited without JSONC export; session data erased.",
-                            },
-                        )
-                    )
-                else:
-                    logger.info(
-                        "Process %s for session '%s' exited. Preserved because it was exported to JSONC.",
-                        pid,
-                        sess_id,
-                    )
-                    self.broadcaster.publish_nowait(
-                        UIEvent(
-                            event_type=UIEventType.SESSION_DISCONNECTED,
-                            session_id=sess_id,
-                            payload={
-                                "sessionId": sess_id,
-                                "preserved": True,
-                                "message": f"Process {pid} exited. Preserved because it was exported to JSONC.",
-                            },
-                        )
-                    )
+                )
         return dead_sessions
 
     async def handle_wire_envelope(self, data: WireEnvelope | Dict[str, Any]) -> None:
@@ -377,41 +361,25 @@ class CorePipelineBridge:
             )
 
         elif envelope.event_type == WireEventType.SESSION_DISCONNECTED:
-            erased = self.store.handle_disconnect(session_id)
-            if erased:
-                logger.info(
-                    "Session '%s' disconnected without JSONC export. Erased all in-memory session data.",
-                    session_id,
+            meta = self.store.get_session_metadata(session_id) or {}
+            meta["status"] = "disconnected"
+            self.store.register_session(session_id, metadata=meta)
+            logger.info(
+                "Session '%s' disconnected. Preserving all session data in memory as long as ctxins is open.",
+                session_id,
+            )
+            self.broadcaster.publish_nowait(
+                UIEvent(
+                    event_type=UIEventType.SESSION_DISCONNECTED,
+                    session_id=session_id,
+                    timestamp=envelope.timestamp,
+                    payload={
+                        "sessionId": session_id,
+                        "preserved": True,
+                        "message": f"Session '{session_id}' disconnected. Preserved in memory as long as ctxins is open.",
+                    },
                 )
-                self.broadcaster.publish_nowait(
-                    UIEvent(
-                        event_type=UIEventType.SESSION_ERASED,
-                        session_id=session_id,
-                        timestamp=envelope.timestamp,
-                        payload={
-                            "sessionId": session_id,
-                            "reason": "unexported_disconnect",
-                            "message": f"Session '{session_id}' disconnected without JSONC export; session data erased.",
-                        },
-                    )
-                )
-            else:
-                logger.info(
-                    "Session '%s' disconnected. Preserved because it was exported to JSONC.",
-                    session_id,
-                )
-                self.broadcaster.publish_nowait(
-                    UIEvent(
-                        event_type=UIEventType.SESSION_DISCONNECTED,
-                        session_id=session_id,
-                        timestamp=envelope.timestamp,
-                        payload={
-                            "sessionId": session_id,
-                            "preserved": True,
-                            "message": f"Session '{session_id}' disconnected. Preserved because it was exported to JSONC.",
-                        },
-                    )
-                )
+            )
 
         elif envelope.event_type == WireEventType.SESSION_EXPORTED:
             self.store.mark_exported(session_id)

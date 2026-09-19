@@ -116,7 +116,7 @@ def test_client_disconnect_emits_session_disconnected():
 
 
 @pytest.mark.asyncio
-async def test_session_erased_on_disconnect_if_not_exported():
+async def test_session_preserved_on_disconnect_while_ctxins_open():
     store = SessionStore()
     broadcaster = PresentationBroadcaster()
     bridge = CorePipelineBridge(store=store, broadcaster=broadcaster)
@@ -138,7 +138,7 @@ async def test_session_erased_on_disconnect_if_not_exported():
     store.append_turn(turn)
     assert store.get_session(sid) is not None
 
-    # Handle SESSION_DISCONNECTED envelope without prior JSONC export
+    # Handle SESSION_DISCONNECTED envelope
     disc_envelope = WireEnvelope(
         event_type=WireEventType.SESSION_DISCONNECTED,
         correlation_id=f"disc-{sid}",
@@ -148,14 +148,15 @@ async def test_session_erased_on_disconnect_if_not_exported():
     )
     await bridge.handle_wire_envelope(disc_envelope)
 
-    # 1. Session must be erased from store
-    assert store.get_session(sid) is None
+    # 1. Session must NOT be erased from store while ctxins is open
+    assert store.get_session(sid) is not None
+    assert len(store.get_session(sid)) == 1
 
-    # 2. UIEvent SESSION_ERASED must be broadcast
-    erased_event = event_queue.get_nowait()
-    assert erased_event.event_type == UIEventType.SESSION_ERASED
-    assert erased_event.session_id == sid
-    assert erased_event.payload["reason"] == "unexported_disconnect"
+    # 2. UIEvent SESSION_DISCONNECTED (with preserved: True) must be broadcast
+    disc_event = event_queue.get_nowait()
+    assert disc_event.event_type == UIEventType.SESSION_DISCONNECTED
+    assert disc_event.session_id == sid
+    assert disc_event.payload["preserved"] is True
 
 
 @pytest.mark.asyncio

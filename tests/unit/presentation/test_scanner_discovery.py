@@ -104,22 +104,17 @@ def test_bridge_cleanup_dead_agent_sessions() -> None:
         assert "sess_agy_11111" in dead
         assert "sess_claude_22222" in dead
 
-    # Unexported session sess_agy_11111 must be erased from store
-    assert "sess_agy_11111" not in store.list_sessions()
-    assert store.get_session_metadata("sess_agy_11111") is None
-
-    # Exported session sess_claude_22222 must be preserved
+    # Both sessions must be preserved in store while ctxins is open
+    assert "sess_agy_11111" in store.list_sessions()
     assert "sess_claude_22222" in store.list_sessions()
+    meta1 = store.get_session_metadata("sess_agy_11111")
+    assert meta1 is not None
+    assert meta1.get("status") == "disconnected"
 
-    # Check broadcast events
-    erased_events = [e for e in events_received if e.event_type == UIEventType.SESSION_ERASED]
+    # Check broadcast events are SESSION_DISCONNECTED with preserved=True
     disc_events = [e for e in events_received if e.event_type == UIEventType.SESSION_DISCONNECTED]
-
-    assert len(erased_events) == 1
-    assert erased_events[0].session_id == "sess_agy_11111"
-
-    assert len(disc_events) == 1
-    assert disc_events[0].session_id == "sess_claude_22222"
+    assert len(disc_events) == 2
+    assert all(e.payload.get("preserved") is True for e in disc_events)
 
 
 def test_tui_state_discovery_and_erasure() -> None:

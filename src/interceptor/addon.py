@@ -874,7 +874,7 @@ class CtxinsAddon:
                         client_set.discard(peer_tuple)
                         if len(client_set) == 0:
                             self._session_to_clients.pop(session_id, None)
-                            agent_id = self._session_agents.pop(session_id, None)
+                            agent_id = self._session_agents.get(session_id)
                             disc_envelope = WireEnvelope(
                                 event_type=WireEventType.SESSION_DISCONNECTED,
                                 correlation_id=f"disc-{session_id}",
