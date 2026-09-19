@@ -450,10 +450,11 @@ def run_with_harness(
     no_web: bool = False,
     web_port: int = DEFAULT_WEB_PORT,
 ) -> None:
-    """Start proxy, launch agent harness command, and run interactive UI."""
+    """Start proxy, launch agent harness command, and run presentation UI without terminal conflict."""
     bridge = CorePipelineBridge()
     server = UDSFrameServer(socket_path=socket_path, on_turn_callback=bridge.handle_wire_envelope)
     actual_proxy_port = find_available_port(proxy_port)
+    actual_web_port = find_available_port(web_port)
 
     cert_path = os.path.expanduser("~/.mitmproxy/mitmproxy-ca-cert.pem")
 
@@ -484,52 +485,55 @@ def run_with_harness(
             target=target,
             target_port=target_port,
         )
-        harness_proc: Optional[subprocess.Popen[Any]] = None
-        try:
-            # Launch harness subprocess if command is specified
-            if command:
-                harness_proc = subprocess.Popen(command, env=env)
-
-            if ui_mode == "web":
+        uvi_task: Optional[asyncio.Task[Any]] = None
+        if not no_web:
+            try:
                 import uvicorn
 
-                actual_web_port = find_available_port(port)
                 web_app = create_app(store=bridge.store, broadcaster=bridge.broadcaster)
-                config = uvicorn.Config(app=web_app, host=host, port=actual_web_port, log_level="warning")
-                uvi_server = uvicorn.Server(config)
-                await uvi_server.serve()
-            else:
-                actual_web_port = find_available_port(web_port)
-                uvi_task: Optional[asyncio.Task[Any]] = None
-                if not no_web:
-                    try:
-                        import uvicorn
-
-                        web_app = create_app(store=bridge.store, broadcaster=bridge.broadcaster)
-                        config = uvicorn.Config(
-                            app=web_app, host="127.0.0.1", port=actual_web_port, log_level="error"
-                        )
-                        uvi_server = uvicorn.Server(config)
-                        uvi_task = asyncio.create_task(uvi_server.serve())
-                    except Exception as e:
-                        logger.warning("Could not start background Web Dashboard: %s", e)
-
-                state = TUIState()
-                tui_app = CtxinsTUIApp(
-                    state=state,
-                    broadcaster=bridge.broadcaster,
-                    proxy_port=actual_proxy_port,
-                    web_url=f"http://127.0.0.1:{actual_web_port}" if not no_web else None,
+                config = uvicorn.Config(
+                    app=web_app, host=host, port=actual_web_port, log_level="error"
                 )
-                try:
+                uvi_server = uvicorn.Server(config)
+                uvi_task = asyncio.create_task(uvi_server.serve())
+            except Exception as e:
+                logger.warning("Could not start background Web Dashboard: %s", e)
+
+        harness_proc: Optional[subprocess.Popen[Any]] = None
+        try:
+            if command:
+                # If TUI requested and tmux available, split pane
+                if ui_mode == "tui" and os.environ.get("TMUX"):
+                    try:
+                        subprocess.run(
+                            ["tmux", "split-window", "-h", f"ctxins tui --proxy-port {actual_proxy_port}"],
+                            check=False,
+                        )
+                    except Exception:
+                        pass
+
+                # Execute agent harness in foreground with direct terminal I/O
+                # This guarantees interactive agent works with zero curses/raw-mode corruption
+                logger.info("Interceptor active on 127.0.0.1:%s", actual_proxy_port)
+                if not no_web:
+                    logger.info("Live Web Dashboard at http://127.0.0.1:%s", actual_web_port)
+
+                harness_proc = subprocess.Popen(command, env=env)
+                loop = asyncio.get_running_loop()
+                await loop.run_in_executor(None, harness_proc.wait)
+            else:
+                if ui_mode == "web":
+                    if uvi_task:
+                        await uvi_task
+                else:
+                    state = TUIState()
+                    tui_app = CtxinsTUIApp(
+                        state=state,
+                        broadcaster=bridge.broadcaster,
+                        proxy_port=actual_proxy_port,
+                        web_url=f"http://127.0.0.1:{actual_web_port}" if not no_web else None,
+                    )
                     await tui_app.run_async()
-                finally:
-                    if uvi_task is not None and not uvi_task.done():
-                        uvi_task.cancel()
-                        try:
-                            await uvi_task
-                        except asyncio.CancelledError:
-                            pass
 
         finally:
             if harness_proc is not None and harness_proc.poll() is None:
@@ -538,6 +542,12 @@ def run_with_harness(
                     harness_proc.wait(timeout=2.0)
                 except subprocess.TimeoutExpired:
                     harness_proc.kill()
+            if uvi_task is not None and not uvi_task.done():
+                uvi_task.cancel()
+                try:
+                    await uvi_task
+                except asyncio.CancelledError:
+                    pass
             if mitm_proc is not None and mitm_proc.poll() is None:
                 mitm_proc.terminate()
                 try:

@@ -227,3 +227,52 @@ def test_run_web_lifecycle():
         assert mock_proc.terminate.called
 
 
+def test_run_with_harness_with_target_env(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.delenv("TMUX", raising=False)
+    with patch("subprocess.Popen") as mock_popen, \
+         patch("socket.create_connection") as mock_conn, \
+         patch("src.core.server.uds_server.UDSFrameServer.start"), \
+         patch("src.core.server.uds_server.UDSFrameServer.stop"):
+        mock_conn.side_effect = [OSError("not listening"), MagicMock()]
+        mock_proc = MagicMock()
+        mock_proc.poll.return_value = None
+        mock_popen.return_value = mock_proc
+
+        run_with_harness(
+            command=["test-agent"],
+            proxy_port=8080,
+            target_port=8000,
+            no_web=True,
+        )
+
+        assert mock_popen.call_count == 2
+        harness_call = mock_popen.call_args_list[1]
+        env = harness_call[1]["env"]
+        assert env["CTXINS_TARGET"] == "http://127.0.0.1:8000"
+
+
+def test_run_with_harness_tmux_split(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("TMUX", "/tmp/tmux-501/default,123,0")
+    with patch("subprocess.Popen") as mock_popen, \
+         patch("subprocess.run") as mock_run, \
+         patch("socket.create_connection") as mock_conn, \
+         patch("src.core.server.uds_server.UDSFrameServer.start"), \
+         patch("src.core.server.uds_server.UDSFrameServer.stop"):
+        mock_conn.side_effect = [OSError("not listening"), MagicMock()]
+        mock_proc = MagicMock()
+        mock_proc.poll.return_value = None
+        mock_popen.return_value = mock_proc
+
+        run_with_harness(
+            command=["test-agent"],
+            proxy_port=8080,
+            no_web=True,
+        )
+
+        assert mock_run.called
+        tmux_call = mock_run.call_args[0][0]
+        assert tmux_call[0] == "tmux"
+        assert tmux_call[1] == "split-window"
+
+
+
