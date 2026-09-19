@@ -20,7 +20,12 @@ from src.presentation.tui.widgets.header_bar import HeaderBarWidget
 from src.presentation.tui.widgets.help_modal import HelpModalScreen
 from src.presentation.tui.widgets.hook_modal import HookModalScreen, copy_to_clipboard
 from src.presentation.tui.widgets.recommendations import RecommendationsWidget
-from src.presentation.tui.widgets.turn_timeline import TurnSelected, TurnTimelineWidget
+from src.presentation.tui.widgets.session_modal import SessionModalScreen
+from src.presentation.tui.widgets.turn_timeline import (
+    SessionSelected,
+    TurnSelected,
+    TurnTimelineWidget,
+)
 
 if TYPE_CHECKING:
     from src.core.store.session_store import SessionStore
@@ -40,6 +45,7 @@ class CtxinsTUIApp(App[None]):
         ("r", "toggle_rule_filter", "Filter Violations"),
         ("e", "export_jsonc", "Export .jsonc"),
         ("s", "switch_session", "Switch Session"),
+        ("a", "show_session_modal", "Agent Picker"),
         ("h", "show_hook_modal", "Hook Guide"),
         ("c", "copy_env", "Copy Env"),
         ("w", "open_web", "Open Web"),
@@ -163,6 +169,21 @@ class CtxinsTUIApp(App[None]):
     def action_show_help_modal(self) -> None:
         """Display interactive help and keyboard shortcuts modal."""
         self.push_screen(HelpModalScreen())
+
+    def on_session_selected(self, message: SessionSelected) -> None:
+        """Handle session selection emitted from timeline."""
+        self.state.switch_session(message.session_id)
+        self._refresh_all_widgets()
+        self.notify(f"Active Session: {message.session_id} ({self.state.agent_harness})")
+
+    def action_show_session_modal(self) -> None:
+        """Display interactive detected agent sessions modal."""
+        def _on_modal_dismiss(chosen_sid: Optional[str]) -> None:
+            if chosen_sid:
+                self._refresh_all_widgets()
+                self.notify(f"Active Session: {chosen_sid} ({self.state.agent_harness})")
+
+        self.push_screen(SessionModalScreen(self.state), callback=_on_modal_dismiss)
 
     def action_switch_session(self) -> None:
         """Cycle to next active or auto-detected agent session."""

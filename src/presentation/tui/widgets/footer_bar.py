@@ -51,6 +51,10 @@ class FooterBarWidget(Widget):
         text.append("Export\n", style=COLOR_MUTED)
 
         # Row 2: Integration Actions, Help, and Exit
+        text.append("[s] ", style=f"bold {COLOR_ACCENT}")
+        text.append("Switch │ ", style=COLOR_MUTED)
+        text.append("[a] ", style=f"bold {COLOR_ACCENT}")
+        text.append("Agents │ ", style=COLOR_MUTED)
         text.append("[h] ", style=f"bold {COLOR_ACCENT}")
         text.append("Hook Guide │ ", style=COLOR_MUTED)
         text.append("[c] ", style=f"bold {COLOR_SUCCESS}")

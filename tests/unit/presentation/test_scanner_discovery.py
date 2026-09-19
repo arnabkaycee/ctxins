@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
+import pytest
 from fastapi.testclient import TestClient
 
 from src.cli import CorePipelineBridge
@@ -240,3 +241,53 @@ def test_web_api_lists_zero_turn_detected_sessions() -> None:
     assert det["sessionId"] == "sess_opencode_9999"
     assert det["agentHarness"] == "opencode"
     assert det["turns"] == []
+
+
+@pytest.mark.asyncio
+async def test_tui_renders_detected_agent_details_when_no_turns() -> None:
+    """Verify TUI panes show detected agent processes prominently before any turns occur."""
+    from textual.widgets import OptionList, Static
+
+    from src.presentation.tui.app import CtxinsTUIApp
+    from src.presentation.tui.widgets.context_breakdown import ContextBreakdownWidget
+    from src.presentation.tui.widgets.recommendations import RecommendationsWidget
+    from src.presentation.tui.widgets.turn_timeline import TurnTimelineWidget
+
+    store = SessionStore()
+    broadcaster = PresentationBroadcaster()
+    store.register_session(
+        "sess_agy_44444",
+        metadata={
+            "sessionId": "sess_agy_44444",
+            "harness": "agy",
+            "agentHarness": "agy",
+            "status": "detected",
+            "agent": {"pid": 44444, "command": "agy -c", "name": "agy"},
+        },
+    )
+
+    state = TUIState()
+    app = CtxinsTUIApp(state=state, store=store, broadcaster=broadcaster)
+    async with app.run_test() as pilot:
+        await pilot.pause(0.1)
+
+        # 1. Timeline pane shows detected agent
+        tl = app.query_one(TurnTimelineWidget)
+        ol = tl.query_one("#turns-option-list", OptionList)
+        assert ol.option_count >= 2
+        first_opt = ol.get_option_at_index(1)
+        assert "sess_agy_44444" in str(first_opt.prompt)
+
+        # 2. Context breakdown pane shows agent process card
+        bd = app.query_one(ContextBreakdownWidget)
+        bd_content = bd.query_one("#breakdown-content", Static).render()
+        assert "AGENT PROCESS IDENTIFIED" in str(bd_content)
+        assert "44444" in str(bd_content)
+        assert "agy" in str(bd_content)
+
+        # 3. Recommendations pane shows proactive scanner summary
+        rec = app.query_one(RecommendationsWidget)
+        rec_content = rec.query_one("#recommendations-content", Static).render()
+        assert "PROACTIVE SCANNER" in str(rec_content)
+        assert "sess_agy_44444" in str(rec_content)
+
