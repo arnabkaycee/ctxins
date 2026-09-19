@@ -145,7 +145,9 @@ class BaseNormalizer(ABC):
             or payload.get("response")
             or (payload if any(k in payload for k in ("content", "choices", "candidates")) else {})
         )
-        if not isinstance(resp, dict):
+        if isinstance(resp, list):
+            resp = {"candidates": resp, "_list": resp}
+        elif not isinstance(resp, dict):
             resp = {}
 
         # 5. Model

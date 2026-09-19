@@ -40,6 +40,26 @@ class GeminiASTNormalizer(BaseNormalizer):
 
         if "response" in resp and isinstance(resp["response"], dict):
             resp = dict(resp["response"])
+        elif "_data" in resp:
+            data = resp["_data"]
+            if isinstance(data, list) and data:
+                merged_candidates: list[dict[str, Any]] = []
+                merged_usage: dict[str, Any] = {}
+                for item in data:
+                    if isinstance(item, dict):
+                        inner = item.get("response", item) if isinstance(item.get("response"), dict) else item
+                        if "candidates" in inner and isinstance(inner["candidates"], list):
+                            merged_candidates.extend(inner["candidates"])
+                        if "usageMetadata" in inner:
+                            merged_usage = inner["usageMetadata"]
+                resp = {"candidates": merged_candidates}
+                if merged_usage:
+                    resp["usageMetadata"] = merged_usage
+            elif isinstance(data, dict):
+                resp = dict(data)
+
+        if "usageMetadata" in resp and not meta.get("usage"):
+            meta["usage"] = resp["usageMetadata"]
 
         # 1. System Instruction Blocks
         system_blocks: list[ContextBlock] = []

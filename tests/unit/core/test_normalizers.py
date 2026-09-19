@@ -446,6 +446,57 @@ def test_gemini_normalizer_wrapped_cloudcode_payload():
     assert turn.output_tokens == 15
 
 
+def test_gemini_normalizer_data_list_payload():
+    """Verify GeminiASTNormalizer unwrap logic when response is _data list."""
+    normalizer = GeminiASTNormalizer()
+
+    raw_turn = {
+        "correlation_id": "turn-agy-list",
+        "session_id": "sess-agy-2",
+        "turn_index": 0,
+        "request_payload": {
+            "model": "gemini-2.5-pro",
+            "contents": [{"role": "user", "parts": [{"text": "Hello!"}]}],
+        },
+        "response_payload": {
+            "_data": [
+                {
+                    "candidates": [
+                        {
+                            "content": {
+                                "role": "model",
+                                "parts": [{"text": "Hello "}],
+                            }
+                        }
+                    ]
+                },
+                {
+                    "candidates": [
+                        {
+                            "content": {
+                                "role": "model",
+                                "parts": [{"text": "there!"}],
+                            }
+                        }
+                    ],
+                    "usageMetadata": {
+                        "promptTokenCount": 50,
+                        "candidatesTokenCount": 10,
+                    },
+                },
+            ]
+        },
+    }
+
+    turn = normalizer.normalize(raw_turn)
+    assert turn.provider == "gemini"
+    assert len(turn.assistant_blocks) == 2
+    assert turn.assistant_blocks[0].content == "Hello "
+    assert turn.assistant_blocks[1].content == "there!"
+    assert turn.input_tokens == 50
+    assert turn.output_tokens == 10
+
+
 # ---------------------------------------------------------------------------
 # Factory & Hash Verification
 # ---------------------------------------------------------------------------

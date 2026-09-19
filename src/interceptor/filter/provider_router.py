@@ -15,48 +15,64 @@ class ProviderRouter:
     # Compiled route patterns: (host_regex, path_regex, Provider)
     ROUTES: list[Tuple[re.Pattern[str], re.Pattern[str], Provider]] = [
         (
-            re.compile(r"^api\.anthropic\.com(:443)?$", re.IGNORECASE),
-            re.compile(r"^/v1/messages(?=[/?#]|$)"),
+            re.compile(r"^([a-zA-Z0-9_.-]+\.)?anthropic\.com(:443)?$", re.IGNORECASE),
+            re.compile(r"^/v1/messages(?=[/?#]|$)", re.IGNORECASE),
             Provider.ANTHROPIC,
         ),
         (
-            re.compile(r"^api\.openai\.com(:443)?$", re.IGNORECASE),
-            re.compile(r"^/v1/(chat/completions|responses)(?=[/?#]|$)"),
+            re.compile(r"^([a-zA-Z0-9_.-]+\.)?openai\.com(:443)?$", re.IGNORECASE),
+            re.compile(r"^/v1/(chat/completions|responses|completions)(?=[/?#]|$)", re.IGNORECASE),
             Provider.OPENAI,
         ),
         (
+            re.compile(r"^([a-zA-Z0-9_.-]+\.)?(googleapis\.com|google\.com)(:443)?$", re.IGNORECASE),
+            re.compile(
+                r"^/.*[:/](generateContent|streamGenerateContent|bidiGenerateContent|generateChat|streamGenerateChat|internalAtomicAgenticChat|tabChat|generateCode|completeCode|predict|serverStreamingPredict|streamRawPredict|rawPredict)(?=[/?#]|$)",
+                re.IGNORECASE,
+            ),
+            Provider.GEMINI,
+        ),
+        (
             re.compile(r"^([a-zA-Z0-9_.-]+\.)?googleapis\.com(:443)?$", re.IGNORECASE),
-            re.compile(r"^/.*:(generateContent|streamGenerateContent)(?=[/?#]|$)"),
+            re.compile(r"^/.*v1.*/chat/completions(?=[/?#]|$)", re.IGNORECASE),
             Provider.GEMINI,
         ),
         (
             re.compile(r"^.*\.openai\.azure\.com(:443)?$", re.IGNORECASE),
-            re.compile(r"^/openai/deployments/.*/chat/completions(?=[/?#]|$)"),
+            re.compile(r"^/openai/deployments/.*/chat/completions(?=[/?#]|$)", re.IGNORECASE),
             Provider.AZURE_OPENAI,
         ),
         (
             re.compile(r"^openrouter\.ai(:443)?$", re.IGNORECASE),
-            re.compile(r"^/api/v1/chat/completions(?=[/?#]|$)"),
+            re.compile(r"^/api/v1/chat/completions(?=[/?#]|$)", re.IGNORECASE),
             Provider.OPENROUTER,
         ),
         (
             re.compile(r"^(localhost|127\.0\.0\.1)(:11434)?$", re.IGNORECASE),
-            re.compile(r"^/(api/chat|v1/chat/completions)(?=[/?#]|$)"),
+            re.compile(r"^/(api/chat|v1/chat/completions)(?=[/?#]|$)", re.IGNORECASE),
             Provider.OLLAMA,
         ),
         (
             re.compile(r"^(localhost|127\.0\.0\.1)(:\d+)?$", re.IGNORECASE),
-            re.compile(r"^/v1/messages(?=[/?#]|$)"),
+            re.compile(r"^/v1/messages(?=[/?#]|$)", re.IGNORECASE),
             Provider.ANTHROPIC,
         ),
         (
             re.compile(r"^(localhost|127\.0\.0\.1)(:\d+)?$", re.IGNORECASE),
-            re.compile(r"^/v1/(chat/completions|responses)(?=[/?#]|$)"),
+            re.compile(r"^/v1/(chat/completions|responses|completions)(?=[/?#]|$)", re.IGNORECASE),
             Provider.OPENAI,
         ),
         (
             re.compile(r"^(localhost|127\.0\.0\.1)(:\d+)?$", re.IGNORECASE),
-            re.compile(r"^/api/chat(?=[/?#]|$)"),
+            re.compile(
+                r"^/.*[:/](generateContent|streamGenerateContent|bidiGenerateContent|predict)(?=[/?#]|$)",
+                re.IGNORECASE,
+            ),
+            Provider.GEMINI,
+        ),
+        (
+            re.compile(r"^(localhost|127\.0\.0\.1)(:\d+)?$", re.IGNORECASE),
+            re.compile(r"^/api/chat(?=[/?#]|$)", re.IGNORECASE),
             Provider.OLLAMA,
         ),
     ]

@@ -327,3 +327,58 @@ class TestGeminiAccumulator:
         assert len(blocks) == 1
         assert blocks[0].text == "Hello!"
 
+    def test_gemini_json_array_streaming(self) -> None:
+        """Verify handling of JSON array stream (chunked transfer without SSE prefix)."""
+        acc = GeminiAccumulator()
+
+        chunk1 = b'[\n{"candidates": [{"content": {"parts": [{"text": "Part 1 "}]}}]}\n'
+        chunk2 = b',{"candidates": [{"content": {"parts": [{"text": "Part 2"}]}}], "usageMetadata": {"promptTokenCount": 50, "candidatesTokenCount": 10}}\n]'
+
+        acc.feed_chunk(chunk1)
+        acc.feed_chunk(chunk2)
+        acc.feed_chunk(b"")
+
+        assert acc.is_done() is True
+        blocks = acc.get_content_blocks()
+        assert len(blocks) == 1
+        assert blocks[0].text == "Part 1 Part 2"
+        usage = acc.get_usage()
+        assert usage.input_tokens == 50
+        assert usage.output_tokens == 10
+
+    def test_gemini_ndjson_streaming(self) -> None:
+        """Verify handling of NDJSON streaming."""
+        acc = GeminiAccumulator()
+
+        chunk1 = b'{"candidates": [{"content": {"parts": [{"text": "Hello "}]}}]}\n'
+        chunk2 = b'{"candidates": [{"content": {"parts": [{"text": "World"}]}}], "finishReason": "STOP", "usageMetadata": {"promptTokenCount": 20, "candidatesTokenCount": 5}}\n'
+
+        acc.feed_chunk(chunk1)
+        acc.feed_chunk(chunk2)
+        acc.feed_chunk(b"")
+
+        assert acc.is_done() is True
+        blocks = acc.get_content_blocks()
+        assert len(blocks) == 1
+        assert blocks[0].text == "Hello World"
+        usage = acc.get_usage()
+        assert usage.input_tokens == 20
+        assert usage.output_tokens == 5
+        assert acc.get_stop_reason() == "STOP"
+
+    def test_gemini_plain_json_body(self) -> None:
+        """Verify handling of single non-streaming JSON object in accumulator."""
+        acc = GeminiAccumulator()
+
+        body = b'{"candidates": [{"content": {"parts": [{"text": "Complete message"}]}}], "usageMetadata": {"promptTokenCount": 30, "candidatesTokenCount": 8}}'
+        acc.feed_chunk(body)
+        acc.feed_chunk(b"")
+
+        assert acc.is_done() is True
+        blocks = acc.get_content_blocks()
+        assert len(blocks) == 1
+        assert blocks[0].text == "Complete message"
+        usage = acc.get_usage()
+        assert usage.input_tokens == 30
+        assert usage.output_tokens == 8
+

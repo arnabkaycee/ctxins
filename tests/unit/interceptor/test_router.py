@@ -43,6 +43,21 @@ class TestProviderRouter:
                 Provider.GEMINI,
             ),
             (
+                "daily-cloudcode-pa.googleapis.com",
+                "/v1internal:streamGenerateChat",
+                Provider.GEMINI,
+            ),
+            (
+                "daily-cloudcode-pa.googleapis.com",
+                "/v1internal:tabChat",
+                Provider.GEMINI,
+            ),
+            (
+                "daily-cloudcode-pa.googleapis.com",
+                "/v1internal:internalAtomicAgenticChat",
+                Provider.GEMINI,
+            ),
+            (
                 "aicode.googleapis.com:443",
                 "/v1internal:streamGenerateContent",
                 Provider.GEMINI,

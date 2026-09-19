@@ -300,10 +300,16 @@ class CtxinsAddon:
         """Extract model identifier from body or URL path."""
         if "model" in body and isinstance(body["model"], str) and body["model"]:
             return body["model"]
+        if "modelId" in body and isinstance(body["modelId"], str) and body["modelId"]:
+            return body["modelId"]
+        if "model_id" in body and isinstance(body["model_id"], str) and body["model_id"]:
+            return body["model_id"]
 
         if provider == Provider.GEMINI:
-            if "request" in body and isinstance(body["request"], dict) and "model" in body["request"]:
-                return str(body["request"]["model"])
+            req_inner = body.get("request", {}) if isinstance(body.get("request"), dict) else {}
+            for k in ("model", "modelId", "model_id"):
+                if k in req_inner and req_inner[k]:
+                    return str(req_inner[k])
             m = re.search(r"/models/([^:/]+)", path)
             if m:
                 return m.group(1)
@@ -330,7 +336,7 @@ class CtxinsAddon:
         return None
 
     def _is_streaming_response(self, flow: Any) -> bool:
-        """Determine if response is an SSE stream."""
+        """Determine if response is a streaming response."""
         if hasattr(flow, "response") and flow.response:
             content_type = flow.response.headers.get("content-type", "").lower()
             if "text/event-stream" in content_type:
@@ -338,7 +344,13 @@ class CtxinsAddon:
 
         if hasattr(flow, "request") and flow.request:
             path = getattr(flow.request, "path", "")
-            if "streamGenerateContent" in path:
+            if any(s in path for s in (
+                "streamGenerateContent",
+                "streamGenerateChat",
+                "bidiGenerateContent",
+                "serverStreamingPredict",
+                "streamRawPredict",
+            )):
                 return True
 
         metadata = getattr(flow, "metadata", {})
@@ -571,6 +583,16 @@ class CtxinsAddon:
                 if hasattr(req, "headers"):
                     req.headers["host"] = "127.0.0.1:11434"
 
+    def http_connect(self, flow: Any) -> None:
+        """Hook called when a client sends a CONNECT request."""
+        try:
+            req = getattr(flow, "request", None)
+            host = getattr(req, "pretty_host", "") or getattr(req, "host", "")
+            port = getattr(req, "port", None)
+            logger.info("Proxy CONNECT tunnel established for %s:%s", host, port or "")
+        except Exception as e:
+            logger.debug("Error in http_connect: %s", e)
+
     def requestheaders(self, flow: Any) -> None:
         """Hook called when request headers are received."""
         try:
@@ -581,6 +603,9 @@ class CtxinsAddon:
             host = getattr(req, "pretty_host", "") or getattr(req, "host", "")
             path = getattr(req, "path", "")
             port = getattr(req, "port", None)
+            method = getattr(req, "method", "HTTP")
+
+            logger.info("Proxy received %s request: host=%s path=%s port=%s", method, host, path, port)
 
             # Check if this is a direct gateway request to ctxins proxy itself
             proxy_port = int(os.environ.get("CTXINS_PROXY_PORT", "8080"))
@@ -597,7 +622,7 @@ class CtxinsAddon:
                 is_match, provider = self.router.match(parsed_target.netloc, path)
 
             if not is_match:
-                logger.debug("Proxy pass-through non-LLM request: host=%s path=%s", host, path)
+                logger.info("Non-LLM request bypassed (no route match): host=%s path=%s", host, path)
                 return
 
             if is_gateway or target_env:
@@ -895,6 +920,27 @@ class CtxinsAddon:
                             response_payload = self.sanitizer.sanitize_payload(raw_json)
                             usage = self._extract_usage_from_payload(turn.provider, response_payload)
                             stop_reason = self._extract_stop_reason(turn.provider, response_payload)
+                        elif isinstance(raw_json, list):
+                            merged_candidates = []
+                            last_usage: Optional[UsageMetrics] = None
+                            last_stop: Optional[str] = None
+                            for item in raw_json:
+                                if isinstance(item, dict):
+                                    inner_item = item.get("response", item) if isinstance(item.get("response"), dict) else item
+                                    if "candidates" in inner_item and isinstance(inner_item["candidates"], list):
+                                        merged_candidates.extend(inner_item["candidates"])
+                                    u = self._extract_usage_from_payload(turn.provider, inner_item)
+                                    if u.input_tokens or u.output_tokens:
+                                        last_usage = u
+                                    s = self._extract_stop_reason(turn.provider, inner_item)
+                                    if s:
+                                        last_stop = s
+                            response_payload = {"candidates": merged_candidates}
+                            if last_usage is not None:
+                                usage = last_usage
+                                response_payload["usageMetadata"] = usage.to_dict()
+                            if last_stop is not None:
+                                stop_reason = last_stop
                         else:
                             response_payload = {"_data": raw_json}
                     except Exception:

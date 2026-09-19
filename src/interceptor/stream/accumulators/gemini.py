@@ -1,7 +1,8 @@
-"""Gemini SSE stream accumulator."""
+"""Gemini stream accumulator supporting SSE, JSON array stream, and NDJSON."""
 
 from __future__ import annotations
 
+import codecs
 import json
 from typing import Any, Dict, List, Optional
 
@@ -11,7 +12,7 @@ from src.schema.wire import ContentBlock, UsageMetrics
 
 
 class GeminiAccumulator(BaseAccumulator):
-    """Accumulates Google Gemini streamGenerateContent SSE chunks into canonical turn output.
+    """Accumulates Google Gemini stream chunks (SSE, JSON array, NDJSON) into canonical turn output.
 
     Handles candidates, parts (text, thinking, functionCall), finishReason,
     and usageMetadata.
@@ -23,17 +24,69 @@ class GeminiAccumulator(BaseAccumulator):
         self._stop_reason: Optional[str] = None
         self._usage = UsageMetrics()
         self._is_done: bool = False
+        self._mode: Optional[str] = None  # "sse" or "json"
+        self._json_buffer: str = ""
+        self._utf8_decoder = codecs.getincrementaldecoder("utf-8")("replace")
+        self._json_decoder = json.JSONDecoder()
 
     def feed_chunk(self, chunk: bytes) -> None:
         """Feed a raw byte chunk into the accumulator."""
         if not chunk:
-            events = self._parser.close()
-            self._process_events(events)
+            if self._mode == "sse":
+                events = self._parser.close()
+                self._process_events(events)
+            else:
+                # Flush any remaining JSON buffer
+                rem = self._json_buffer.strip()
+                if rem:
+                    try:
+                        data = json.loads(rem)
+                        if isinstance(data, list):
+                            for item in data:
+                                if isinstance(item, dict):
+                                    self._handle_chunk(item)
+                        elif isinstance(data, dict):
+                            self._handle_chunk(data)
+                    except Exception:
+                        pass
             self._is_done = True
             return
 
-        events = self._parser.feed(chunk)
-        self._process_events(events)
+        if self._mode is None:
+            trimmed = chunk.lstrip()
+            if trimmed.startswith(b"data:") or trimmed.startswith(b"event:") or trimmed.startswith(b":"):
+                self._mode = "sse"
+            elif trimmed.startswith(b"[") or trimmed.startswith(b"{"):
+                self._mode = "json"
+
+        if self._mode == "sse":
+            events = self._parser.feed(chunk)
+            self._process_events(events)
+        else:
+            # Handle JSON array stream, NDJSON, or plain JSON
+            text = self._utf8_decoder.decode(chunk, final=False)
+            self._json_buffer += text
+            idx = 0
+            buf_len = len(self._json_buffer)
+            while idx < buf_len:
+                while idx < buf_len and self._json_buffer[idx] in " \t\r\n,[":
+                    idx += 1
+                if idx >= buf_len or self._json_buffer[idx] == "]":
+                    break
+                try:
+                    data, next_idx = self._json_decoder.raw_decode(self._json_buffer, idx)
+                    if isinstance(data, dict):
+                        self._handle_chunk(data)
+                    elif isinstance(data, list):
+                        for item in data:
+                            if isinstance(item, dict):
+                                self._handle_chunk(item)
+                    idx = next_idx
+                except json.JSONDecodeError:
+                    # Partial JSON chunk, await next chunk
+                    break
+            if idx > 0:
+                self._json_buffer = self._json_buffer[idx:]
 
     def is_done(self) -> bool:
         """Return True if completion finishReason received or stream closed."""
@@ -62,7 +115,12 @@ class GeminiAccumulator(BaseAccumulator):
             except (json.JSONDecodeError, TypeError):
                 continue
 
-            self._handle_chunk(data)
+            if isinstance(data, dict):
+                self._handle_chunk(data)
+            elif isinstance(data, list):
+                for item in data:
+                    if isinstance(item, dict):
+                        self._handle_chunk(item)
 
     def _handle_chunk(self, data: Dict[str, Any]) -> None:
         # Handle wrapped payload from Cloud Code / AI Code endpoints
@@ -84,6 +142,11 @@ class GeminiAccumulator(BaseAccumulator):
             for detail in usage_meta.get("candidatesTokensDetails", []):
                 if detail.get("modality") in ("THINKING", "REASONING"):
                     self._usage.reasoning_tokens = detail.get("tokenCount", 0)
+
+        top_finish = data.get("finishReason")
+        if top_finish:
+            self._stop_reason = top_finish
+            self._is_done = True
 
         candidates = data.get("candidates", [])
         for cand in candidates:

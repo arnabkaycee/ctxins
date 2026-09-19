@@ -178,8 +178,9 @@ class CorePipelineBridge:
                     is_alive = False
 
             if not is_alive:
+                if meta.get("status") == "disconnected":
+                    continue
                 dead_sessions.append(sess_id)
-                meta = self.store.get_session_metadata(sess_id) or {}
                 meta["status"] = "disconnected"
                 self.store.register_session(sess_id, metadata=meta)
                 logger.info(
