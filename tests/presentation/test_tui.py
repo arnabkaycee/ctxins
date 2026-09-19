@@ -642,3 +642,20 @@ def test_help_modal_screen_compose() -> None:
     modal = HelpModalScreen()
     assert modal is not None
 
+
+@pytest.mark.asyncio
+async def test_footer_bar_visible_lines_not_clipped() -> None:
+    """Verify FooterBarWidget renders both row 1 and row 2 visibly without clipping."""
+    from textual.geometry import Region
+
+    app = CtxinsTUIApp()
+    async with app.run_test(size=(80, 24)):
+        footer = app.query_one(FooterBarWidget)
+        lines = footer.render_lines(Region(0, 0, footer.region.width, footer.region.height))
+        all_text = " ".join(line.text for line in lines)
+        assert "Switch Pane" in all_text
+        assert "Help" in all_text
+        assert "Quit" in all_text
+        assert footer.region.height >= 3
+
+
