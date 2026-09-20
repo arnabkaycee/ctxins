@@ -776,4 +776,3 @@ def test_ctx004_integrated_in_pollution_analyzer():
     assert turn_2.violations == detected
     assert "Shrink context" in ctx004_viols[0].suggested_fix
     assert "/clear" in ctx004_viols[0].suggested_fix
-

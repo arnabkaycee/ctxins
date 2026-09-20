@@ -69,7 +69,9 @@ def create_api_router(
                     "agentHarness": meta.get("agentHarness") or meta.get("harness", "unknown"),
                     "agent": meta.get("agent"),
                     "status": meta.get("status", "active"),
-                    "granularity": meta.get("granularity", getattr(store, "granularity", eff_granularity)),
+                    "granularity": meta.get(
+                        "granularity", getattr(store, "granularity", eff_granularity)
+                    ),
                     "summary": summary,
                 }
             )

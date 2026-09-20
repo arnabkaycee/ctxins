@@ -105,7 +105,12 @@ class CtxinsTUIApp(App[None]):
             self.selected_turn_index = self.state.selected_turn_index
 
     def compose(self) -> ComposeResult:
-        yield HeaderBarWidget(self.state, proxy_port=self.proxy_port, web_url=self.web_url, granularity=self.granularity)
+        yield HeaderBarWidget(
+            self.state,
+            proxy_port=self.proxy_port,
+            web_url=self.web_url,
+            granularity=self.granularity,
+        )
         with Horizontal(id="main-container"):
             yield SessionsPanelWidget(self.state, id="sessions-pane")
             yield TurnTimelineWidget(self.state, id="timeline-pane")

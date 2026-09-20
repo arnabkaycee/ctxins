@@ -1,15 +1,11 @@
 """Unit tests for tool call <-> tool result linking mechanisms across providers and ContextGraph."""
 
-import json
-import pytest
-
 from src.core.ast.normalizers import (
-    AnthropicASTNormalizer,
     GeminiASTNormalizer,
     OpenAIASTNormalizer,
 )
 from src.core.graph.turn_tree import ContextGraph
-from src.schema.ast import BlockType, CanonicalTurn, ContextBlock, ToolInvocation
+from src.schema.ast import BlockType, CanonicalTurn, ContextBlock
 
 
 def test_tool_invocation_exact_call_id_matching():
@@ -168,7 +164,10 @@ def test_openai_normalizer_populates_call_id():
                         {
                             "id": "call_openai_999",
                             "type": "function",
-                            "function": {"name": "get_weather", "arguments": '{"location": "Tokyo"}'},
+                            "function": {
+                                "name": "get_weather",
+                                "arguments": '{"location": "Tokyo"}',
+                            },
                         }
                     ],
                 },
@@ -250,13 +249,7 @@ def test_gemini_normalizer_populates_call_id():
             ]
         },
         "response_payload": {
-            "candidates": [
-                {
-                    "content": {
-                        "parts": [{"text": "Here are the search results."}]
-                    }
-                }
-            ]
+            "candidates": [{"content": {"parts": [{"text": "Here are the search results."}]}}]
         },
     }
 

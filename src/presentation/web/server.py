@@ -61,9 +61,7 @@ def create_app(
     app.state.granularity = eff_granularity
 
     # Register REST API router under /api/v1 and /api
-    api_router = create_api_router(
-        store=resolved_store, ws_hub=ws_hub, granularity=eff_granularity
-    )
+    api_router = create_api_router(store=resolved_store, ws_hub=ws_hub, granularity=eff_granularity)
     app.include_router(api_router, prefix="/api/v1")
     app.include_router(api_router, prefix="/api")
 

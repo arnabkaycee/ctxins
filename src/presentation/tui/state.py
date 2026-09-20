@@ -198,7 +198,9 @@ class TUIState:
             )
             turn = self._find_or_create_turn(turn_idx, session_id=target_sid)
             turn["status"] = "completed"
-            turn["stepCount"] = t_data.get("stepCount", t_data.get("step_count", turn.get("stepCount", 1)))
+            turn["stepCount"] = t_data.get(
+                "stepCount", t_data.get("step_count", turn.get("stepCount", 1))
+            )
             turn["step_count"] = turn["stepCount"]
 
             # Parse metrics

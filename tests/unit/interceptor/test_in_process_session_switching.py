@@ -330,7 +330,9 @@ def test_agy_reused_explicit_session_id_switching():
         command="agy --dangerously-skip-permissions -c",
         confidence=1.0,
         detection_source="process",
-        process_info=ProcessInfo(pid=70999, name="agy", cmdline="agy --dangerously-skip-permissions -c"),
+        process_info=ProcessInfo(
+            pid=70999, name="agy", cmdline="agy --dangerously-skip-permissions -c"
+        ),
     )
     detector.identify_client.return_value = agent
     addon = CtxinsAddon(ring_buffer=buffer, process_detector=detector)
@@ -388,7 +390,9 @@ def test_agy_reused_explicit_session_id_switching():
         "model": "gemini-3.8-flash-medium",
         "sessionId": reused_hash,
         "request": {
-            "contents": [{"role": "user", "parts": [{"text": "Brand new conversation in same agy process"}]}],
+            "contents": [
+                {"role": "user", "parts": [{"text": "Brand new conversation in same agy process"}]}
+            ],
         },
     }
     req3 = MockRequest(
