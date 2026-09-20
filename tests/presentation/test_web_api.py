@@ -267,14 +267,24 @@ def test_static_assets_serving(client: TestClient) -> None:
     res_html = client.get("/")
     assert res_html.status_code == 200
     assert "ctxins - Context Inspector Dashboard" in res_html.text
+    assert 'id="auto-diff-ribbon"' in res_html.text
+    assert "diff-advanced-details" in res_html.text
 
     res_css = client.get("/css/styles.css")
     assert res_css.status_code == 200
     assert "--bg-canvas:" in res_css.text
+    assert ".auto-diff-ribbon" in res_css.text
+    assert ".delta-pill" in res_css.text
+    assert ".breakpoint-callout" in res_css.text
 
     res_js = client.get("/js/ws_client.js")
     assert res_js.status_code == 200
     assert "class WSClient" in res_js.text
+
+    res_app_js = client.get("/js/app.js")
+    assert res_app_js.status_code == 200
+    assert "renderAutoDiffRibbon" in res_app_js.text
+    assert "fetchAutoDiff" in res_app_js.text
 
 
 # ---------------------------------------------------------------------------

@@ -33,6 +33,7 @@ class DashboardApp {
     this.recommendationsCount = document.getElementById('recommendations-count');
     this.turnTitle = document.getElementById('selected-turn-title');
     this.turnMetaRibbon = document.getElementById('turn-meta-ribbon');
+    this.autoDiffRibbon = document.getElementById('auto-diff-ribbon');
     this.blocksTableBody = document.getElementById('blocks-table-body');
 
     // Diff Elements
@@ -478,6 +479,98 @@ class DashboardApp {
     }
 
     this.renderBlocksTable(turn);
+
+    // Auto-diff (N vs N-1) handling
+    if (tIdx === 0 || this.turns.length <= 1) {
+      if (this.autoDiffRibbon) {
+        this.autoDiffRibbon.innerHTML = `
+          <span class="badge badge-info">Turn #0: Initial Prompt Baseline (All blocks initial load)</span>
+        `;
+      }
+    } else {
+      this.fetchAutoDiff(tIdx);
+    }
+  }
+
+  async fetchAutoDiff(turnIndex) {
+    if (!this.autoDiffRibbon || !this.activeSessionId) return;
+
+    const prevIndex = turnIndex - 1;
+    this._activeDiffTurnIndex = turnIndex;
+    this.autoDiffRibbon.innerHTML = `
+      <span style="color: var(--text-secondary); font-size: 11px;">
+        Comparing Turn #${prevIndex} → Turn #${turnIndex}...
+      </span>
+    `;
+
+    try {
+      const res = await fetch(
+        `/api/v1/sessions/${encodeURIComponent(this.activeSessionId)}/diff/${prevIndex}/${turnIndex}`
+      );
+      if (this._activeDiffTurnIndex !== turnIndex || this.selectedTurnIndex !== turnIndex) {
+        return;
+      }
+      if (res.ok) {
+        const data = await res.json();
+        this.renderAutoDiffRibbon(data, prevIndex, turnIndex);
+      } else {
+        const err = await res.json().catch(() => ({}));
+        this.autoDiffRibbon.innerHTML = `
+          <span style="color: var(--color-critical); font-size: 11px;">
+            Auto-diff unavailable: ${err.detail || "Diff request failed"}
+          </span>
+        `;
+      }
+    } catch (err) {
+      if (this._activeDiffTurnIndex !== turnIndex || this.selectedTurnIndex !== turnIndex) {
+        return;
+      }
+      console.error("[DashboardApp] Auto-diff failed:", err);
+      this.autoDiffRibbon.innerHTML = `
+        <span style="color: var(--color-critical); font-size: 11px;">
+          Auto-diff calculation failed
+        </span>
+      `;
+    }
+  }
+
+  renderAutoDiffRibbon(data, prevIndex, turnIndex) {
+    if (!this.autoDiffRibbon) return;
+
+    const growth = data.tokenGrowth ?? data.token_growth ?? 0;
+    let deltaFormatted = "";
+    let deltaClass = "";
+
+    if (growth > 0) {
+      deltaFormatted = `▲ +${growth.toLocaleString()} tokens`;
+      deltaClass = "delta-positive";
+    } else if (growth < 0) {
+      deltaFormatted = `▼ ${growth.toLocaleString()} tokens`;
+      deltaClass = "delta-negative";
+    } else {
+      deltaFormatted = `±0 tokens`;
+      deltaClass = "delta-neutral";
+    }
+
+    const added = data.addedBlockIds || data.added_block_ids || [];
+    const mutated = data.mutatedBlockIds || data.mutated_block_ids || [];
+    const evicted = data.removedBlockIds || data.removed_block_ids || [];
+    const persisted = data.persistedBlockIds || data.persisted_block_ids || [];
+    const breakpoint = data.cacheBreakpointBlockId || data.cache_breakpoint_block_id;
+
+    const breakpointHtml = breakpoint
+      ? `<span class="breakpoint-callout">⚡ Cache Breakpoint at [${breakpoint}]: Subsequent blocks re-tokenized</span>`
+      : `<span class="badge badge-success">✓ Prefix Cache Intact</span>`;
+
+    this.autoDiffRibbon.innerHTML = `
+      <span class="auto-diff-title">Turn #${prevIndex} → #${turnIndex} Delta:</span>
+      <span class="delta-pill ${deltaClass}">${deltaFormatted}</span>
+      <span class="badge badge-added" title="${added.length ? added.join(", ") : "None"}">${added.length} Added</span>
+      <span class="badge badge-mutated" title="${mutated.length ? mutated.join(", ") : "None"}">${mutated.length} Mutated</span>
+      <span class="badge badge-evicted" title="${evicted.length ? evicted.join(", ") : "None"}">${evicted.length} Evicted</span>
+      <span class="badge badge-persisted" title="${persisted.length ? persisted.join(", ") : "None"}">${persisted.length} Persisted</span>
+      ${breakpointHtml}
+    `;
   }
 
   renderBlocksTable(turn) {
@@ -565,6 +658,7 @@ class DashboardApp {
   renderEmptyTurnInspector() {
     if (this.turnTitle) this.turnTitle.textContent = 'Turn Inspector';
     if (this.turnMetaRibbon) this.turnMetaRibbon.innerHTML = '<span>Waiting for proxied agent traffic...</span>';
+    if (this.autoDiffRibbon) this.autoDiffRibbon.innerHTML = '';
     if (this.blocksTableBody) {
       this.blocksTableBody.innerHTML = `
         <tr>
