@@ -102,8 +102,7 @@ class RecurringResultsHeuristic(BaseHeuristic):
             # 1. Check previous turns
             for prev in resolved_prev:
                 has_match = any(
-                    self._is_matching_result(tool_res, prev_res)
-                    for prev_res in prev.tool_results
+                    self._is_matching_result(tool_res, prev_res) for prev_res in prev.tool_results
                 )
                 if has_match:
                     occurrences += 1
@@ -146,8 +145,7 @@ class RecurringResultsHeuristic(BaseHeuristic):
 
         # Trigger condition: Exceeds token threshold OR ratio threshold
         exceeds_threshold = (
-            recurring_tokens >= self.token_threshold
-            or recurring_ratio >= self.ratio_threshold
+            recurring_tokens >= self.token_threshold or recurring_ratio >= self.ratio_threshold
         )
 
         if not exceeds_threshold:

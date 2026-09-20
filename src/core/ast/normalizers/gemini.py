@@ -163,7 +163,9 @@ class GeminiASTNormalizer(BaseNormalizer):
                     is_error = False
                     if "is_error" in fn_resp:
                         is_error = bool(fn_resp["is_error"])
-                    elif isinstance(resp_data, dict) and ("error" in resp_data or "is_error" in resp_data):
+                    elif isinstance(resp_data, dict) and (
+                        "error" in resp_data or "is_error" in resp_data
+                    ):
                         is_error = bool(resp_data.get("is_error", resp_data.get("error")))
                     tool_results.append(
                         ContextBlock(

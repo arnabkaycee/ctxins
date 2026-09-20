@@ -136,7 +136,9 @@ class TurnTimelineWidget(Widget):
             elif len(violations) > 0:
                 markup = f"[bold yellow]⚠[/] Turn #{idx}[dim]{steps_str}[/] ({tok_str} tok, {len(violations)} viols)"
             else:
-                markup = f"[bold green]✓[/] Turn #{idx}[dim]{steps_str}[/] ({tok_str} tok, ${cost:.3f})"
+                markup = (
+                    f"[bold green]✓[/] Turn #{idx}[dim]{steps_str}[/] ({tok_str} tok, ${cost:.3f})"
+                )
 
             ol.add_option(Option(Text.from_markup(markup), id=str(idx)))
 

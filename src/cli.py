@@ -278,17 +278,12 @@ def is_human_interaction(envelope: WireEnvelope) -> bool:
             parts = last_item.get("parts", [])
             if isinstance(parts, list):
                 has_fn_resp = any(
-                    isinstance(p, dict)
-                    and ("functionResponse" in p or "function_response" in p)
+                    isinstance(p, dict) and ("functionResponse" in p or "function_response" in p)
                     for p in parts
                 )
                 has_text = any(
                     isinstance(p, str)
-                    or (
-                        isinstance(p, dict)
-                        and "text" in p
-                        and bool(p.get("text", "").strip())
-                    )
+                    or (isinstance(p, dict) and "text" in p and bool(p.get("text", "").strip()))
                     for p in parts
                 )
                 if has_fn_resp and not has_text:
@@ -1284,9 +1279,7 @@ def main(args: Optional[List[str]] = None) -> int:
     effective_log_file = getattr(parsed, "log_file", None) or top_opts.log_file
 
     eff_granularity = (
-        getattr(parsed, "granularity", None)
-        or os.environ.get("CTXINS_GRANULARITY")
-        or "step"
+        getattr(parsed, "granularity", None) or os.environ.get("CTXINS_GRANULARITY") or "step"
     ).lower()
     os.environ["CTXINS_GRANULARITY"] = eff_granularity
 

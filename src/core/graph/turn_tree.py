@@ -285,19 +285,14 @@ class ContextGraph:
             return None
 
         call_id = target_res.call_id or target_res.metadata.get("tool_use_id") or ""
-        tool_name = (
-            target_res.metadata.get("name")
-            or target_res.metadata.get("tool_name")
-            or ""
-        )
+        tool_name = target_res.metadata.get("name") or target_res.metadata.get("tool_name") or ""
 
         # 1. Exact call_id match across all turns (searching assistant_blocks + conversation_history)
         if call_id:
             for turn in self.turns:
                 for b in turn.assistant_blocks + turn.conversation_history:
                     if b.block_type != BlockType.TOOL_RESULT and (
-                        b.call_id == call_id
-                        or b.metadata.get("tool_use_id") == call_id
+                        b.call_id == call_id or b.metadata.get("tool_use_id") == call_id
                     ):
                         return (turn, b)
 
@@ -339,20 +334,13 @@ class ContextGraph:
             return None
 
         call_id = target_call.call_id or target_call.metadata.get("tool_use_id") or ""
-        tool_name = (
-            target_call.metadata.get("name")
-            or target_call.metadata.get("tool_name")
-            or ""
-        )
+        tool_name = target_call.metadata.get("name") or target_call.metadata.get("tool_name") or ""
 
         # 1. Exact call_id match
         if call_id:
             for turn in self.turns:
                 for b in turn.tool_results:
-                    if (
-                        b.call_id == call_id
-                        or b.metadata.get("tool_use_id") == call_id
-                    ):
+                    if b.call_id == call_id or b.metadata.get("tool_use_id") == call_id:
                         return (turn, b)
 
         # 2. Tool name fallback

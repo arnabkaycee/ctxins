@@ -204,12 +204,7 @@ class CanonicalTurn:
 
         def _tool_name(block: ContextBlock) -> str:
             meta = block.metadata
-            return (
-                meta.get("name")
-                or meta.get("tool_name")
-                or meta.get("tool")
-                or ""
-            )
+            return meta.get("name") or meta.get("tool_name") or meta.get("tool") or ""
 
         def _is_error(block: ContextBlock) -> bool:
             return bool(
@@ -224,7 +219,11 @@ class CanonicalTurn:
             if not cid:
                 continue
             match = next(
-                (r for r in result_blocks if r.call_id == cid and r.block_id not in used_result_ids),
+                (
+                    r
+                    for r in result_blocks
+                    if r.call_id == cid and r.block_id not in used_result_ids
+                ),
                 None,
             )
             if match:
@@ -249,7 +248,9 @@ class CanonicalTurn:
                 (
                     r
                     for r in result_blocks
-                    if r.block_id not in used_result_ids and _tool_name(r) == call_name and call_name
+                    if r.block_id not in used_result_ids
+                    and _tool_name(r) == call_name
+                    and call_name
                 ),
                 None,
             )
@@ -296,7 +297,6 @@ class CanonicalTurn:
 
         return invocations
 
-
     def to_dict(self) -> Dict[str, Any]:
         return {
             "turn_id": self.turn_id,
@@ -323,7 +323,6 @@ class CanonicalTurn:
             "metadata": dict(self.metadata),
             "tool_invocations": [inv.to_dict() for inv in self.tool_invocations],
         }
-
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> CanonicalTurn:

@@ -569,5 +569,3 @@ def test_top_level_granularity_routes_to_tui(monkeypatch: pytest.MonkeyPatch) ->
 
     main(["--granularity", "human"])
     assert captured_kwargs.get("granularity") == "human"
-
-

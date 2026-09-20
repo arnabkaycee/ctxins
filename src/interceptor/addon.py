@@ -262,7 +262,11 @@ class CtxinsAddon:
 
         if not session_id and isinstance(body, dict):
             req_wrapper = body.get("request") if isinstance(body.get("request"), dict) else None
-            req_meta = req_wrapper.get("metadata") if req_wrapper and isinstance(req_wrapper.get("metadata"), dict) else None
+            req_meta = (
+                req_wrapper.get("metadata")
+                if req_wrapper and isinstance(req_wrapper.get("metadata"), dict)
+                else None
+            )
             body_meta = body.get("metadata") if isinstance(body.get("metadata"), dict) else None
 
             candidate_containers = [body, req_wrapper, body_meta, req_meta]

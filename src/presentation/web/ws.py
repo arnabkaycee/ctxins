@@ -43,9 +43,7 @@ class WebSocketHub:
         """
         self.broadcaster = broadcaster
         self.store = store
-        self.granularity = (
-            granularity or getattr(store, "granularity", "step") or "step"
-        ).lower()
+        self.granularity = (granularity or getattr(store, "granularity", "step") or "step").lower()
         self._clients: Set[WebSocket] = set()
         self._client_sessions: Dict[WebSocket, Optional[str]] = {}
 
