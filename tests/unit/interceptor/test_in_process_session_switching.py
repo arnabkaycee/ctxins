@@ -317,6 +317,95 @@ def test_agy_wrapped_payload_in_process_session_switching():
     assert env3.session_id == "sess_agy_7788_2"
 
 
+def test_agy_reused_explicit_session_id_switching():
+    """Verify that when agy reuses the same explicit Cloud Code int64 session hash across conversations,
+    ctxins detects the conversation reset and mints a distinct session ID (e.g. _2)."""
+    buffer = BoundedRingBuffer(100)
+    detector = MagicMock(spec=ProcessDetector)
+    agent = AgentIdentity(
+        name="agy",
+        display_name="Antigravity (agy)",
+        is_known=True,
+        pid=70999,
+        command="agy --dangerously-skip-permissions -c",
+        confidence=1.0,
+        detection_source="process",
+        process_info=ProcessInfo(pid=70999, name="agy", cmdline="agy --dangerously-skip-permissions -c"),
+    )
+    detector.identify_client.return_value = agent
+    addon = CtxinsAddon(ring_buffer=buffer, process_detector=detector)
+
+    reused_hash = -3750763034362895579
+
+    # Conversation 1 - Turn 1
+    payload1 = {
+        "model": "gemini-3.8-flash-medium",
+        "sessionId": reused_hash,
+        "request": {
+            "contents": [{"role": "user", "parts": [{"text": "First conversation prompt"}]}],
+        },
+    }
+    req1 = MockRequest(
+        host="daily-cloudcode-pa.googleapis.com",
+        path="/v1internal:streamGenerateContent?alt=sse",
+        content=json.dumps(payload1).encode("utf-8"),
+    )
+    flow1 = MockFlow(request=req1, flow_id="flow-1")
+    addon.requestheaders(flow1)
+    addon.request(flow1)
+
+    assert len(buffer) == 1
+    env1 = WireEnvelope.from_bytes(buffer.pop())
+    assert env1.session_id == "sess_agy_3750763034362895579"
+
+    # Conversation 1 - Turn 2 (continuation of same conversation)
+    payload2 = {
+        "model": "gemini-3.8-flash-medium",
+        "sessionId": reused_hash,
+        "request": {
+            "contents": [
+                {"role": "user", "parts": [{"text": "First conversation prompt"}]},
+                {"role": "model", "parts": [{"text": "Answer 1"}]},
+                {"role": "user", "parts": [{"text": "Follow-up question"}]},
+            ],
+        },
+    }
+    req2 = MockRequest(
+        host="daily-cloudcode-pa.googleapis.com",
+        path="/v1internal:streamGenerateContent?alt=sse",
+        content=json.dumps(payload2).encode("utf-8"),
+    )
+    flow2 = MockFlow(request=req2, flow_id="flow-2")
+    addon.requestheaders(flow2)
+    addon.request(flow2)
+
+    assert len(buffer) == 1
+    env2 = WireEnvelope.from_bytes(buffer.pop())
+    assert env2.session_id == "sess_agy_3750763034362895579"
+
+    # Conversation 2 - Turn 1 (New conversation started in same agy process; same sessionId hash reused!)
+    payload3 = {
+        "model": "gemini-3.8-flash-medium",
+        "sessionId": reused_hash,
+        "request": {
+            "contents": [{"role": "user", "parts": [{"text": "Brand new conversation in same agy process"}]}],
+        },
+    }
+    req3 = MockRequest(
+        host="daily-cloudcode-pa.googleapis.com",
+        path="/v1internal:streamGenerateContent?alt=sse",
+        content=json.dumps(payload3).encode("utf-8"),
+    )
+    flow3 = MockFlow(request=req3, flow_id="flow-3")
+    addon.requestheaders(flow3)
+    addon.request(flow3)
+
+    assert len(buffer) == 1
+    env3 = WireEnvelope.from_bytes(buffer.pop())
+    # Crucial: Must be recognized as a new session sess_agy_3750763034362895579_2!
+    assert env3.session_id == "sess_agy_3750763034362895579_2"
+
+
 def test_session_store_does_not_alias_populated_session():
     """Verify SessionStore.alias_session refuses to alias an existing session with turns."""
     store = SessionStore()

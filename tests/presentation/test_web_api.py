@@ -353,6 +353,31 @@ def test_websocket_broadcaster_event_forwarding(
         assert received["payload"]["turnIndex"] == 2
 
 
+def test_websocket_global_session_lifecycle_event_forwarding(
+    client: TestClient,
+    test_broadcaster: PresentationBroadcaster,
+) -> None:
+    """Verify global session lifecycle events (SESSION_CREATED) are forwarded even to clients with a session_id filter."""
+    with client.websocket_connect("/ws/live?session_id=sess_test_1") as ws:
+        # First message is snapshot
+        snapshot = ws.receive_json()
+        assert snapshot["type"] == "SNAPSHOT"
+
+        # Publish a SESSION_CREATED event for a DIFFERENT session (e.g. sess_test_2 from same agent process)
+        event = UIEvent(
+            event_type=UIEventType.SESSION_CREATED,
+            session_id="sess_test_2",
+            payload={"sessionId": "sess_test_2", "agentHarness": "agy"},
+        )
+        test_broadcaster.publish_nowait(event)
+
+        # Receive streamed global event
+        received = ws.receive_json()
+        assert received["type"] == "session_created"
+        assert received["sessionId"] == "sess_test_2"
+        assert received["payload"]["agentHarness"] == "agy"
+
+
 def test_websocket_hub_direct_methods() -> None:
     """Verify WebSocketHub register, unregister, and connection tracking."""
     hub = WebSocketHub()

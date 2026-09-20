@@ -12,10 +12,17 @@ from fastapi import WebSocket, WebSocketDisconnect
 from src.core.analyzer.scorer import PollutionScorer
 from src.core.store.session_store import SessionStore
 from src.presentation.broadcaster import PresentationBroadcaster
-from src.presentation.events import UIEvent
+from src.presentation.events import UIEvent, UIEventType
 from src.presentation.web.turn_serializer import serialize_turn_with_delta
 
 logger = logging.getLogger(__name__)
+
+GLOBAL_EVENT_TYPES = {
+    UIEventType.SESSION_CREATED,
+    UIEventType.SESSION_ENDED,
+    UIEventType.SESSION_ERASED,
+    UIEventType.SESSION_DISCONNECTED,
+}
 
 
 class WebSocketHub:
@@ -86,7 +93,12 @@ class WebSocketHub:
         # Direct fan-out if no broadcaster is attached
         dead_clients: Set[WebSocket] = set()
         for ws, client_sid in list(self._client_sessions.items()):
-            if client_sid is None or not event.session_id or client_sid == event.session_id:
+            if (
+                client_sid is None
+                or not event.session_id
+                or client_sid == event.session_id
+                or event.event_type in GLOBAL_EVENT_TYPES
+            ):
                 try:
                     await ws.send_json(event.to_dict())
                 except Exception:
@@ -187,6 +199,7 @@ class WebSocketHub:
                             client_sid is None
                             or not event.session_id
                             or client_sid == event.session_id
+                            or event.event_type in GLOBAL_EVENT_TYPES
                         ):
                             await websocket.send_json(event.to_dict())
                     finally:

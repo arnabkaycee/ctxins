@@ -847,14 +847,23 @@ class DashboardApp {
       this.refreshSessions();
     }
 
-    // Ignore events for other sessions if activeSessionId is set, except session_created and session_erased
+    // Ignore events for other sessions if activeSessionId is set, except session lifecycle events
     if (this.activeSessionId && sid && this.activeSessionId !== sid) {
       if (
         type === 'session_created' ||
         type === 'SESSION_CREATED' ||
         type === 'session_erased' ||
-        type === 'SESSION_ERASED'
+        type === 'SESSION_ERASED' ||
+        type === 'session_disconnected' ||
+        type === 'SESSION_DISCONNECTED'
       ) {
+        if (type === 'session_created' || type === 'SESSION_CREATED') {
+          this.showToast(`✨ New session detected: ${sid}`);
+          if (this.turns.length === 0 || this.activeSessionId === 'sess_default') {
+            this.switchSession(sid);
+            return;
+          }
+        }
         this.refreshSessions();
       }
       return;
