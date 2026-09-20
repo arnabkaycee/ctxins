@@ -696,7 +696,7 @@ def test_custom_dropdown_component(client: TestClient) -> None:
     assert 'id="diff-t1"' in html_text
     assert 'id="diff-t2"' in html_text
 
-    # 2. styles.css contains styling for custom dropdowns
+    # 2. styles.css contains styling for custom dropdowns and unclipped panel
     res_css = client.get("/css/styles.css")
     assert res_css.status_code == 200
     css_text = res_css.text
@@ -709,6 +709,8 @@ def test_custom_dropdown_component(client: TestClient) -> None:
     assert ".custom-dropdown-search-wrapper" in css_text
     assert ".custom-dropdown-search-input" in css_text
     assert ".custom-dropdown-time-machine" in css_text
+    assert ".custom-dropdown.open" in css_text
+    assert ".context-capacity-section:has(.custom-dropdown.open)" in css_text
 
     # 3. app.js contains CustomDropdown class implementation and wiring
     res_js = client.get("/js/app.js")
