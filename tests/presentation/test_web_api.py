@@ -359,3 +359,31 @@ def test_static_assets_and_json_viewer_served(client: TestClient) -> None:
     assert resp_css.status_code == 200
     assert ".json-tree-container" in resp_css.text
     assert ".json-caret" in resp_css.text
+
+
+def test_static_assets_proportion_bar_and_filter_chips(client: TestClient) -> None:
+    """Verify context-proportion-bar and blocks-filter-chips are present in index.html, styles.css, and app.js."""
+    resp = client.get("/")
+    assert resp.status_code == 200
+    assert "context-proportion-bar" in resp.text
+    assert "blocks-filter-chips" in resp.text
+    assert 'data-filter="ALL"' in resp.text
+    assert 'data-filter="SYSTEM"' in resp.text
+    assert 'data-filter="TOOLS"' in resp.text
+    assert 'data-filter="MESSAGES"' in resp.text
+    assert 'data-filter="TOOL_RESULTS"' in resp.text
+    assert 'data-filter="ADDED"' in resp.text
+    assert 'data-filter="MUTATED"' in resp.text
+
+    resp_css = client.get("/css/styles.css")
+    assert resp_css.status_code == 200
+    assert "#context-proportion-bar" in resp_css.text
+    assert ".proportion-segment" in resp_css.text
+    assert ".filter-chips" in resp_css.text
+    assert ".filter-chip" in resp_css.text
+
+    resp_js = client.get("/js/app.js")
+    assert resp_js.status_code == 200
+    assert "renderProportionBar" in resp_js.text
+    assert "currentBlockFilter" in resp_js.text
+    assert "setBlockFilter" in resp_js.text
