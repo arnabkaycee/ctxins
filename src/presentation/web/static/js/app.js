@@ -35,6 +35,9 @@ class DashboardApp {
     this.turnMetaRibbon = document.getElementById('turn-meta-ribbon');
     this.autoDiffRibbon = document.getElementById('auto-diff-ribbon');
     this.blocksTableBody = document.getElementById('blocks-table-body');
+    this.contextProportionBar = document.getElementById('context-proportion-bar');
+    this.filterChipsContainer = document.getElementById('blocks-filter-chips');
+    this.currentBlockFilter = 'ALL';
 
     // Diff Elements
     this.diffT1 = document.getElementById('diff-t1');
@@ -116,6 +119,17 @@ class DashboardApp {
 
     if (this.diffBtn) {
       this.diffBtn.addEventListener('click', () => this.computeDiff());
+    }
+
+    if (this.filterChipsContainer) {
+      this.filterChipsContainer.addEventListener('click', (e) => {
+        const chip = e.target.closest('.filter-chip');
+        if (!chip) return;
+        const filter = chip.dataset.filter || chip.getAttribute('data-filter');
+        if (filter) {
+          this.setBlockFilter(filter);
+        }
+      });
     }
 
     if (this.modalCloseBtn) {
@@ -564,6 +578,117 @@ class DashboardApp {
     });
   }
 
+  setBlockFilter(filter) {
+    this.currentBlockFilter = filter;
+    if (this.filterChipsContainer) {
+      const chips = this.filterChipsContainer.querySelectorAll('.filter-chip');
+      chips.forEach((chip) => {
+        chip.classList.toggle('active', (chip.dataset.filter || chip.getAttribute('data-filter')) === filter);
+      });
+    }
+    const currentTurn = this.getSelectedTurn();
+    if (currentTurn) {
+      this.renderBlocksTable(currentTurn);
+    }
+  }
+
+  getSelectedTurn() {
+    return this.turns.find(
+      (t) => (t.turn_index !== undefined ? t.turn_index : t.turnIndex) === this.selectedTurnIndex
+    );
+  }
+
+  renderProportionBar(turn) {
+    if (!this.contextProportionBar) return;
+    this.contextProportionBar.innerHTML = '';
+
+    // Calculate category token aggregates (system_blocks, tool_defs, conversation_history, tool_results)
+    let sysTokens = 0;
+    let toolTokens = 0;
+    let histTokens = 0;
+    let resTokens = 0;
+
+    const sysBlocks = turn.system_blocks || turn.systemBlocks;
+    const toolBlocks = turn.tool_defs || turn.toolDefs;
+    const histBlocks = turn.conversation_history || turn.conversationHistory;
+    const resBlocks = turn.tool_results || turn.toolResults;
+    const asstBlocks = turn.assistant_blocks || turn.assistantBlocks;
+
+    if (sysBlocks || toolBlocks || histBlocks || resBlocks || asstBlocks) {
+      if (sysBlocks) sysTokens = sysBlocks.reduce((acc, b) => acc + (b.token_count ?? b.tokenCount ?? 0), 0);
+      if (toolBlocks) toolTokens = toolBlocks.reduce((acc, b) => acc + (b.token_count ?? b.tokenCount ?? 0), 0);
+      if (histBlocks) histTokens += histBlocks.reduce((acc, b) => acc + (b.token_count ?? b.tokenCount ?? 0), 0);
+      if (asstBlocks) histTokens += asstBlocks.reduce((acc, b) => acc + (b.token_count ?? b.tokenCount ?? 0), 0);
+      if (resBlocks) resTokens = resBlocks.reduce((acc, b) => acc + (b.token_count ?? b.tokenCount ?? 0), 0);
+    }
+
+    // If all are 0, check all_blocks or blocks
+    if (sysTokens === 0 && toolTokens === 0 && histTokens === 0 && resTokens === 0) {
+      const allBlocks = turn.all_blocks || turn.blocks || [];
+      allBlocks.forEach((b) => {
+        const type = (b.block_type || b.blockType || '').toLowerCase();
+        const count = b.token_count ?? b.tokenCount ?? 0;
+        if (type.includes('system')) {
+          sysTokens += count;
+        } else if (type.includes('tool_def') || type.includes('tool_declaration')) {
+          toolTokens += count;
+        } else if (type.includes('tool_result')) {
+          resTokens += count;
+        } else {
+          histTokens += count;
+        }
+      });
+    }
+
+    // Fallback to category_breakdown if still 0
+    if (sysTokens === 0 && toolTokens === 0 && histTokens === 0 && resTokens === 0) {
+      const cb = turn.category_breakdown || turn.categoryBreakdown || turn.token_breakdown || turn.tokenBreakdown;
+      if (cb) {
+        sysTokens = cb.system || 0;
+        toolTokens = cb.tools || cb.tool_defs || 0;
+        histTokens = cb.history || cb.conversation_history || cb.conversation || 0;
+        resTokens = cb.tool_results || cb.toolResults || cb.results || 0;
+      }
+    }
+
+    const totalTokens = sysTokens + toolTokens + histTokens + resTokens;
+
+    if (totalTokens === 0) {
+      this.contextProportionBar.innerHTML = `
+        <div class="proportion-segment empty-bar" style="width: 100%; justify-content: center;">
+          No context blocks for this turn
+        </div>
+      `;
+      return;
+    }
+
+    const categories = [
+      { key: 'system', name: 'System', tokens: sysTokens, class: 'segment-system', filter: 'SYSTEM' },
+      { key: 'tools', name: 'Tool Defs', tokens: toolTokens, class: 'segment-tools', filter: 'TOOLS' },
+      { key: 'messages', name: 'Messages / History', tokens: histTokens, class: 'segment-messages', filter: 'MESSAGES' },
+      { key: 'results', name: 'Tool Results', tokens: resTokens, class: 'segment-results', filter: 'TOOL_RESULTS' },
+    ];
+
+    categories.forEach((cat) => {
+      if (cat.tokens <= 0) return;
+      const pct = (cat.tokens / totalTokens) * 100;
+      const segment = document.createElement('div');
+      segment.className = `proportion-segment ${cat.class}`;
+      segment.style.width = `${pct}%`;
+      segment.title = `${cat.name}: ${cat.tokens.toLocaleString()} tok (${pct.toFixed(1)}%) — Click to filter`;
+
+      const label = document.createElement('span');
+      label.textContent = `${cat.name}: ${cat.tokens.toLocaleString()} (${pct.toFixed(0)}%)`;
+      segment.appendChild(label);
+
+      segment.addEventListener('click', () => {
+        this.setBlockFilter(cat.filter);
+      });
+
+      this.contextProportionBar.appendChild(segment);
+    });
+  }
+
   selectTurn(turnIndex) {
     this.selectedTurnIndex = turnIndex;
     const turn = this.turns.find(
@@ -602,6 +727,7 @@ class DashboardApp {
       `;
     }
 
+    this.renderProportionBar(turn);
     this.renderBlocksTable(turn);
 
     // Auto-diff (N vs N-1) handling
@@ -728,7 +854,49 @@ class DashboardApp {
       return;
     }
 
-    blocks.forEach((b) => {
+    // Calculate total turn tokens across all blocks for relative share
+    const totalTurnTokens = blocks.reduce(
+      (acc, b) => acc + (b.token_count ?? b.tokenCount ?? 0),
+      0
+    ) || (turn.input_tokens ?? turn.inputTokens ?? 0);
+
+    // Filter rows based on this.currentBlockFilter
+    const filter = this.currentBlockFilter || 'ALL';
+    const filteredBlocks = blocks.filter((b) => {
+      const bType = (b.block_type || b.blockType || '').toLowerCase();
+      const status = (b.lifecycle_status || b.status || '').toLowerCase();
+
+      switch (filter) {
+        case 'SYSTEM':
+          return bType.includes('system');
+        case 'TOOLS':
+          return bType.includes('tool_def') || bType.includes('tool_declaration');
+        case 'MESSAGES':
+          return bType.includes('user') || bType.includes('assistant') || bType.includes('conversation');
+        case 'TOOL_RESULTS':
+          return bType.includes('tool_result');
+        case 'ADDED':
+          return status === 'added';
+        case 'MUTATED':
+          return status === 'mutated';
+        case 'ALL':
+        default:
+          return true;
+      }
+    });
+
+    if (filteredBlocks.length === 0) {
+      this.blocksTableBody.innerHTML = `
+        <tr>
+          <td colspan="6" style="text-align: center; color: var(--text-secondary); padding: 24px;">
+            No context blocks matching filter "${filter}".
+          </td>
+        </tr>
+      `;
+      return;
+    }
+
+    filteredBlocks.forEach((b) => {
       const row = document.createElement('tr');
       const bId = b.block_id || b.blockId || '—';
       row.dataset.blockId = bId;
@@ -740,6 +908,15 @@ class DashboardApp {
       const hashShort = hash ? `${hash.slice(0, 8)}...` : '—';
       const survived = b.turns_survived ?? b.turnsSurvived;
       const survivedText = survived !== undefined ? `${survived} turns` : '—';
+
+      const pctNum = totalTurnTokens > 0 ? (tokCount / totalTurnTokens) * 100 : 0;
+      let pctStr = '0%';
+      if (pctNum >= 1) {
+        pctStr = `${Math.round(pctNum)}%`;
+      } else if (pctNum > 0) {
+        pctStr = '<1%';
+      }
+      const tokenDisplay = `${tokCount.toLocaleString()} tok (${pctStr})`;
 
       let statusBadge = '';
       if (status === 'added') {
@@ -761,7 +938,7 @@ class DashboardApp {
           <span class="badge badge-info">${bType}</span>
           ${statusBadge}
         </td>
-        <td style="font-family: var(--font-mono);">${tokCount.toLocaleString()}</td>
+        <td style="font-family: var(--font-mono); white-space: nowrap;">${tokenDisplay}</td>
         <td>${survivedText}</td>
         <td class="hash-cell">${hashShort}</td>
         <td>
@@ -784,6 +961,7 @@ class DashboardApp {
     if (this.turnTitle) this.turnTitle.textContent = 'Turn Inspector';
     if (this.turnMetaRibbon) this.turnMetaRibbon.innerHTML = '<span>Waiting for proxied agent traffic...</span>';
     if (this.autoDiffRibbon) this.autoDiffRibbon.innerHTML = '';
+    if (this.contextProportionBar) this.contextProportionBar.innerHTML = '';
     if (this.blocksTableBody) {
       this.blocksTableBody.innerHTML = `
         <tr>

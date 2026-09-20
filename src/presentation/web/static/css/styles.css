@@ -686,6 +686,163 @@ body {
   color: var(--text-heading);
 }
 
+/* Context Proportion Bar */
+#context-proportion-bar,
+.context-proportion-bar {
+  display: flex;
+  width: 100%;
+  height: 28px;
+  background-color: var(--bg-canvas);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  margin-bottom: 12px;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.2);
+}
+
+.proportion-segment {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 8px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+  transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1), filter 0.15s ease;
+  user-select: none;
+}
+
+.proportion-segment:hover {
+  filter: brightness(1.2);
+}
+
+.proportion-segment.segment-system {
+  background-color: #58a6ff;
+  color: #0d1117;
+}
+
+.proportion-segment.segment-tools {
+  background-color: #d29922;
+  color: #0d1117;
+}
+
+.proportion-segment.segment-messages {
+  background-color: #a371f7;
+  color: #0d1117;
+}
+
+.proportion-segment.segment-results {
+  background-color: #f85149;
+  color: #ffffff;
+}
+
+.proportion-segment.empty-bar {
+  background-color: var(--bg-card);
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: default;
+}
+
+.proportion-segment.empty-bar:hover {
+  filter: none;
+}
+
+.proportion-segment span {
+  pointer-events: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Category Filter Chips */
+.filter-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  font-family: var(--font-sans);
+  border-radius: 20px;
+  border: 1px solid var(--border-color);
+  background-color: var(--bg-card);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s ease-in-out;
+  user-select: none;
+}
+
+.filter-chip:hover {
+  background-color: var(--bg-card-hover);
+  color: var(--text-heading);
+  border-color: var(--text-secondary);
+}
+
+.filter-chip.active {
+  background-color: var(--accent-blue-bg);
+  border-color: var(--accent-blue);
+  color: var(--accent-blue);
+  font-weight: 600;
+  box-shadow: 0 0 0 1px var(--accent-blue);
+}
+
+.filter-chip[data-filter="SYSTEM"].active {
+  background-color: rgba(88, 166, 255, 0.15);
+  border-color: #58a6ff;
+  color: #58a6ff;
+  box-shadow: 0 0 0 1px #58a6ff;
+}
+
+.filter-chip[data-filter="TOOLS"].active {
+  background-color: rgba(210, 153, 34, 0.15);
+  border-color: #d29922;
+  color: #d29922;
+  box-shadow: 0 0 0 1px #d29922;
+}
+
+.filter-chip[data-filter="MESSAGES"].active {
+  background-color: rgba(163, 113, 247, 0.15);
+  border-color: #a371f7;
+  color: #a371f7;
+  box-shadow: 0 0 0 1px #a371f7;
+}
+
+.filter-chip[data-filter="TOOL_RESULTS"].active {
+  background-color: rgba(248, 81, 73, 0.15);
+  border-color: #f85149;
+  color: #f85149;
+  box-shadow: 0 0 0 1px #f85149;
+}
+
+.filter-chip[data-filter="ADDED"].active {
+  background-color: rgba(63, 185, 80, 0.15);
+  border-color: #3fb950;
+  color: #3fb950;
+  box-shadow: 0 0 0 1px #3fb950;
+}
+
+.filter-chip[data-filter="MUTATED"].active {
+  background-color: rgba(210, 153, 34, 0.15);
+  border-color: #d29922;
+  color: #d29922;
+  box-shadow: 0 0 0 1px #d29922;
+}
+
 /* Table */
 .table-wrapper {
   overflow-x: auto;
