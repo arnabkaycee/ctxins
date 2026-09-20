@@ -59,6 +59,13 @@ class DashboardCharts {
             yAxisID: 'y',
           },
           {
+            label: 'Skills',
+            data: [],
+            backgroundColor: 'rgba(240, 136, 62, 0.85)',
+            stack: 'tokens',
+            yAxisID: 'y',
+          },
+          {
             label: 'History',
             data: [],
             backgroundColor: 'rgba(163, 113, 247, 0.85)',
@@ -224,6 +231,7 @@ class DashboardCharts {
     const labels = [];
     const systemData = [];
     const toolsData = [];
+    const skillsData = [];
     const historyData = [];
     const resultsData = [];
     const thoughtsData = [];
@@ -238,16 +246,18 @@ class DashboardCharts {
       // Calculate token segments
       let sys = 0;
       let tls = 0;
+      let skl = 0;
       let hist = 0;
       let res = 0;
       let tht = 0;
 
-      const tok = t.tokens || t.tokenBreakdown;
+      const tok = t.category_breakdown || t.categoryBreakdown || t.token_breakdown || t.tokenBreakdown || t.tokens;
       if (tok) {
         sys = tok.system || 0;
         tls = tok.tools || tok.tool_defs || 0;
-        hist = tok.history || tok.conversation_history || 0;
-        res = tok.toolResults || tok.tool_results || 0;
+        skl = tok.skills || tok.skill || 0;
+        hist = tok.history || tok.conversation_history || tok.conversation || 0;
+        res = tok.tool_results || tok.toolResults || tok.results || 0;
         tht = tok.thoughts || tok.thinking || 0;
       } else {
         const sysBlocks = t.system_blocks || t.systemBlocks;
@@ -255,6 +265,7 @@ class DashboardCharts {
         const histBlocks = t.conversation_history || t.conversationHistory;
         const resBlocks = t.tool_results || t.toolResults;
         const asstBlocks = t.assistant_blocks || t.assistantBlocks;
+        const allBlocks = t.all_blocks || t.blocks || [];
 
         if (sysBlocks) sys = sysBlocks.reduce((acc, b) => acc + (b.token_count || b.tokenCount || 0), 0);
         if (toolBlocks) tls = toolBlocks.reduce((acc, b) => acc + (b.token_count || b.tokenCount || 0), 0);
@@ -262,13 +273,16 @@ class DashboardCharts {
         if (resBlocks) res = resBlocks.reduce((acc, b) => acc + (b.token_count || b.tokenCount || 0), 0);
         if (asstBlocks) {
           tht = asstBlocks
-            .filter((b) => b.metadata && (b.metadata.type === 'thinking' || b.metadata.type === 'thought'))
+            .filter((b) => (b.block_type === 'thought' || b.blockType === 'thought' || (b.metadata && (b.metadata.type === 'thinking' || b.metadata.type === 'thought'))))
             .reduce((acc, b) => acc + (b.token_count || b.tokenCount || 0), 0);
         }
+        skl = allBlocks
+          .filter((b) => (b.block_type === 'skill' || b.blockType === 'skill' || (b.metadata && (b.metadata.type === 'skill' || b.metadata.category === 'skill'))))
+          .reduce((acc, b) => acc + (b.token_count || b.tokenCount || 0), 0);
       }
 
       const out = t.output_tokens ?? t.outputTokens ?? 0;
-      const inp = t.input_tokens ?? t.inputTokens ?? (sys + tls + hist + res);
+      const inp = t.input_tokens ?? t.inputTokens ?? (sys + tls + skl + hist + res);
       const cached =
         t.cached_read_tokens ??
         t.cachedReadTokens ??
@@ -278,6 +292,7 @@ class DashboardCharts {
 
       systemData.push(sys);
       toolsData.push(tls);
+      skillsData.push(skl);
       historyData.push(hist);
       resultsData.push(res);
       thoughtsData.push(tht);
@@ -288,11 +303,12 @@ class DashboardCharts {
     this.chart.data.labels = labels;
     this.chart.data.datasets[0].data = systemData;
     this.chart.data.datasets[1].data = toolsData;
-    this.chart.data.datasets[2].data = historyData;
-    this.chart.data.datasets[3].data = resultsData;
-    this.chart.data.datasets[4].data = thoughtsData;
-    this.chart.data.datasets[5].data = outputData;
-    this.chart.data.datasets[6].data = cacheHitData;
+    this.chart.data.datasets[2].data = skillsData;
+    this.chart.data.datasets[3].data = historyData;
+    this.chart.data.datasets[4].data = resultsData;
+    this.chart.data.datasets[5].data = thoughtsData;
+    this.chart.data.datasets[6].data = outputData;
+    this.chart.data.datasets[7].data = cacheHitData;
 
     this.chart.update();
   }

@@ -69,7 +69,7 @@ class SSEParser:
                 break
 
             line = self._buffer[:nl_pos]
-            self._buffer = self._buffer[nl_pos + skip:]
+            self._buffer = self._buffer[nl_pos + skip :]
             event = self._process_line(line)
             if event is not None:
                 events.append(event)

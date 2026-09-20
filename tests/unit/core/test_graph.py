@@ -29,9 +29,7 @@ def _make_turn(
 ) -> CanonicalTurn:
     sys_blocks = [b for b in blocks if b.block_type == BlockType.SYSTEM]
     tool_defs = [b for b in blocks if b.block_type == BlockType.TOOL_DEF]
-    history = [
-        b for b in blocks if b.block_type in (BlockType.USER_MSG, BlockType.ASSISTANT_MSG)
-    ]
+    history = [b for b in blocks if b.block_type in (BlockType.USER_MSG, BlockType.ASSISTANT_MSG)]
     tool_results = [b for b in blocks if b.block_type == BlockType.TOOL_RESULT]
 
     return CanonicalTurn(
@@ -122,7 +120,9 @@ def test_context_graph_lineage_survival():
 
     # Turn 3: System survived 3 turns, u-1 resurrected
     blk_sys_t3 = _make_block("sys-1", BlockType.SYSTEM, "System instructions")
-    blk_u1_t3 = _make_block("u-1", BlockType.USER_MSG, "Hello world")  # re-added after being dropped
+    blk_u1_t3 = _make_block(
+        "u-1", BlockType.USER_MSG, "Hello world"
+    )  # re-added after being dropped
 
     turn_3 = _make_turn(3, [blk_sys_t3, blk_u1_t3], input_tokens=110)
     graph.add_turn(turn_3)

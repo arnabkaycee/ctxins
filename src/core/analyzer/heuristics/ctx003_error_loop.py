@@ -70,9 +70,7 @@ class ErrorLoopHeuristic(BaseHeuristic):
             return violations
 
         # Check error similarity if messages are present
-        error_texts = [
-            " ".join(b.content for b in err_list) for err_list in recent_error_blocks
-        ]
+        error_texts = [" ".join(b.content for b in err_list) for err_list in recent_error_blocks]
         is_repetitive = True
         if len(error_texts) >= 2:
             # Check pairwise similarity between consecutive errors

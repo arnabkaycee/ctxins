@@ -43,9 +43,10 @@ def create_app(
     app.state.broadcaster = resolved_broadcaster
     app.state.ws_hub = ws_hub
 
-    # Register REST API router under /api/v1
+    # Register REST API router under /api/v1 and /api
     api_router = create_api_router(store=resolved_store, ws_hub=ws_hub)
     app.include_router(api_router, prefix="/api/v1")
+    app.include_router(api_router, prefix="/api")
 
     # Mount WebSocket endpoint
     @app.websocket("/ws/live")

@@ -6,6 +6,7 @@ import time
 from abc import ABC, abstractmethod
 from typing import Any, Callable, Dict, Optional
 
+from src.core.ast.sub_blocks import SubBlockDecomposer
 from src.schema.ast import CanonicalTurn
 from src.schema.wire import TimingMetrics, UsageMetrics, WireEnvelope
 
@@ -23,14 +24,17 @@ class BaseNormalizer(ABC):
     def __init__(
         self,
         token_counter: Optional[Callable[[str], int]] = None,
+        decomposer: Optional[SubBlockDecomposer] = None,
     ) -> None:
         """Initialize normalizer.
 
         Args:
             token_counter: Optional callable computing token counts from string.
                            Defaults to character-based heuristic (len // 4).
+            decomposer: Optional SubBlockDecomposer instance.
         """
         self._token_counter = token_counter or default_token_estimator
+        self.decomposer = decomposer or SubBlockDecomposer(token_counter=self._token_counter)
 
     def estimate_tokens(self, text: str) -> int:
         """Estimate or compute token count for a text string."""
@@ -110,17 +114,9 @@ class BaseNormalizer(ABC):
             or corr_id
         )
 
-        timestamp = float(
-            raw.get("timestamp")
-            or payload.get("timestamp")
-            or time.time()
-        )
+        timestamp = float(raw.get("timestamp") or payload.get("timestamp") or time.time())
 
-        provider = (
-            raw.get("provider")
-            or payload.get("provider")
-            or default_provider
-        )
+        provider = raw.get("provider") or payload.get("provider") or default_provider
 
         # 3. Request payload
         req = (
@@ -130,7 +126,11 @@ class BaseNormalizer(ABC):
             or payload.get("request_payload")
             or payload.get("requestPayload")
             or payload.get("request")
-            or (payload if any(k in payload for k in ("messages", "contents", "system", "tools")) else {})
+            or (
+                payload
+                if any(k in payload for k in ("messages", "contents", "system", "tools"))
+                else {}
+            )
         )
         if not isinstance(req, dict):
             req = {}
@@ -167,7 +167,11 @@ class BaseNormalizer(ABC):
             or payload.get("usage_metrics")
             or resp.get("usage")
             or resp.get("usageMetadata")
-            or (resp.get("response", {}).get("usageMetadata") if isinstance(resp.get("response"), dict) else None)
+            or (
+                resp.get("response", {}).get("usageMetadata")
+                if isinstance(resp.get("response"), dict)
+                else None
+            )
             or {}
         )
         timing_raw = (
@@ -262,11 +266,21 @@ class BaseNormalizer(ABC):
             return duration_ms, float(ttft_ms)
 
         if "first_byte_received_at" in timing and "request_dispatched_at" in timing:
-            if timing["first_byte_received_at"] is not None and timing["request_dispatched_at"] is not None:
-                return duration_ms, (timing["first_byte_received_at"] - timing["request_dispatched_at"]) * 1000.0
+            if (
+                timing["first_byte_received_at"] is not None
+                and timing["request_dispatched_at"] is not None
+            ):
+                return duration_ms, (
+                    timing["first_byte_received_at"] - timing["request_dispatched_at"]
+                ) * 1000.0
 
         if "firstByteReceivedMs" in timing and "requestDispatchedMs" in timing:
-            if timing["firstByteReceivedMs"] is not None and timing["requestDispatchedMs"] is not None:
-                return duration_ms, float(timing["firstByteReceivedMs"] - timing["requestDispatchedMs"])
+            if (
+                timing["firstByteReceivedMs"] is not None
+                and timing["requestDispatchedMs"] is not None
+            ):
+                return duration_ms, float(
+                    timing["firstByteReceivedMs"] - timing["requestDispatchedMs"]
+                )
 
         return duration_ms, None

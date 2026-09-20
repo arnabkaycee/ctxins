@@ -28,8 +28,10 @@ from src.schema.wire import WireEnvelope, WireEventType
 @pytest.fixture(autouse=True)
 def mock_agent_scanner():
     """Isolate CLI subprocess assertions from proactive background agent process scanner."""
-    with patch("src.cli.CorePipelineBridge.scan_and_register_agents", return_value=[]), \
-         patch("src.cli._agent_scanner_loop", return_value=None):
+    with (
+        patch("src.cli.CorePipelineBridge.scan_and_register_agents", return_value=[]),
+        patch("src.cli._agent_scanner_loop", return_value=None),
+    ):
         yield
 
 
@@ -123,7 +125,9 @@ def test_unset_env_subcommand(capsys: pytest.CaptureFixture[str]) -> None:
     assert "CTXINS_TARGET" in captured.out
 
 
-def test_env_tty_guidance(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+def test_env_tty_guidance(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
     """Verify run_env emits helpful stderr guidance when stdout is an interactive TTY."""
     import sys
 
@@ -234,12 +238,14 @@ async def test_core_pipeline_bridge_turn_lifecycle() -> None:
 
 
 def test_run_with_harness_lifecycle():
-    with patch("subprocess.Popen") as mock_popen, \
-         patch("socket.create_connection") as mock_conn, \
-         patch("src.cli.find_available_port", side_effect=lambda p, **kw: p), \
-         patch("uvicorn.Server.serve"), \
-         patch("src.core.server.uds_server.UDSFrameServer.start"), \
-         patch("src.core.server.uds_server.UDSFrameServer.stop"):
+    with (
+        patch("subprocess.Popen") as mock_popen,
+        patch("socket.create_connection") as mock_conn,
+        patch("src.cli.find_available_port", side_effect=lambda p, **kw: p),
+        patch("uvicorn.Server.serve"),
+        patch("src.core.server.uds_server.UDSFrameServer.start"),
+        patch("src.core.server.uds_server.UDSFrameServer.stop"),
+    ):
         mock_conn.side_effect = [OSError("not listening"), MagicMock()]
         mock_proc = MagicMock()
         mock_proc.poll.return_value = None
@@ -262,11 +268,13 @@ def test_run_with_harness_lifecycle():
 
 
 def test_run_web_lifecycle():
-    with patch("subprocess.Popen") as mock_popen, \
-         patch("socket.create_connection") as mock_conn, \
-         patch("uvicorn.Server.serve"), \
-         patch("src.core.server.uds_server.UDSFrameServer.start"), \
-         patch("src.core.server.uds_server.UDSFrameServer.stop"):
+    with (
+        patch("subprocess.Popen") as mock_popen,
+        patch("socket.create_connection") as mock_conn,
+        patch("uvicorn.Server.serve"),
+        patch("src.core.server.uds_server.UDSFrameServer.start"),
+        patch("src.core.server.uds_server.UDSFrameServer.stop"),
+    ):
         mock_conn.side_effect = [OSError("not listening"), MagicMock()]
         mock_proc = MagicMock()
         mock_proc.poll.return_value = None
@@ -284,10 +292,12 @@ def test_run_web_lifecycle():
 
 def test_run_with_harness_with_target_env(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.delenv("TMUX", raising=False)
-    with patch("subprocess.Popen") as mock_popen, \
-         patch("socket.create_connection") as mock_conn, \
-         patch("src.core.server.uds_server.UDSFrameServer.start"), \
-         patch("src.core.server.uds_server.UDSFrameServer.stop"):
+    with (
+        patch("subprocess.Popen") as mock_popen,
+        patch("socket.create_connection") as mock_conn,
+        patch("src.core.server.uds_server.UDSFrameServer.start"),
+        patch("src.core.server.uds_server.UDSFrameServer.stop"),
+    ):
         mock_conn.side_effect = [OSError("not listening"), MagicMock()]
         mock_proc = MagicMock()
         mock_proc.poll.return_value = None
@@ -308,11 +318,13 @@ def test_run_with_harness_with_target_env(monkeypatch: pytest.MonkeyPatch):
 
 def test_run_with_harness_tmux_split(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("TMUX", "/tmp/tmux-501/default,123,0")
-    with patch("subprocess.Popen") as mock_popen, \
-         patch("subprocess.run") as mock_run, \
-         patch("socket.create_connection") as mock_conn, \
-         patch("src.core.server.uds_server.UDSFrameServer.start"), \
-         patch("src.core.server.uds_server.UDSFrameServer.stop"):
+    with (
+        patch("subprocess.Popen") as mock_popen,
+        patch("subprocess.run") as mock_run,
+        patch("socket.create_connection") as mock_conn,
+        patch("src.core.server.uds_server.UDSFrameServer.start"),
+        patch("src.core.server.uds_server.UDSFrameServer.stop"),
+    ):
         mock_conn.side_effect = [OSError("not listening"), MagicMock()]
         mock_proc = MagicMock()
         mock_proc.poll.return_value = None
@@ -361,7 +373,9 @@ def test_cli_logging_flags_parsing() -> None:
     parser = build_parser()
 
     # Subcommand level
-    args = parser.parse_args(["tui", "--debug", "--log-level", "DEBUG", "--log-file", "/tmp/test.log"])
+    args = parser.parse_args(
+        ["tui", "--debug", "--log-level", "DEBUG", "--log-file", "/tmp/test.log"]
+    )
     assert args.debug is True
     assert args.log_level == "DEBUG"
     assert args.log_file == "/tmp/test.log"
@@ -393,9 +407,11 @@ def test_spawn_mitmproxy_forwards_log_env(tmp_path: Any) -> None:
     from src.cli import spawn_mitmproxy
 
     log_file = str(tmp_path / "mitm.log")
-    with patch("socket.create_connection", side_effect=OSError("not listening")), \
-         patch("subprocess.Popen") as mock_popen, \
-         patch("shutil.which", return_value="/usr/local/bin/mitmdump"):
+    with (
+        patch("socket.create_connection", side_effect=OSError("not listening")),
+        patch("subprocess.Popen") as mock_popen,
+        patch("shutil.which", return_value="/usr/local/bin/mitmdump"),
+    ):
         mock_proc = MagicMock()
         mock_proc.poll.return_value = 0
         mock_popen.return_value = mock_proc
@@ -411,8 +427,3 @@ def test_spawn_mitmproxy_forwards_log_env(tmp_path: Any) -> None:
         env = call_kwargs["env"]
         assert env.get("CTXINS_LOG_LEVEL") == "DEBUG"
         assert env.get("CTXINS_LOG_FILE") == log_file
-
-
-
-
-

@@ -31,7 +31,9 @@ def test_identify_from_process_known_agents():
     assert detector.identify_from_process(p_claude_bin).name == "claude-code"
 
     # 3. Aider
-    p_aider = ProcessInfo(pid=1004, name="python3", cmdline="python3 -m aider --model claude-3-5-sonnet")
+    p_aider = ProcessInfo(
+        pid=1004, name="python3", cmdline="python3 -m aider --model claude-3-5-sonnet"
+    )
     id_aider = detector.identify_from_process(p_aider)
     assert id_aider.name == "aider"
     assert id_aider.is_known is True
@@ -104,7 +106,11 @@ def test_lookup_by_port_mocked_lsof():
     detector = ProcessDetector(cache_ttl_seconds=10.0)
 
     lsof_output = b"p55555\ncagy\nf3\n"
-    with patch("subprocess.check_output") as mock_exec, patch("shutil.which", return_value="/usr/sbin/lsof"):
+    with (
+        patch("subprocess.check_output") as mock_exec,
+        patch("shutil.which", return_value="/usr/sbin/lsof"),
+    ):
+
         def side_effect(cmd, **kwargs):
             if cmd[0] == "lsof":
                 return lsof_output

@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from typing import Any, Dict, Optional, Set
+from typing import Any, Dict, List, Optional, Set
 
 from fastapi import WebSocket, WebSocketDisconnect
 
@@ -13,6 +13,7 @@ from src.core.analyzer.scorer import PollutionScorer
 from src.core.store.session_store import SessionStore
 from src.presentation.broadcaster import PresentationBroadcaster
 from src.presentation.events import UIEvent
+from src.presentation.web.turn_serializer import serialize_turn_with_delta
 
 logger = logging.getLogger(__name__)
 
@@ -137,7 +138,11 @@ class WebSocketHub:
                 v.to_dict()
                 for v in (resolved_store.get_violations(target_sid) if target_sid else [])
             ]
-            turns_data = [t.to_dict() for t in (turns or [])]
+            turns_data: List[Dict[str, Any]] = []
+            if turns:
+                for i, t in enumerate(turns):
+                    prev = turns[i - 1] if i > 0 else None
+                    turns_data.append(serialize_turn_with_delta(t, prev))
 
             snapshot_payload: Dict[str, Any] = {
                 "summary": summary,

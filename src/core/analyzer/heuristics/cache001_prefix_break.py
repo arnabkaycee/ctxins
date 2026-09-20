@@ -49,7 +49,11 @@ class PrefixBreakHeuristic(BaseHeuristic):
             token_diff = abs(last_sys.token_count - curr_sys.token_count)
             # Prefix mutation typically involves minor drift (timestamp, UUID, or modified preamble)
             # or any system modification in an ongoing session
-            if token_diff <= self.max_token_drift or last_sys.content in curr_sys.content or curr_sys.content in last_sys.content:
+            if (
+                token_diff <= self.max_token_drift
+                or last_sys.content in curr_sys.content
+                or curr_sys.content in last_sys.content
+            ):
                 pricing = get_pricing(turn.model, turn.provider)
                 effective_input = turn.input_tokens or sum(b.token_count for b in turn.all_blocks)
                 # 90% discount missed on input tokens due to cache invalidation

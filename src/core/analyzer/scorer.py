@@ -51,9 +51,7 @@ class PollutionScorer:
         if not violations or turn_count <= 0:
             return 0.0
 
-        total_penalty = sum(
-            cls.SEVERITY_WEIGHTS.get(v.severity, 2.0) for v in violations
-        )
+        total_penalty = sum(cls.SEVERITY_WEIGHTS.get(v.severity, 2.0) for v in violations)
         max_normalizer = turn_count * cls.SEVERITY_WEIGHTS[ViolationSeverity.CRITICAL]
         score = (total_penalty / max_normalizer) * 100.0 if max_normalizer > 0 else 0.0
         return min(100.0, round(score, 1))

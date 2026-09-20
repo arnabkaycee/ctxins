@@ -31,8 +31,8 @@ class TestStreamPassthrough:
 
         upstream_chunks = [
             b"event: message_start\ndata: {}\n\n",
-            b"event: content_block_delta\ndata: {\"text\":\"Hello\"}\n\n",
-            b"event: content_block_delta\ndata: {\"text\":\" world\"}\n\n",
+            b'event: content_block_delta\ndata: {"text":"Hello"}\n\n',
+            b'event: content_block_delta\ndata: {"text":" world"}\n\n',
             b"event: message_stop\ndata: {}\n\n",
         ]
 
@@ -236,4 +236,3 @@ class TestStreamPassthrough:
         eof_id, eof_data, _ = sync_queue.get_nowait()
         assert eof_id == "corr-mitm-single"
         assert eof_data == b""
-

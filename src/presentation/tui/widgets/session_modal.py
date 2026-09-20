@@ -79,7 +79,10 @@ class SessionModalScreen(ModalScreen[str]):
 
         if not self.state.available_sessions:
             ol.add_option(
-                Option(Text.from_markup("[dim]No agent processes currently detected.[/dim]"), disabled=True)
+                Option(
+                    Text.from_markup("[dim]No agent processes currently detected.[/dim]"),
+                    disabled=True,
+                )
             )
             return
 
@@ -92,7 +95,7 @@ class SessionModalScreen(ModalScreen[str]):
             if len(cmd) > 35:
                 cmd = cmd[:32] + "..."
             status = meta.get("status", "detected")
-            is_active = (sid == self.state.session_id)
+            is_active = sid == self.state.session_id
 
             badge = "[bold green]● ACTIVE[/]" if is_active else "[dim]○ SWITCH[/]"
             markup = (

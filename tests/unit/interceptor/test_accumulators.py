@@ -59,12 +59,7 @@ class TestSSEParser:
     def test_comments_and_multiline_data(self) -> None:
         """Verify comments are ignored and multi-line data is joined with newline."""
         parser = SSEParser()
-        chunk = (
-            b": this is a comment\n"
-            b"data: line1\n"
-            b"data: line2\n"
-            b": another comment\n\n"
-        )
+        chunk = b": this is a comment\ndata: line1\ndata: line2\n: another comment\n\n"
         events = parser.feed(chunk)
         assert len(events) == 1
         assert events[0].event == "message"
@@ -125,8 +120,8 @@ class TestAnthropicAccumulator:
         json_deltas = [
             '{"query": ',
             '"SELECT * ',
-            'FROM ',
-            'users',
+            "FROM ",
+            "users",
             '"}',
         ]
         for delta in json_deltas:
@@ -248,9 +243,7 @@ class TestGeminiAccumulator:
         """Verify Gemini stream reconstruction with text and usageMetadata."""
         acc = GeminiAccumulator()
 
-        chunk1 = (
-            b'data: {"candidates": [{"content": {"parts": [{"text": "Hello from "}], "role": "model"}, "index": 0}]}\n\n'
-        )
+        chunk1 = b'data: {"candidates": [{"content": {"parts": [{"text": "Hello from "}], "role": "model"}, "index": 0}]}\n\n'
         chunk2 = (
             b'data: {"candidates": [{"content": {"parts": [{"text": "Gemini!"}], "role": "model"}, "finishReason": "STOP", "index": 0}], '
             b'"usageMetadata": {"promptTokenCount": 50, "candidatesTokenCount": 10, "totalTokenCount": 60, "cachedContentTokenCount": 15}}\n\n'
@@ -277,12 +270,8 @@ class TestGeminiAccumulator:
         """Verify Gemini thinking parts and functionCall handling."""
         acc = GeminiAccumulator()
 
-        chunk1 = (
-            b'data: {"candidates": [{"content": {"parts": [{"thought": true, "text": "Planning query..."}], "role": "model"}}]}\n\n'
-        )
-        chunk2 = (
-            b'data: {"candidates": [{"content": {"parts": [{"thought": true, "text": " Done planning."}], "role": "model"}}]}\n\n'
-        )
+        chunk1 = b'data: {"candidates": [{"content": {"parts": [{"thought": true, "text": "Planning query..."}], "role": "model"}}]}\n\n'
+        chunk2 = b'data: {"candidates": [{"content": {"parts": [{"thought": true, "text": " Done planning."}], "role": "model"}}]}\n\n'
         chunk3 = (
             b'data: {"candidates": [{"content": {"parts": [{"functionCall": {"name": "search_db", "args": {"limit": 10}}}], "role": "model"}, "finishReason": "STOP"}], '
             b'"usageMetadata": {"promptTokenCount": 100, "candidatesTokenCount": 20, "candidatesTokensDetails": [{"modality": "THINKING", "tokenCount": 12}]}}\n\n'
@@ -381,4 +370,3 @@ class TestGeminiAccumulator:
         usage = acc.get_usage()
         assert usage.input_tokens == 30
         assert usage.output_tokens == 8
-

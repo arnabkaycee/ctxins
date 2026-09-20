@@ -48,7 +48,11 @@ class UIEvent:
             event_type = UIEventType(raw_type)
         except ValueError:
             # Fallback or pass through if string matches enum member
-            event_type = UIEventType[raw_type.upper()] if raw_type.upper() in UIEventType.__members__ else UIEventType.TURN_COMPLETED
+            event_type = (
+                UIEventType[raw_type.upper()]
+                if raw_type.upper() in UIEventType.__members__
+                else UIEventType.TURN_COMPLETED
+            )
 
         return cls(
             event_type=event_type,

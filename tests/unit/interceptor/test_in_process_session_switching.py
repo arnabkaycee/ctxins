@@ -59,7 +59,9 @@ def test_in_process_session_switching_explicit_headers():
     # Request 1: session A via header
     req1 = MockRequest(
         headers={"x-session-id": "session-alpha"},
-        content=json.dumps({"model": "claude-3-5-sonnet", "messages": [{"role": "user", "content": "turn 1"}]}).encode("utf-8"),
+        content=json.dumps(
+            {"model": "claude-3-5-sonnet", "messages": [{"role": "user", "content": "turn 1"}]}
+        ).encode("utf-8"),
     )
     flow1 = MockFlow(request=req1, flow_id="flow-1")
     addon.requestheaders(flow1)
@@ -73,7 +75,12 @@ def test_in_process_session_switching_explicit_headers():
     # Request 2: from the same process (PID 9001), switching to session B
     req2 = MockRequest(
         headers={"x-session-id": "session-beta"},
-        content=json.dumps({"model": "claude-3-5-sonnet", "messages": [{"role": "user", "content": "turn 1 in new session"}]}).encode("utf-8"),
+        content=json.dumps(
+            {
+                "model": "claude-3-5-sonnet",
+                "messages": [{"role": "user", "content": "turn 1 in new session"}],
+            }
+        ).encode("utf-8"),
     )
     flow2 = MockFlow(request=req2, flow_id="flow-2")
     addon.requestheaders(flow2)
@@ -227,6 +234,7 @@ def test_in_process_session_switching_conversation_reset_auto_detection():
 @pytest.mark.asyncio
 async def test_core_pipeline_bridge_captures_all_switched_sessions():
     import time
+
     store = SessionStore()
     broadcaster = PresentationBroadcaster()
     bridge = CorePipelineBridge(store=store, broadcaster=broadcaster)

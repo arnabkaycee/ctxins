@@ -582,5 +582,3 @@ class TestCtxinsAddon:
         assert req.host == "127.0.0.1"
         assert req.port == 1234
         assert req.scheme == "http"
-
-

@@ -236,7 +236,10 @@ async def test_e2e_claude_code_multi_turn_workflow(temp_env: Dict[str, str]):
         # -------------------------------------------------------------------
         msgs_1: List[Dict[str, Any]] = [
             *msgs_0,
-            {"role": "assistant", "content": "I have reviewed schema.sql. Tables include users, orders, and products."},
+            {
+                "role": "assistant",
+                "content": "I have reviewed schema.sql. Tables include users, orders, and products.",
+            },
             {"role": "user", "content": "Add an index on users(email) to speed up queries."},
         ]
         req_payload_1: Dict[str, Any] = {
@@ -459,7 +462,10 @@ async def test_e2e_openai_streaming_workflow(temp_env: Dict[str, str]):
     completion_event = asyncio.Event()
 
     async def on_turn(envelope: Any) -> None:
-        if isinstance(envelope, WireEnvelope) and envelope.event_type == WireEventType.TURN_COMPLETED:
+        if (
+            isinstance(envelope, WireEnvelope)
+            and envelope.event_type == WireEventType.TURN_COMPLETED
+        ):
             normalizer = get_normalizer(envelope.payload.get("provider", "openai"))
             turn = normalizer.normalize(envelope.to_dict(), turn_index=0)
             session_store.append_turn(turn)
@@ -517,7 +523,7 @@ async def test_e2e_openai_streaming_workflow(temp_env: Dict[str, str]):
             b'data: {"id":"chatcmpl-1","object":"chat.completion.chunk","model":"gpt-4o","choices":[{"index":0,"delta":{"role":"assistant","content":null,"tool_calls":[{"index":0,"id":"call_fetch_1","type":"function","function":{"name":"fetch_rss","arguments":""}}]},"finish_reason":null}]}\n\n',
             b'data: {"id":"chatcmpl-1","object":"chat.completion.chunk","model":"gpt-4o","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\\"category\\": \\"tech\\"}"}}]},"finish_reason":null}]}\n\n',
             b'data: {"id":"chatcmpl-1","object":"chat.completion.chunk","model":"gpt-4o","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}],"usage":{"prompt_tokens":35,"completion_tokens":20,"total_tokens":55}}\n\n',
-            b'data: [DONE]\n\n',
+            b"data: [DONE]\n\n",
         ]
         list(flow.response.stream(chunks))
         addon.response(flow)
@@ -640,7 +646,8 @@ async def test_e2e_regression_diff_analysis(temp_env: Dict[str, str]):
     # Exit code logic: regression detected => 1
     is_regression = (
         poll_data["summary"]["pollutionScore"] > base_data["summary"]["pollutionScore"]
-        or poll_data["summary"]["activeViolationsCount"] > base_data["summary"]["activeViolationsCount"]
+        or poll_data["summary"]["activeViolationsCount"]
+        > base_data["summary"]["activeViolationsCount"]
     )
     exit_code = 1 if is_regression else 0
     assert exit_code == 1, "Expected regression detection exit code 1"
@@ -656,7 +663,10 @@ async def test_e2e_with_mock_llm_server(temp_env: Dict[str, str]):
     received_event = asyncio.Event()
 
     async def on_turn(envelope: Any) -> None:
-        if isinstance(envelope, WireEnvelope) and envelope.event_type == WireEventType.TURN_COMPLETED:
+        if (
+            isinstance(envelope, WireEnvelope)
+            and envelope.event_type == WireEventType.TURN_COMPLETED
+        ):
             normalizer = get_normalizer(envelope.payload.get("provider", "anthropic"))
             turn = normalizer.normalize(envelope.to_dict(), turn_index=0)
             session_store.append_turn(turn)
@@ -696,7 +706,13 @@ async def test_e2e_with_mock_llm_server(temp_env: Dict[str, str]):
                 host="api.anthropic.com",
                 path="/v1/messages",
                 headers={"x-api-key": "secret", "x-correlation-id": "corr_mock_1"},
-                content=json.dumps({"model": "claude-3-5-sonnet", "messages": [{"role": "user", "content": "Hi"}], "stream": True}).encode("utf-8"),
+                content=json.dumps(
+                    {
+                        "model": "claude-3-5-sonnet",
+                        "messages": [{"role": "user", "content": "Hi"}],
+                        "stream": True,
+                    }
+                ).encode("utf-8"),
             )
             flow = MockFlow(request=req)
             addon.requestheaders(flow)

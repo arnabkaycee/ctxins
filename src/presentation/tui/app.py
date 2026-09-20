@@ -152,7 +152,11 @@ class CtxinsTUIApp(App[None]):
         """Toggle showing violations for all turns vs selected turn."""
         self.state.show_all_violations = not self.state.show_all_violations
         self._refresh_inspectors()
-        label = "all session turns" if self.state.show_all_violations else f"turn #{self.selected_turn_index}"
+        label = (
+            "all session turns"
+            if self.state.show_all_violations
+            else f"turn #{self.selected_turn_index}"
+        )
         self.notify(f"Showing violations for: {label}")
 
     def action_export_jsonc(self) -> None:
@@ -212,6 +216,7 @@ class CtxinsTUIApp(App[None]):
 
     def action_show_session_modal(self) -> None:
         """Display interactive detected agent sessions modal."""
+
         def _on_modal_dismiss(chosen_sid: Optional[str]) -> None:
             if chosen_sid:
                 self.state.switch_session(chosen_sid, store=self.store)

@@ -61,7 +61,9 @@ async def test_broadcaster_subscribe_and_fifo_delivery() -> None:
     events = [
         UIEvent(event_type=UIEventType.SESSION_CREATED, session_id="sess_1"),
         UIEvent(event_type=UIEventType.TURN_STARTED, session_id="sess_1", payload={"turnIndex": 0}),
-        UIEvent(event_type=UIEventType.TURN_COMPLETED, session_id="sess_1", payload={"turnIndex": 0}),
+        UIEvent(
+            event_type=UIEventType.TURN_COMPLETED, session_id="sess_1", payload={"turnIndex": 0}
+        ),
     ]
 
     for ev in events:

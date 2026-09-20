@@ -25,7 +25,9 @@ class ProviderRouter:
             Provider.OPENAI,
         ),
         (
-            re.compile(r"^([a-zA-Z0-9_.-]+\.)?(googleapis\.com|google\.com)(:443)?$", re.IGNORECASE),
+            re.compile(
+                r"^([a-zA-Z0-9_.-]+\.)?(googleapis\.com|google\.com)(:443)?$", re.IGNORECASE
+            ),
             re.compile(
                 r"^/.*[:/](generateContent|streamGenerateContent|bidiGenerateContent|generateChat|streamGenerateChat|internalAtomicAgenticChat|tabChat|generateCode|completeCode|predict|serverStreamingPredict|streamRawPredict|rawPredict)(?=[/?#]|$)",
                 re.IGNORECASE,
@@ -89,9 +91,7 @@ class ProviderRouter:
 
         return host_str
 
-    def match(
-        self, host: str, path: str, port: int | None = None
-    ) -> Tuple[bool, Provider]:
+    def match(self, host: str, path: str, port: int | None = None) -> Tuple[bool, Provider]:
         """Match an incoming request host and path against recognized LLM endpoints.
 
         Args:
@@ -118,9 +118,7 @@ class ProviderRouter:
 
         return False, Provider.UNKNOWN
 
-    def is_llm_request(
-        self, host: str, path: str, port: int | None = None
-    ) -> bool:
+    def is_llm_request(self, host: str, path: str, port: int | None = None) -> bool:
         """Check if request matches a known LLM provider endpoint."""
         is_match, _ = self.match(host, path, port)
         return is_match

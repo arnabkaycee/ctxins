@@ -16,8 +16,9 @@ class AnthropicASTNormalizer(BaseNormalizer):
     def __init__(
         self,
         token_counter: Optional[Callable[[str], int]] = None,
+        decomposer: Optional[Any] = None,
     ) -> None:
-        super().__init__(token_counter=token_counter)
+        super().__init__(token_counter=token_counter, decomposer=decomposer)
 
     def normalize(
         self,
@@ -34,13 +35,11 @@ class AnthropicASTNormalizer(BaseNormalizer):
         system_blocks: list[ContextBlock] = []
         raw_system = req.get("system", "")
         if isinstance(raw_system, str) and raw_system:
-            system_blocks.append(
-                ContextBlock(
-                    block_id="sys_0",
-                    block_type=BlockType.SYSTEM,
-                    content_hash=compute_block_hash(raw_system),
-                    token_count=self.estimate_tokens(raw_system),
-                    content=raw_system,
+            system_blocks.extend(
+                self.decomposer.decompose(
+                    raw_system,
+                    default_block_type=BlockType.SYSTEM,
+                    base_id="sys",
                     metadata={"role": "system"},
                 )
             )
@@ -53,13 +52,11 @@ class AnthropicASTNormalizer(BaseNormalizer):
                     text = str(s_blk)
                     s_meta = {"type": "text"}
                 if text:
-                    system_blocks.append(
-                        ContextBlock(
-                            block_id=f"sys_{i}",
-                            block_type=BlockType.SYSTEM,
-                            content_hash=compute_block_hash(text),
-                            token_count=self.estimate_tokens(text),
-                            content=text,
+                    system_blocks.extend(
+                        self.decomposer.decompose(
+                            text,
+                            default_block_type=BlockType.SYSTEM,
+                            base_id=f"sys_{i}",
                             metadata=s_meta,
                         )
                     )
@@ -162,7 +159,28 @@ class AnthropicASTNormalizer(BaseNormalizer):
                                 content_hash=compute_block_hash(call_str),
                                 token_count=self.estimate_tokens(call_str),
                                 content=call_str,
-                                metadata={"role": role, "tool_use_id": call_id, "name": part.get("name")},
+                                metadata={
+                                    "role": role,
+                                    "tool_use_id": call_id,
+                                    "name": part.get("name"),
+                                },
+                            )
+                        )
+                    elif p_type == "thinking":
+                        thought_text = part.get("thinking") or part.get("text", "")
+                        history.append(
+                            ContextBlock(
+                                block_id=f"hist_{msg_idx}_{part_idx}",
+                                block_type=BlockType.THOUGHT,
+                                content_hash=compute_block_hash(thought_text),
+                                token_count=self.estimate_tokens(thought_text),
+                                content=thought_text,
+                                metadata={
+                                    "role": role,
+                                    "type": "thinking",
+                                    "signature": part.get("signature"),
+                                },
+                                identity_key=f"thought:{msg_idx}_{part_idx}",
                             )
                         )
                     else:
@@ -196,6 +214,22 @@ class AnthropicASTNormalizer(BaseNormalizer):
                                 token_count=self.estimate_tokens(text),
                                 content=text,
                                 metadata={"type": "text"},
+                            )
+                        )
+                    elif b_type == "thinking":
+                        thought_text = blk.get("thinking") or blk.get("text", "")
+                        assistant_blocks.append(
+                            ContextBlock(
+                                block_id=f"resp_thought_{idx}",
+                                block_type=BlockType.THOUGHT,
+                                content_hash=compute_block_hash(thought_text),
+                                token_count=self.estimate_tokens(thought_text),
+                                content=thought_text,
+                                metadata={
+                                    "type": "thinking",
+                                    "signature": blk.get("signature"),
+                                },
+                                identity_key=f"thought:{idx}",
                             )
                         )
                     elif b_type == "tool_use":

@@ -7,6 +7,7 @@ from src.core.ast.normalizers import (
     OpenAIASTNormalizer,
     get_normalizer,
 )
+from src.core.ast.sub_blocks import SubBlockDecomposer
 from src.schema.ast import (
     BlockType,
     CanonicalTurn,
@@ -25,6 +26,7 @@ __all__ = [
     "GeminiASTNormalizer",
     "OpenAIASTNormalizer",
     "RuleViolation",
+    "SubBlockDecomposer",
     "TurnDelta",
     "ViolationSeverity",
     "get_normalizer",

@@ -10,15 +10,18 @@ from src.core.analyzer.cost.pricing_table import (
 from src.core.analyzer.engine import PollutionAnalyzer
 from src.core.analyzer.heuristics import (
     BaseHeuristic,
+    CacheBustingPrefixRule,
     ErrorLoopHeuristic,
     PrefixBreakHeuristic,
     SchemaBloatHeuristic,
     StaleToolHeuristic,
+    ZombieContextRule,
 )
 from src.core.analyzer.scorer import PollutionScorer
 
 __all__ = [
     "BaseHeuristic",
+    "CacheBustingPrefixRule",
     "CostModel",
     "DEFAULT_PRICING",
     "ErrorLoopHeuristic",
@@ -29,5 +32,6 @@ __all__ = [
     "PrefixBreakHeuristic",
     "SchemaBloatHeuristic",
     "StaleToolHeuristic",
+    "ZombieContextRule",
     "get_pricing",
 ]

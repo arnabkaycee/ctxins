@@ -8,9 +8,11 @@ from src.core.analyzer.cost.cost_model import CostModel
 from src.core.analyzer.cost.pricing_table import ModelPricing, get_pricing
 from src.core.analyzer.heuristics.base import BaseHeuristic
 from src.core.analyzer.heuristics.cache001_prefix_break import PrefixBreakHeuristic
+from src.core.analyzer.heuristics.cache_invalidation import CacheBustingPrefixRule
 from src.core.analyzer.heuristics.ctx001_stale_tool import StaleToolHeuristic
 from src.core.analyzer.heuristics.ctx002_schema_bloat import SchemaBloatHeuristic
 from src.core.analyzer.heuristics.ctx003_error_loop import ErrorLoopHeuristic
+from src.core.analyzer.heuristics.zombie_context import ZombieContextRule
 from src.core.analyzer.scorer import PollutionScorer
 from src.core.graph.turn_tree import ContextGraph
 from src.schema.ast import CanonicalTurn, RuleViolation
@@ -27,7 +29,7 @@ class PollutionAnalyzer:
 
         Args:
             heuristics: Optional custom list of BaseHeuristic instances. If omitted,
-                defaults to the standard suite (CTX-001, CTX-002, CTX-003, CACHE-001).
+                defaults to the standard suite (CTX-001, CTX-002, CTX-003, CACHE-001, CTX-006, CTX-007).
         """
         if heuristics is not None:
             self.heuristics: List[BaseHeuristic] = list(heuristics)
@@ -37,6 +39,8 @@ class PollutionAnalyzer:
                 SchemaBloatHeuristic(),
                 ErrorLoopHeuristic(),
                 PrefixBreakHeuristic(),
+                ZombieContextRule(),
+                CacheBustingPrefixRule(),
             ]
 
     def analyze_turn(
@@ -74,7 +78,9 @@ class PollutionAnalyzer:
 
         # 3. Calculate financial cost metrics
         turn.turn_cost_usd = CostModel.calculate_turn_cost(turn, pricing=resolved_pricing)
-        turn.wasted_cost_usd = CostModel.calculate_wasted_spend(turn, violations=violations, pricing=resolved_pricing)
+        turn.wasted_cost_usd = CostModel.calculate_wasted_spend(
+            turn, violations=violations, pricing=resolved_pricing
+        )
 
         return violations
 

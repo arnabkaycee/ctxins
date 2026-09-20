@@ -19,6 +19,8 @@ class BlockLineage:
     last_seen_turn: int
     turns_survived: int
     seen_turns: list[int] = field(default_factory=list)
+    identity_key: str = ""
+    historical_hashes: list[str] = field(default_factory=list)
 
 
 class ContextGraph:
@@ -80,9 +82,19 @@ class ContextGraph:
                     block.first_seen_turn = rec.first_seen_turn
                     block.turns_survived = rec.turns_survived
                 elif rec.last_seen_turn == turn.turn_index - 1:
-                    # Persisted from immediate previous turn
+                    # Present in immediate previous turn
                     block.first_seen_turn = rec.first_seen_turn
-                    block.turns_survived = rec.turns_survived + 1
+                    if block.content_hash == rec.content_hash:
+                        # Persisted without mutation
+                        block.turns_survived = rec.turns_survived + 1
+                    else:
+                        # Mutated block: survival streak resets
+                        block.turns_survived = 0
+                        if rec.content_hash and rec.content_hash not in rec.historical_hashes:
+                            rec.historical_hashes.append(rec.content_hash)
+                        rec.content_hash = block.content_hash
+                        if block.content_hash and block.content_hash not in rec.historical_hashes:
+                            rec.historical_hashes.append(block.content_hash)
                     rec.turns_survived = block.turns_survived
                     rec.last_seen_turn = turn.turn_index
                     rec.seen_turns.append(turn.turn_index)
@@ -90,6 +102,12 @@ class ContextGraph:
                     # Re-introduced after absence: retain first_seen_turn, reset survival
                     block.first_seen_turn = rec.first_seen_turn
                     block.turns_survived = 0
+                    if block.content_hash != rec.content_hash:
+                        if rec.content_hash and rec.content_hash not in rec.historical_hashes:
+                            rec.historical_hashes.append(rec.content_hash)
+                        rec.content_hash = block.content_hash
+                        if block.content_hash and block.content_hash not in rec.historical_hashes:
+                            rec.historical_hashes.append(block.content_hash)
                     rec.turns_survived = 0
                     rec.last_seen_turn = turn.turn_index
                     rec.seen_turns.append(turn.turn_index)
@@ -97,6 +115,7 @@ class ContextGraph:
                 # Brand new block
                 block.first_seen_turn = turn.turn_index
                 block.turns_survived = 0
+                historical_hashes = [block.content_hash] if block.content_hash else []
                 rec = BlockLineage(
                     block_type=block.block_type,
                     content_hash=block.content_hash,
@@ -104,6 +123,8 @@ class ContextGraph:
                     last_seen_turn=turn.turn_index,
                     turns_survived=0,
                     seen_turns=[turn.turn_index],
+                    identity_key=block.identity_key,
+                    historical_hashes=historical_hashes,
                 )
                 self._lineage[key] = rec
 
@@ -119,7 +140,11 @@ class ContextGraph:
         self._deltas_by_turn[turn.turn_index] = delta
 
         # Link parent/child in DAG
-        resolved_parent_id = parent_turn_id if parent_turn_id is not None else (prev_turn.turn_id if prev_turn else None)
+        resolved_parent_id = (
+            parent_turn_id
+            if parent_turn_id is not None
+            else (prev_turn.turn_id if prev_turn else None)
+        )
         self._parents[turn.turn_id] = resolved_parent_id
         if resolved_parent_id:
             if resolved_parent_id not in self._children:
@@ -146,15 +171,40 @@ class ContextGraph:
 
     def get_lineage(
         self,
-        content_hash: str,
+        content_hash: Optional[str] = None,
         block_type: Optional[BlockType] = None,
+        identity_key: Optional[str] = None,
     ) -> Optional[BlockLineage]:
-        """Retrieve the lineage record for a block matching hash and optional type."""
-        if block_type is not None:
-            return self._lineage.get((block_type.value, content_hash))
-        for (b_type, h), rec in self._lineage.items():
-            if h == content_hash:
-                return rec
+        """Retrieve the lineage record for a block matching hash, identity key, and optional type."""
+        target_identity = identity_key
+        if target_identity is not None:
+            if block_type is not None:
+                key = (block_type.value, target_identity)
+                if key in self._lineage:
+                    return self._lineage[key]
+            for rec in self._lineage.values():
+                if rec.identity_key == target_identity and (
+                    block_type is None or rec.block_type == block_type
+                ):
+                    return rec
+
+        if content_hash is not None:
+            if block_type is not None:
+                key = (block_type.value, content_hash)
+                if key in self._lineage:
+                    return self._lineage[key]
+            for rec in self._lineage.values():
+                if (rec.content_hash == content_hash or content_hash in rec.historical_hashes) and (
+                    block_type is None or rec.block_type == block_type
+                ):
+                    return rec
+            # Fallback: check if the string passed as content_hash matches identity_key
+            for rec in self._lineage.values():
+                if rec.identity_key == content_hash and (
+                    block_type is None or rec.block_type == block_type
+                ):
+                    return rec
+
         return None
 
     def get_parent_turn(self, turn_id: str) -> Optional[CanonicalTurn]:
@@ -176,6 +226,8 @@ class ContextGraph:
 
     @staticmethod
     def _block_key(block: ContextBlock) -> tuple[str, str]:
+        if block.identity_key:
+            return (block.block_type.value, block.identity_key)
         if block.content_hash:
             return (block.block_type.value, block.content_hash)
         return (block.block_type.value, block.block_id)

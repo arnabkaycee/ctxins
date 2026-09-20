@@ -10,6 +10,10 @@ from src.core.analyzer.scorer import PollutionScorer
 from src.core.graph.diff import TurnDiffEngine
 from src.core.store.jsonc_exporter import JsoncExporter
 from src.core.store.session_store import SessionStore
+from src.presentation.web.turn_serializer import (
+    annotate_blocks_lifecycle,
+    serialize_turn_with_delta,
+)
 from src.presentation.web.ws import WebSocketHub
 
 
@@ -24,24 +28,30 @@ def create_api_router(store: SessionStore, ws_hub: WebSocketHub) -> APIRouter:
         for session_id in store.list_sessions():
             turns = store.get_session(session_id) or []
             meta = store.get_session_metadata(session_id) or {}
-            summary = PollutionScorer.calculate_summary(turns) if turns else {
-                "totalTurns": 0,
-                "totalInputTokens": 0,
-                "totalOutputTokens": 0,
-                "cachedInputTokens": 0,
-                "cacheHitRatio": 0.0,
-                "totalDurationMs": 0.0,
-                "estimatedCostUSD": 0.0,
-                "pollutionScore": 0.0,
-                "potentialSavingsUSD": 0.0,
-                "activeViolationsCount": 0,
-            }
+            summary = (
+                PollutionScorer.calculate_summary(turns)
+                if turns
+                else {
+                    "totalTurns": 0,
+                    "totalInputTokens": 0,
+                    "totalOutputTokens": 0,
+                    "cachedInputTokens": 0,
+                    "cacheHitRatio": 0.0,
+                    "totalDurationMs": 0.0,
+                    "estimatedCostUSD": 0.0,
+                    "pollutionScore": 0.0,
+                    "potentialSavingsUSD": 0.0,
+                    "activeViolationsCount": 0,
+                }
+            )
             first_turn = turns[0] if turns else None
             results.append(
                 {
                     "sessionId": session_id,
                     "turnsCount": len(turns),
-                    "provider": first_turn.provider if first_turn else meta.get("provider", "unknown"),
+                    "provider": first_turn.provider
+                    if first_turn
+                    else meta.get("provider", "unknown"),
                     "model": first_turn.model if first_turn else meta.get("model", "unknown"),
                     "harness": meta.get("harness") or meta.get("agentHarness", "unknown"),
                     "agentHarness": meta.get("agentHarness") or meta.get("harness", "unknown"),
@@ -59,19 +69,28 @@ def create_api_router(store: SessionStore, ws_hub: WebSocketHub) -> APIRouter:
         if turns is None:
             raise HTTPException(status_code=404, detail=f"Session '{id}' not found")
         meta = store.get_session_metadata(id) or {}
-        summary = PollutionScorer.calculate_summary(turns) if turns else {
-            "totalTurns": 0,
-            "totalInputTokens": 0,
-            "totalOutputTokens": 0,
-            "cachedInputTokens": 0,
-            "cacheHitRatio": 0.0,
-            "totalDurationMs": 0.0,
-            "estimatedCostUSD": 0.0,
-            "pollutionScore": 0.0,
-            "potentialSavingsUSD": 0.0,
-            "activeViolationsCount": 0,
-        }
+        summary = (
+            PollutionScorer.calculate_summary(turns)
+            if turns
+            else {
+                "totalTurns": 0,
+                "totalInputTokens": 0,
+                "totalOutputTokens": 0,
+                "cachedInputTokens": 0,
+                "cacheHitRatio": 0.0,
+                "totalDurationMs": 0.0,
+                "estimatedCostUSD": 0.0,
+                "pollutionScore": 0.0,
+                "potentialSavingsUSD": 0.0,
+                "activeViolationsCount": 0,
+            }
+        )
         first_turn = turns[0] if turns else None
+        session_turns: List[Dict[str, Any]] = []
+        for i, t in enumerate(turns or []):
+            prev = turns[i - 1] if i > 0 else None
+            session_turns.append(serialize_turn_with_delta(t, prev))
+
         return {
             "sessionId": id,
             "provider": first_turn.provider if first_turn else meta.get("provider", "unknown"),
@@ -82,34 +101,55 @@ def create_api_router(store: SessionStore, ws_hub: WebSocketHub) -> APIRouter:
             "status": meta.get("status", "active"),
             "summary": summary,
             "turnIndices": [t.turn_index for t in turns],
-            "turns": [t.to_dict() for t in turns],
+            "turns": session_turns,
             "violations": [v.to_dict() for v in store.get_violations(id)],
         }
 
     @router.get("/sessions/{id}/turns")
     def get_session_turns(id: str) -> List[Dict[str, Any]]:
-        """Get all CanonicalTurns for a session."""
+        """Get all CanonicalTurns for a session with TurnDelta and category breakdowns."""
         turns = store.get_session(id)
         if turns is None:
             raise HTTPException(status_code=404, detail=f"Session '{id}' not found")
-        return [t.to_dict() for t in turns]
+        result: List[Dict[str, Any]] = []
+        for i, t in enumerate(turns):
+            prev = turns[i - 1] if i > 0 else None
+            result.append(serialize_turn_with_delta(t, prev))
+        return result
 
     @router.get("/sessions/{id}/turns/{index}")
     def get_session_turn(id: str, index: int) -> Dict[str, Any]:
-        """Get specific turn details, token breakdown, and AST blocks."""
+        """Get specific turn details, category breakdowns, TurnDelta, and AST blocks."""
         turns = store.get_session(id)
         if turns is None:
             raise HTTPException(status_code=404, detail=f"Session '{id}' not found")
-        matching = [t for t in turns if t.turn_index == index]
+        matching = [(i, t) for i, t in enumerate(turns) if t.turn_index == index]
         if not matching:
             raise HTTPException(
                 status_code=404,
                 detail=f"Turn index {index} not found in session '{id}'",
             )
-        turn = matching[0]
-        data = turn.to_dict()
+        pos, turn = matching[0]
+        prev = turns[pos - 1] if pos > 0 else None
+        data = serialize_turn_with_delta(turn, prev)
         data["all_blocks"] = [b.to_dict() for b in turn.all_blocks]
         return data
+
+    @router.get("/sessions/{id}/turns/{index}/blocks")
+    def get_session_turn_blocks(id: str, index: int) -> List[Dict[str, Any]]:
+        """Get context blocks for a turn annotated with lifecycle status (added, persisted, mutated, evicted)."""
+        turns = store.get_session(id)
+        if turns is None:
+            raise HTTPException(status_code=404, detail=f"Session '{id}' not found")
+        matching = [(i, t) for i, t in enumerate(turns) if t.turn_index == index]
+        if not matching:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Turn index {index} not found in session '{id}'",
+            )
+        pos, turn = matching[0]
+        prev = turns[pos - 1] if pos > 0 else None
+        return annotate_blocks_lifecycle(turn, prev)
 
     @router.get("/sessions/{id}/recommendations")
     def get_session_recommendations(id: str) -> List[Dict[str, Any]]:

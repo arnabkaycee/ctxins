@@ -45,9 +45,7 @@ class StaleToolHeuristic(BaseHeuristic):
             blk.content for prev in resolved_prev[-2:] for blk in prev.assistant_blocks
         )
         if turn.assistant_blocks:
-            recent_assistant_text += " " + " ".join(
-                blk.content for blk in turn.assistant_blocks
-            )
+            recent_assistant_text += " " + " ".join(blk.content for blk in turn.assistant_blocks)
 
         for tool_res in turn.tool_results:
             if tool_res.token_count < self.min_tokens:

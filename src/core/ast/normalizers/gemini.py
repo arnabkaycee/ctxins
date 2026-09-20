@@ -16,8 +16,9 @@ class GeminiASTNormalizer(BaseNormalizer):
     def __init__(
         self,
         token_counter: Optional[Callable[[str], int]] = None,
+        decomposer: Optional[Any] = None,
     ) -> None:
-        super().__init__(token_counter=token_counter)
+        super().__init__(token_counter=token_counter, decomposer=decomposer)
 
     def normalize(
         self,
@@ -47,7 +48,11 @@ class GeminiASTNormalizer(BaseNormalizer):
                 merged_usage: dict[str, Any] = {}
                 for item in data:
                     if isinstance(item, dict):
-                        inner = item.get("response", item) if isinstance(item.get("response"), dict) else item
+                        inner = (
+                            item.get("response", item)
+                            if isinstance(item.get("response"), dict)
+                            else item
+                        )
                         if "candidates" in inner and isinstance(inner["candidates"], list):
                             merged_candidates.extend(inner["candidates"])
                         if "usageMetadata" in inner:
@@ -69,24 +74,20 @@ class GeminiASTNormalizer(BaseNormalizer):
             for idx, part in enumerate(parts):
                 text = part.get("text", "") if isinstance(part, dict) else str(part)
                 if text:
-                    system_blocks.append(
-                        ContextBlock(
-                            block_id=f"sys_{idx}",
-                            block_type=BlockType.SYSTEM,
-                            content_hash=compute_block_hash(text),
-                            token_count=self.estimate_tokens(text),
-                            content=text,
+                    system_blocks.extend(
+                        self.decomposer.decompose(
+                            text,
+                            default_block_type=BlockType.SYSTEM,
+                            base_id=f"sys_{idx}",
                             metadata={"role": "system"},
                         )
                     )
         elif isinstance(sys_inst, str) and sys_inst:
-            system_blocks.append(
-                ContextBlock(
-                    block_id="sys_0",
-                    block_type=BlockType.SYSTEM,
-                    content_hash=compute_block_hash(sys_inst),
-                    token_count=self.estimate_tokens(sys_inst),
-                    content=sys_inst,
+            system_blocks.extend(
+                self.decomposer.decompose(
+                    sys_inst,
+                    default_block_type=BlockType.SYSTEM,
+                    base_id="sys_0",
                     metadata={"role": "system"},
                 )
             )
@@ -153,7 +154,11 @@ class GeminiASTNormalizer(BaseNormalizer):
                     fn_resp = part.get("functionResponse") or part.get("function_response") or {}
                     name = fn_resp.get("name", f"tool_{msg_idx}")
                     resp_data = fn_resp.get("response", {})
-                    resp_str = json.dumps(resp_data, sort_keys=True) if isinstance(resp_data, (dict, list)) else str(resp_data)
+                    resp_str = (
+                        json.dumps(resp_data, sort_keys=True)
+                        if isinstance(resp_data, (dict, list))
+                        else str(resp_data)
+                    )
                     tool_results.append(
                         ContextBlock(
                             block_id=f"tool_res_{name}_{msg_idx}_{part_idx}",
@@ -180,17 +185,48 @@ class GeminiASTNormalizer(BaseNormalizer):
                     )
                 elif "text" in part:
                     text = part["text"]
-                    b_type = BlockType.USER_MSG if role == "user" else BlockType.ASSISTANT_MSG
-                    history.append(
-                        ContextBlock(
-                            block_id=f"hist_{msg_idx}_{part_idx}",
-                            block_type=b_type,
-                            content_hash=compute_block_hash(text),
-                            token_count=self.estimate_tokens(text),
-                            content=text,
-                            metadata={"role": role},
+                    if role == "user":
+                        history.extend(
+                            self.decomposer.decompose(
+                                text,
+                                default_block_type=BlockType.USER_MSG,
+                                base_id=f"hist_{msg_idx}_{part_idx}",
+                                metadata={"role": role},
+                            )
                         )
-                    )
+                    else:  # model
+                        if part.get("thought") is True:
+                            history.append(
+                                ContextBlock(
+                                    block_id=f"hist_{msg_idx}_{part_idx}",
+                                    block_type=BlockType.THOUGHT,
+                                    content_hash=compute_block_hash(text),
+                                    token_count=self.estimate_tokens(text),
+                                    content=text,
+                                    metadata={"role": role, "thought": True},
+                                    identity_key=f"thought:{msg_idx}_{part_idx}",
+                                )
+                            )
+                        elif "<thought>" in text.lower() or "<thinking>" in text.lower():
+                            history.extend(
+                                self.decomposer.decompose(
+                                    text,
+                                    default_block_type=BlockType.ASSISTANT_MSG,
+                                    base_id=f"hist_{msg_idx}_{part_idx}",
+                                    metadata={"role": role},
+                                )
+                            )
+                        else:
+                            history.append(
+                                ContextBlock(
+                                    block_id=f"hist_{msg_idx}_{part_idx}",
+                                    block_type=BlockType.ASSISTANT_MSG,
+                                    content_hash=compute_block_hash(text),
+                                    token_count=self.estimate_tokens(text),
+                                    content=text,
+                                    metadata={"role": role},
+                                )
+                            )
 
         # 4. Response Candidates
         assistant_blocks: list[ContextBlock] = []
@@ -203,16 +239,38 @@ class GeminiASTNormalizer(BaseNormalizer):
                     if isinstance(part, dict):
                         if "text" in part:
                             text = part["text"]
-                            assistant_blocks.append(
-                                ContextBlock(
-                                    block_id=f"resp_text_{c_idx}_{p_idx}",
-                                    block_type=BlockType.ASSISTANT_MSG,
-                                    content_hash=compute_block_hash(text),
-                                    token_count=self.estimate_tokens(text),
-                                    content=text,
-                                    metadata={"role": "model"},
+                            if part.get("thought") is True:
+                                assistant_blocks.append(
+                                    ContextBlock(
+                                        block_id=f"resp_thought_{c_idx}_{p_idx}",
+                                        block_type=BlockType.THOUGHT,
+                                        content_hash=compute_block_hash(text),
+                                        token_count=self.estimate_tokens(text),
+                                        content=text,
+                                        metadata={"role": "model", "thought": True},
+                                        identity_key=f"thought:{c_idx}_{p_idx}",
+                                    )
                                 )
-                            )
+                            elif "<thought>" in text.lower() or "<thinking>" in text.lower():
+                                assistant_blocks.extend(
+                                    self.decomposer.decompose(
+                                        text,
+                                        default_block_type=BlockType.ASSISTANT_MSG,
+                                        base_id=f"resp_text_{c_idx}_{p_idx}",
+                                        metadata={"role": "model"},
+                                    )
+                                )
+                            else:
+                                assistant_blocks.append(
+                                    ContextBlock(
+                                        block_id=f"resp_text_{c_idx}_{p_idx}",
+                                        block_type=BlockType.ASSISTANT_MSG,
+                                        content_hash=compute_block_hash(text),
+                                        token_count=self.estimate_tokens(text),
+                                        content=text,
+                                        metadata={"role": "model"},
+                                    )
+                                )
                         elif "functionCall" in part or "function_call" in part:
                             fn_call = part.get("functionCall") or part.get("function_call") or {}
                             name = fn_call.get("name", f"call_{c_idx}_{p_idx}")
@@ -232,16 +290,26 @@ class GeminiASTNormalizer(BaseNormalizer):
                                 )
                             )
                     elif isinstance(part, str):
-                        assistant_blocks.append(
-                            ContextBlock(
-                                block_id=f"resp_text_{c_idx}_{p_idx}",
-                                block_type=BlockType.ASSISTANT_MSG,
-                                content_hash=compute_block_hash(part),
-                                token_count=self.estimate_tokens(part),
-                                content=part,
-                                metadata={"role": "model"},
+                        if "<thought>" in part.lower() or "<thinking>" in part.lower():
+                            assistant_blocks.extend(
+                                self.decomposer.decompose(
+                                    part,
+                                    default_block_type=BlockType.ASSISTANT_MSG,
+                                    base_id=f"resp_text_{c_idx}_{p_idx}",
+                                    metadata={"role": "model"},
+                                )
                             )
-                        )
+                        else:
+                            assistant_blocks.append(
+                                ContextBlock(
+                                    block_id=f"resp_text_{c_idx}_{p_idx}",
+                                    block_type=BlockType.ASSISTANT_MSG,
+                                    content_hash=compute_block_hash(part),
+                                    token_count=self.estimate_tokens(part),
+                                    content=part,
+                                    metadata={"role": "model"},
+                                )
+                            )
         elif resp.get("blocks"):
             for idx, blk in enumerate(resp["blocks"]):
                 if hasattr(blk, "text"):

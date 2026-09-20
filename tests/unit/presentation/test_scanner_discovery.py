@@ -98,8 +98,10 @@ def test_bridge_cleanup_dead_agent_sessions() -> None:
         events_received.append(evt)
 
     # Mock os.kill: both processes are dead (raise ProcessLookupError)
-    with patch("os.kill", side_effect=ProcessLookupError), \
-         patch.object(broadcaster, "publish_nowait", side_effect=mock_publish):
+    with (
+        patch("os.kill", side_effect=ProcessLookupError),
+        patch.object(broadcaster, "publish_nowait", side_effect=mock_publish),
+    ):
         dead = bridge.cleanup_dead_agent_sessions()
         assert "sess_agy_11111" in dead
         assert "sess_claude_22222" in dead
@@ -268,6 +270,7 @@ async def test_tui_renders_detected_agent_details_when_no_turns() -> None:
 
         # 1. Dedicated Sessions panel shows detected agent
         from src.presentation.tui.widgets.sessions_panel import SessionsPanelWidget
+
         sp = app.query_one(SessionsPanelWidget)
         ol = sp.query_one("#sessions-option-list", OptionList)
         assert ol.option_count >= 1
@@ -291,4 +294,3 @@ async def test_tui_renders_detected_agent_details_when_no_turns() -> None:
         rec = app.query_one(RecommendationsWidget)
         rec_content = rec.query_one("#recommendations-content", Static).render()
         assert "HEURISTIC RECOMMENDATIONS" in str(rec_content)
-

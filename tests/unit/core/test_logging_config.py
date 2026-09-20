@@ -24,10 +24,10 @@ from src.core.logging_config import (
 def clean_env() -> Generator[None, None, None]:
     """Clean up logging environment variables before and after each test."""
     orig_env = {
-        k: os.environ.get(k)
-        for k in ["CTXINS_LOG_LEVEL", "CTXINS_LOG_FILE", "CTXINS_DEBUG"]
+        k: os.environ.get(k) for k in ["CTXINS_LOG_LEVEL", "CTXINS_LOG_FILE", "CTXINS_DEBUG"]
     }
     import src.core.logging_config as lc
+
     lc._CONFIGURED_MODE = None
     for k in orig_env:
         os.environ.pop(k, None)
@@ -118,7 +118,8 @@ def test_configure_logging_tui_mode_safety(tmp_path: Path) -> None:
 
     # In TUI mode, StreamHandler writing to stderr/stdout must NOT be added by ctxins
     stream_handlers = [
-        h for h in root.handlers
+        h
+        for h in root.handlers
         if getattr(h, "_ctxins_managed", False)
         and isinstance(h, logging.StreamHandler)
         and not isinstance(h, (RotatingFileHandler, logging.FileHandler, InMemoryLogHandler))

@@ -8,30 +8,34 @@ from typing import Any, Mapping
 REDACTED = "[REDACTED]"
 
 # Headers containing sensitive authentication or session credentials
-SENSITIVE_HEADERS: frozenset[str] = frozenset({
-    "authorization",
-    "x-api-key",
-    "api-key",
-    "proxy-authorization",
-    "cookie",
-    "set-cookie",
-})
+SENSITIVE_HEADERS: frozenset[str] = frozenset(
+    {
+        "authorization",
+        "x-api-key",
+        "api-key",
+        "proxy-authorization",
+        "cookie",
+        "set-cookie",
+    }
+)
 
 # Token counting / usage / configuration keys that must not be mistaken for credentials
-EXCLUDED_PAYLOAD_KEYS: frozenset[str] = frozenset({
-    "max_tokens",
-    "input_tokens",
-    "output_tokens",
-    "prompt_tokens",
-    "completion_tokens",
-    "total_tokens",
-    "reasoning_tokens",
-    "cache_creation_input_tokens",
-    "cache_read_input_tokens",
-    "tokens",
-    "token_count",
-    "token_usage",
-})
+EXCLUDED_PAYLOAD_KEYS: frozenset[str] = frozenset(
+    {
+        "max_tokens",
+        "input_tokens",
+        "output_tokens",
+        "prompt_tokens",
+        "completion_tokens",
+        "total_tokens",
+        "reasoning_tokens",
+        "cache_creation_input_tokens",
+        "cache_read_input_tokens",
+        "tokens",
+        "token_count",
+        "token_usage",
+    }
+)
 
 # Pattern matching credentials like api_key, auth_token, accessToken, etc.
 SENSITIVE_KEY_PATTERN: re.Pattern[str] = re.compile(

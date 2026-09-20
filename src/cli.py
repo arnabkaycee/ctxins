@@ -129,9 +129,7 @@ def run_env(
             )
 
 
-async def _shutdown_uvicorn(
-    server: Optional[Any], task: Optional[asyncio.Task[Any]]
-) -> None:
+async def _shutdown_uvicorn(server: Optional[Any], task: Optional[asyncio.Task[Any]]) -> None:
     """Gracefully shutdown background uvicorn server and task without CancelledError noise."""
     if server is not None:
         server.should_exit = True
@@ -144,6 +142,7 @@ async def _shutdown_uvicorn(
                 await task
             except (asyncio.CancelledError, Exception):
                 pass
+
 
 class CorePipelineBridge:
     """Bridges Core UDS telemetry ingestion to PresentationBroadcaster and SessionStore."""
@@ -200,7 +199,12 @@ class CorePipelineBridge:
                         },
                     )
                 )
-                logger.info("Detected running agent: %s (PID: %s) -> registered session '%s'", ag.name, ag.pid, sess_id)
+                logger.info(
+                    "Detected running agent: %s (PID: %s) -> registered session '%s'",
+                    ag.name,
+                    ag.pid,
+                    sess_id,
+                )
                 new_sessions.append(sess_id)
         return new_sessions
 
@@ -264,10 +268,9 @@ class CorePipelineBridge:
         session_id = envelope.session_id
 
         if envelope.event_type == WireEventType.REQUEST_INITIATED:
-            agent_info = (
-                envelope.payload.get("client_metadata", {}).get("agent")
-                or envelope.payload.get("agent")
-            )
+            agent_info = envelope.payload.get("client_metadata", {}).get(
+                "agent"
+            ) or envelope.payload.get("agent")
             harness = (
                 envelope.payload.get("client_metadata", {}).get("harness")
                 or envelope.payload.get("harness")
@@ -350,7 +353,9 @@ class CorePipelineBridge:
             try:
                 turn = normalizer.normalize(envelope.to_dict(), turn_index=turn_index)
                 self.store.append_turn(turn)
-                violations = self.analyzer.analyze_turn(turn, graph=self.store.get_graph(session_id))
+                violations = self.analyzer.analyze_turn(
+                    turn, graph=self.store.get_graph(session_id)
+                )
             except Exception as e:
                 logger.error("Error normalizing or analyzing turn: %s", e)
                 return
@@ -393,7 +398,6 @@ class CorePipelineBridge:
                 "all_blocks": [b.to_dict() for b in turn.all_blocks],
                 "turn": turn_dict,
                 "summary": summary,
-
                 # CamelCase aliases for web dashboard
                 "turnIndex": turn.turn_index,
                 "turnId": turn.turn_id,
@@ -655,7 +659,9 @@ def run_web(
         uvi_server: Optional[Any] = None
         try:
             web_app = create_app(store=bridge.store, broadcaster=bridge.broadcaster)
-            config = uvicorn.Config(app=web_app, host=host, port=actual_web_port, log_level="warning")
+            config = uvicorn.Config(
+                app=web_app, host=host, port=actual_web_port, log_level="warning"
+            )
             uvi_server = uvicorn.Server(config)
             await uvi_server.serve()
         finally:
@@ -774,7 +780,12 @@ def run_with_harness(
                 if ui_mode == "tui" and os.environ.get("TMUX"):
                     try:
                         subprocess.run(
-                            ["tmux", "split-window", "-h", f"ctxins tui --proxy-port {actual_proxy_port}"],
+                            [
+                                "tmux",
+                                "split-window",
+                                "-h",
+                                f"ctxins tui --proxy-port {actual_proxy_port}",
+                            ],
                             check=False,
                         )
                     except Exception:
@@ -863,8 +874,12 @@ def build_parser() -> argparse.ArgumentParser:
     tui_p.add_argument("--socket", default=DEFAULT_SOCKET_PATH, help="UDS socket path")
     tui_p.add_argument("--proxy-port", type=int, default=DEFAULT_PROXY_PORT, help="Proxy port")
     tui_p.add_argument("--target-port", type=int, default=None, help="Target port for local LLM")
-    tui_p.add_argument("--target", default=None, help="Target upstream URL (e.g. http://localhost:8000)")
-    tui_p.add_argument("--no-web", action="store_true", help="Disable concurrent background Web Dashboard")
+    tui_p.add_argument(
+        "--target", default=None, help="Target upstream URL (e.g. http://localhost:8000)"
+    )
+    tui_p.add_argument(
+        "--no-web", action="store_true", help="Disable concurrent background Web Dashboard"
+    )
     tui_p.add_argument("--web-port", type=int, default=DEFAULT_WEB_PORT, help="Web Dashboard port")
 
     # 2. web
@@ -874,41 +889,77 @@ def build_parser() -> argparse.ArgumentParser:
     web_p.add_argument("--socket", default=DEFAULT_SOCKET_PATH, help="UDS socket path")
     web_p.add_argument("--proxy-port", type=int, default=DEFAULT_PROXY_PORT, help="Proxy port")
     web_p.add_argument("--target-port", type=int, default=None, help="Target port for local LLM")
-    web_p.add_argument("--target", default=None, help="Target upstream URL (e.g. http://localhost:8000)")
+    web_p.add_argument(
+        "--target", default=None, help="Target upstream URL (e.g. http://localhost:8000)"
+    )
 
     # 3. live
-    live_p = subparsers.add_parser("live", parents=[log_p], help="Start Core Engine and presentation UI")
+    live_p = subparsers.add_parser(
+        "live", parents=[log_p], help="Start Core Engine and presentation UI"
+    )
     ui_group = live_p.add_mutually_exclusive_group()
-    ui_group.add_argument("--tui", dest="ui_mode", action="store_const", const="tui", default="tui", help="Use Terminal UI (default)")
-    ui_group.add_argument("--web", dest="ui_mode", action="store_const", const="web", help="Use Web Dashboard")
+    ui_group.add_argument(
+        "--tui",
+        dest="ui_mode",
+        action="store_const",
+        const="tui",
+        default="tui",
+        help="Use Terminal UI (default)",
+    )
+    ui_group.add_argument(
+        "--web", dest="ui_mode", action="store_const", const="web", help="Use Web Dashboard"
+    )
     live_p.add_argument("--port", type=int, default=DEFAULT_WEB_PORT, help="Web port")
     live_p.add_argument("--host", default=DEFAULT_WEB_HOST, help="Web host")
     live_p.add_argument("--socket", default=DEFAULT_SOCKET_PATH, help="UDS socket path")
     live_p.add_argument("--proxy-port", type=int, default=DEFAULT_PROXY_PORT, help="Proxy port")
     live_p.add_argument("--target-port", type=int, default=None, help="Target port for local LLM")
-    live_p.add_argument("--target", default=None, help="Target upstream URL (e.g. http://localhost:8000)")
-    live_p.add_argument("--no-web", action="store_true", help="Disable concurrent background Web Dashboard")
+    live_p.add_argument(
+        "--target", default=None, help="Target upstream URL (e.g. http://localhost:8000)"
+    )
+    live_p.add_argument(
+        "--no-web", action="store_true", help="Disable concurrent background Web Dashboard"
+    )
     live_p.add_argument("--web-port", type=int, default=DEFAULT_WEB_PORT, help="Web Dashboard port")
 
     # 4. run
-    run_p = subparsers.add_parser("run", parents=[log_p], help="Start proxy and execute agent harness wrapped in ctxins")
+    run_p = subparsers.add_parser(
+        "run", parents=[log_p], help="Start proxy and execute agent harness wrapped in ctxins"
+    )
     run_ui_group = run_p.add_mutually_exclusive_group()
-    run_ui_group.add_argument("--tui", dest="ui_mode", action="store_const", const="tui", default="tui", help="Use Terminal UI (default)")
-    run_ui_group.add_argument("--web", dest="ui_mode", action="store_const", const="web", help="Use Web Dashboard")
+    run_ui_group.add_argument(
+        "--tui",
+        dest="ui_mode",
+        action="store_const",
+        const="tui",
+        default="tui",
+        help="Use Terminal UI (default)",
+    )
+    run_ui_group.add_argument(
+        "--web", dest="ui_mode", action="store_const", const="web", help="Use Web Dashboard"
+    )
     run_p.add_argument("--port", type=int, default=DEFAULT_WEB_PORT, help="Web port")
     run_p.add_argument("--host", default=DEFAULT_WEB_HOST, help="Web host")
     run_p.add_argument("--proxy-port", type=int, default=DEFAULT_PROXY_PORT, help="Proxy port")
     run_p.add_argument("--socket", default=DEFAULT_SOCKET_PATH, help="UDS socket path")
     run_p.add_argument("--target-port", type=int, default=None, help="Target port for local LLM")
-    run_p.add_argument("--target", default=None, help="Target upstream URL (e.g. http://localhost:8000)")
-    run_p.add_argument("--no-web", action="store_true", help="Disable concurrent background Web Dashboard")
+    run_p.add_argument(
+        "--target", default=None, help="Target upstream URL (e.g. http://localhost:8000)"
+    )
+    run_p.add_argument(
+        "--no-web", action="store_true", help="Disable concurrent background Web Dashboard"
+    )
     run_p.add_argument("--web-port", type=int, default=DEFAULT_WEB_PORT, help="Web Dashboard port")
     run_p.add_argument("command", nargs=argparse.REMAINDER, help="Command to execute after --")
 
     # 5. env
-    env_p = subparsers.add_parser("env", parents=[log_p], help="Generate shell export commands for proxy & certs")
+    env_p = subparsers.add_parser(
+        "env", parents=[log_p], help="Generate shell export commands for proxy & certs"
+    )
     env_p.add_argument("--proxy-port", type=int, default=DEFAULT_PROXY_PORT, help="Proxy port")
-    env_p.add_argument("--json", action="store_true", help="Output JSON format instead of shell export")
+    env_p.add_argument(
+        "--json", action="store_true", help="Output JSON format instead of shell export"
+    )
     env_p.add_argument(
         "-u",
         "--unset",
@@ -918,7 +969,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     # 6. unset-env
     unset_p = subparsers.add_parser(
-        "unset-env", parents=[log_p], help="Generate shell unset commands to remove proxy & cert env vars"
+        "unset-env",
+        parents=[log_p],
+        help="Generate shell unset commands to remove proxy & cert env vars",
     )
     unset_p.add_argument("--json", action="store_true", help="Output JSON format")
 

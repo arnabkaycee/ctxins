@@ -93,8 +93,12 @@ def test_calculate_summary_aggregates_properly():
     v1 = RuleViolation("CTX-001", ViolationSeverity.WARN, "t", "m", 0.01, "f")
     v2 = RuleViolation("CTX-003", ViolationSeverity.CRITICAL, "t", "m", 0.02, "f")
 
-    t1 = _make_turn_with_violations(0, [v1], input_tokens=1000, cached_tokens=400, turn_cost=0.05, wasted_cost=0.01)
-    t2 = _make_turn_with_violations(1, [v2], input_tokens=2000, cached_tokens=1600, turn_cost=0.08, wasted_cost=0.02)
+    t1 = _make_turn_with_violations(
+        0, [v1], input_tokens=1000, cached_tokens=400, turn_cost=0.05, wasted_cost=0.01
+    )
+    t2 = _make_turn_with_violations(
+        1, [v2], input_tokens=2000, cached_tokens=1600, turn_cost=0.08, wasted_cost=0.02
+    )
 
     summary = PollutionScorer.calculate_summary([t1, t2])
     assert summary["totalTurns"] == 2

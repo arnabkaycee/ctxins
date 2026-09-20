@@ -92,11 +92,7 @@ class ActiveTurnTracker:
     @property
     def is_reaper_running(self) -> bool:
         """Return True if background reaper thread is alive."""
-        return (
-            self._running
-            and self._reaper_thread is not None
-            and self._reaper_thread.is_alive()
-        )
+        return self._running and self._reaper_thread is not None and self._reaper_thread.is_alive()
 
     def register_turn(self, turn: ActiveTurnContext) -> ActiveTurnContext:
         """Register an active turn context in the tracker."""
@@ -169,9 +165,7 @@ class ActiveTurnTracker:
         with self._lock:
             return list(self._turns.items())
 
-    def update_request_headers(
-        self, correlation_id: str, headers: Mapping[str, str]
-    ) -> None:
+    def update_request_headers(self, correlation_id: str, headers: Mapping[str, str]) -> None:
         """Update sanitized request headers for an active turn."""
         with self._lock:
             turn = self._turns.get(correlation_id)
@@ -179,9 +173,7 @@ class ActiveTurnTracker:
                 turn.sanitized_headers.update(headers)
                 self._last_active[correlation_id] = time.time()
 
-    def update_request_payload(
-        self, correlation_id: str, payload: Dict[str, Any]
-    ) -> None:
+    def update_request_payload(self, correlation_id: str, payload: Dict[str, Any]) -> None:
         """Update request payload for an active turn."""
         with self._lock:
             turn = self._turns.get(correlation_id)
@@ -189,9 +181,7 @@ class ActiveTurnTracker:
                 turn.request_payload = payload
                 self._last_active[correlation_id] = time.time()
 
-    def update_response_headers(
-        self, correlation_id: str, headers: Mapping[str, str]
-    ) -> None:
+    def update_response_headers(self, correlation_id: str, headers: Mapping[str, str]) -> None:
         """Update response headers for an active turn."""
         with self._lock:
             turn = self._turns.get(correlation_id)
@@ -199,9 +189,7 @@ class ActiveTurnTracker:
                 turn.response_headers.update(headers)
                 self._last_active[correlation_id] = time.time()
 
-    def update_response_payload(
-        self, correlation_id: str, payload: Dict[str, Any]
-    ) -> None:
+    def update_response_payload(self, correlation_id: str, payload: Dict[str, Any]) -> None:
         """Update response payload for an active turn."""
         with self._lock:
             turn = self._turns.get(correlation_id)

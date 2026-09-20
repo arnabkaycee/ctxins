@@ -46,7 +46,10 @@ class FooterBarWidget(Widget):
         text.append("[n/p] ", style=f"bold {COLOR_ACCENT}")
         text.append("Block │ ", style=COLOR_MUTED)
         text.append("[r] ", style=f"bold {COLOR_ACCENT}")
-        text.append(f"Filter({filter_mode}) │ ", style="bold #d29922" if self.state.show_all_violations else COLOR_MUTED)
+        text.append(
+            f"Filter({filter_mode}) │ ",
+            style="bold #d29922" if self.state.show_all_violations else COLOR_MUTED,
+        )
         text.append("[e] ", style=f"bold {COLOR_ACCENT}")
         text.append("Export\n", style=COLOR_MUTED)
 

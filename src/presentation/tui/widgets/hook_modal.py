@@ -102,14 +102,14 @@ class HookModalScreen(ModalScreen[None]):
             recipe2 = (
                 f"[bold cyan]2. Local Agent / Local LLM on Custom Port[/bold cyan] (e.g. :8000, :1234):\n"
                 f"   Point your agent base URL to ctxins gateway:\n"
-                f"   [bold yellow]OPENAI_BASE_URL=\"http://127.0.0.1:{self.proxy_port}/v1\"[/bold yellow]\n"
-                f"   [bold yellow]CTXINS_TARGET=\"http://localhost:<TARGET_PORT>\"[/bold yellow]"
+                f'   [bold yellow]OPENAI_BASE_URL="http://127.0.0.1:{self.proxy_port}/v1"[/bold yellow]\n'
+                f'   [bold yellow]CTXINS_TARGET="http://localhost:<TARGET_PORT>"[/bold yellow]'
             )
             yield Static(recipe2, classes="recipe-box")
 
             recipe3 = (
                 f"[bold cyan]3. Python / Node SDK Script[/bold cyan]:\n"
-                f"   [bold yellow]$ HTTP_PROXY=\"http://127.0.0.1:{self.proxy_port}\" python agent.py[/bold yellow]"
+                f'   [bold yellow]$ HTTP_PROXY="http://127.0.0.1:{self.proxy_port}" python agent.py[/bold yellow]'
             )
             yield Static(recipe3, classes="recipe-box")
 

@@ -47,7 +47,9 @@ class TUIState:
     sessions_turns: Dict[str, List[Dict[str, Any]]] = field(default_factory=dict)
     sessions_violations: Dict[str, List[Dict[str, Any]]] = field(default_factory=dict)
 
-    def _find_or_create_turn(self, turn_index: int, session_id: Optional[str] = None) -> Dict[str, Any]:
+    def _find_or_create_turn(
+        self, turn_index: int, session_id: Optional[str] = None
+    ) -> Dict[str, Any]:
         """Find existing turn dict by turnIndex or insert a new one for session."""
         sid = session_id or self.session_id
         turns_list = self.sessions_turns.setdefault(sid, []) if sid else self.turns
@@ -77,6 +79,10 @@ class TUIState:
                 "toolResults": 0,
                 "assistant": 0,
                 "cache": 0,
+                "skills": 0,
+                "thought": 0,
+                "thoughts": 0,
+                "injected_state": 0,
             },
             "blocks": [],
         }
@@ -105,7 +111,11 @@ class TUIState:
             if target_sid:
                 self.sessions_metadata[target_sid] = dict(payload)
 
-            if not self.session_id or self.session_id == "sess_default" or self.session_id == target_sid:
+            if (
+                not self.session_id
+                or self.session_id == "sess_default"
+                or self.session_id == target_sid
+            ):
                 self.session_id = target_sid
                 self.model = payload.get("model", self.model)
                 self.provider = payload.get("provider", self.provider)
@@ -166,7 +176,9 @@ class TUIState:
             if "streamDurationMs" in payload:
                 turn["durationMs"] = float(payload["streamDurationMs"])
             elif "durationMs" in payload or "duration_ms" in payload:
-                turn["durationMs"] = float(payload.get("durationMs", payload.get("duration_ms", 0.0)))
+                turn["durationMs"] = float(
+                    payload.get("durationMs", payload.get("duration_ms", 0.0))
+                )
 
         elif etype == UIEventType.TURN_COMPLETED:
             target_sid = sid or self.session_id
@@ -221,7 +233,9 @@ class TUIState:
                 turn["ttftMs"] = t_data.get("ttftMs", t_data.get("ttft_ms"))
 
             turn["cost"] = float(
-                t_data.get("cost", t_data.get("turnCostUSD", t_data.get("turn_cost_usd", turn["cost"])))
+                t_data.get(
+                    "cost", t_data.get("turnCostUSD", t_data.get("turn_cost_usd", turn["cost"]))
+                )
             )
             turn["wastedCost"] = float(
                 t_data.get(
@@ -251,7 +265,11 @@ class TUIState:
             for v in raw_violations:
                 v_dict = self._normalize_violation(v, turn_idx)
                 normalized_violations.append(v_dict)
-                if not any(x.get("ruleId") == v_dict.get("ruleId") and x.get("turnIndex") == v_dict.get("turnIndex") for x in session_viols):
+                if not any(
+                    x.get("ruleId") == v_dict.get("ruleId")
+                    and x.get("turnIndex") == v_dict.get("turnIndex")
+                    for x in session_viols
+                ):
                     session_viols.append(v_dict)
                 if target_sid == self.session_id:
                     self._add_to_cumulative_violations(v_dict)
@@ -269,7 +287,11 @@ class TUIState:
             v_dict = self._normalize_violation(raw_v, turn_idx)
 
             session_viols = self.sessions_violations.setdefault(target_sid, [])
-            if not any(x.get("ruleId") == v_dict.get("ruleId") and x.get("turnIndex") == v_dict.get("turnIndex") for x in session_viols):
+            if not any(
+                x.get("ruleId") == v_dict.get("ruleId")
+                and x.get("turnIndex") == v_dict.get("turnIndex")
+                for x in session_viols
+            ):
                 session_viols.append(v_dict)
             if target_sid == self.session_id:
                 self._add_to_cumulative_violations(v_dict)
@@ -294,23 +316,35 @@ class TUIState:
             if tot_tok is not None:
                 self.total_tokens = int(tot_tok)
             elif "totalInputTokens" in sum_dict or "total_input_tokens" in sum_dict:
-                inp = int(sum_dict.get("totalInputTokens", sum_dict.get("total_input_tokens", 0)) or 0)
-                outp = int(sum_dict.get("totalOutputTokens", sum_dict.get("total_output_tokens", 0)) or 0)
+                inp = int(
+                    sum_dict.get("totalInputTokens", sum_dict.get("total_input_tokens", 0)) or 0
+                )
+                outp = int(
+                    sum_dict.get("totalOutputTokens", sum_dict.get("total_output_tokens", 0)) or 0
+                )
                 self.total_tokens = inp + outp
 
             chr_val = sum_dict.get("cacheHitRatio", sum_dict.get("cache_hit_ratio"))
             if chr_val is not None:
                 self.cache_hit_ratio = float(chr_val)
 
-            crt_val = sum_dict.get("cachedReadTokens", sum_dict.get("cached_read_tokens", sum_dict.get("cachedInputTokens")))
+            crt_val = sum_dict.get(
+                "cachedReadTokens",
+                sum_dict.get("cached_read_tokens", sum_dict.get("cachedInputTokens")),
+            )
             if crt_val is not None:
                 self.cached_read_tokens = int(crt_val)
 
-            cost_val = sum_dict.get("totalCostUSD", sum_dict.get("total_cost_usd", sum_dict.get("estimatedCostUSD")))
+            cost_val = sum_dict.get(
+                "totalCostUSD", sum_dict.get("total_cost_usd", sum_dict.get("estimatedCostUSD"))
+            )
             if cost_val is not None:
                 self.total_spend_usd = float(cost_val)
 
-            waste_val = sum_dict.get("wastedCostUSD", sum_dict.get("wasted_cost_usd", sum_dict.get("potentialSavingsUSD")))
+            waste_val = sum_dict.get(
+                "wastedCostUSD",
+                sum_dict.get("wasted_cost_usd", sum_dict.get("potentialSavingsUSD")),
+            )
             if waste_val is not None:
                 self.wasted_spend_usd = float(waste_val)
 
@@ -406,12 +440,39 @@ class TUIState:
                 continue
 
             t_idx = d.get("turnIndex", d.get("turn_index", len(converted)))
-            inp_tokens = int(d.get("inputTokens", d.get("input_tokens", getattr(t, "input_tokens", 0))))
-            out_tokens = int(d.get("outputTokens", d.get("output_tokens", getattr(t, "output_tokens", 0))))
-            cached_read = int(d.get("cachedReadTokens", d.get("cached_read_tokens", getattr(t, "cached_read_tokens", 0))))
-            cached_created = int(d.get("cachedCreatedTokens", d.get("cached_created_tokens", getattr(t, "cached_created_tokens", 0))))
-            cost_val = float(d.get("cost", d.get("turnCostUSD", d.get("turn_cost_usd", getattr(t, "turn_cost_usd", 0.0)))))
-            wasted_val = float(d.get("wastedCost", d.get("wastedCostUSD", d.get("wasted_cost_usd", getattr(t, "wasted_cost_usd", 0.0)))))
+            inp_tokens = int(
+                d.get("inputTokens", d.get("input_tokens", getattr(t, "input_tokens", 0)))
+            )
+            out_tokens = int(
+                d.get("outputTokens", d.get("output_tokens", getattr(t, "output_tokens", 0)))
+            )
+            cached_read = int(
+                d.get(
+                    "cachedReadTokens",
+                    d.get("cached_read_tokens", getattr(t, "cached_read_tokens", 0)),
+                )
+            )
+            cached_created = int(
+                d.get(
+                    "cachedCreatedTokens",
+                    d.get("cached_created_tokens", getattr(t, "cached_created_tokens", 0)),
+                )
+            )
+            cost_val = float(
+                d.get(
+                    "cost",
+                    d.get("turnCostUSD", d.get("turn_cost_usd", getattr(t, "turn_cost_usd", 0.0))),
+                )
+            )
+            wasted_val = float(
+                d.get(
+                    "wastedCost",
+                    d.get(
+                        "wastedCostUSD",
+                        d.get("wasted_cost_usd", getattr(t, "wasted_cost_usd", 0.0)),
+                    ),
+                )
+            )
 
             raw_tokens = d.get("tokens")
             if isinstance(raw_tokens, dict):
@@ -426,7 +487,7 @@ class TUIState:
             def _extract_blocks(attr_name: str) -> List[Dict[str, Any]]:
                 raw_list = getattr(t, attr_name, d.get(attr_name, []))
                 res = []
-                for b in (raw_list or []):
+                for b in raw_list or []:
                     if hasattr(b, "to_dict"):
                         res.append(b.to_dict())
                     elif isinstance(b, dict):
@@ -441,19 +502,66 @@ class TUIState:
             all_b = _extract_blocks("all_blocks") or (sys_b + tool_b + hist_b + res_b + asst_b)
 
             tok_bd = d.get("tokenBreakdown", d.get("token_breakdown", {}))
+            skills_tok = sum(
+                int(b.get("token_count", b.get("tokenCount", 0)))
+                for b in all_b
+                if str(b.get("block_type", b.get("blockType", ""))).lower() in ("skill", "skills")
+            )
+            thought_tok = sum(
+                int(b.get("token_count", b.get("tokenCount", 0)))
+                for b in all_b
+                if str(b.get("block_type", b.get("blockType", ""))).lower()
+                in ("thought", "thoughts")
+                or (
+                    isinstance(b.get("metadata"), dict)
+                    and (
+                        b.get("metadata", {}).get("type") in ("thinking", "thought")
+                        or b.get("metadata", {}).get("thought") is True
+                    )
+                )
+            )
+            injected_tok = sum(
+                int(b.get("token_count", b.get("tokenCount", 0)))
+                for b in all_b
+                if str(b.get("block_type", b.get("blockType", ""))).lower()
+                in ("injected_state", "injected_context")
+            )
+
             if not tok_bd or not isinstance(tok_bd, dict) or all(v == 0 for v in tok_bd.values()):
                 tok_bd = {
                     "system": sum(int(b.get("token_count", b.get("tokenCount", 0))) for b in sys_b),
                     "tools": sum(int(b.get("token_count", b.get("tokenCount", 0))) for b in tool_b),
-                    "history": sum(int(b.get("token_count", b.get("tokenCount", 0))) for b in hist_b),
-                    "toolResults": sum(int(b.get("token_count", b.get("tokenCount", 0))) for b in res_b),
-                    "assistant": sum(int(b.get("token_count", b.get("tokenCount", 0))) for b in asst_b),
+                    "history": sum(
+                        int(b.get("token_count", b.get("tokenCount", 0))) for b in hist_b
+                    ),
+                    "toolResults": sum(
+                        int(b.get("token_count", b.get("tokenCount", 0))) for b in res_b
+                    ),
+                    "assistant": sum(
+                        int(b.get("token_count", b.get("tokenCount", 0))) for b in asst_b
+                    ),
                     "cache": cached_read,
+                    "skills": skills_tok,
+                    "thought": thought_tok,
+                    "thoughts": thought_tok,
+                    "injected_state": injected_tok,
                 }
+            else:
+                tok_bd = dict(tok_bd)
+                tok_bd.setdefault("skills", skills_tok)
+                if "thought" not in tok_bd and "thoughts" in tok_bd:
+                    tok_bd["thought"] = tok_bd["thoughts"]
+                elif "thought" not in tok_bd:
+                    tok_bd["thought"] = thought_tok
+                tok_bd.setdefault("thoughts", tok_bd["thought"])
+                tok_bd.setdefault("injected_state", injected_tok)
 
             viols = d.get("violations", [])
             if hasattr(t, "violations") and not viols:
-                viols = [v.to_dict() if hasattr(v, "to_dict") else v for v in getattr(t, "violations", [])]
+                viols = [
+                    v.to_dict() if hasattr(v, "to_dict") else v
+                    for v in getattr(t, "violations", [])
+                ]
 
             turn_dict = {
                 "turnIndex": t_idx,
@@ -463,7 +571,9 @@ class TUIState:
                 "model": d.get("model", getattr(t, "model", self.model)),
                 "provider": d.get("provider", getattr(t, "provider", self.provider)),
                 "timestamp": d.get("timestamp", getattr(t, "timestamp", 0.0)),
-                "durationMs": float(d.get("durationMs", d.get("duration_ms", getattr(t, "duration_ms", 0.0)))),
+                "durationMs": float(
+                    d.get("durationMs", d.get("duration_ms", getattr(t, "duration_ms", 0.0)))
+                ),
                 "ttftMs": d.get("ttftMs", d.get("ttft_ms", getattr(t, "ttft_ms", None))),
                 "tokens": tot_tokens,
                 "inputTokens": inp_tokens,
@@ -525,10 +635,9 @@ class TUIState:
     def _add_to_cumulative_violations(self, v_dict: Dict[str, Any]) -> None:
         """Add violation if not already present in cumulative list."""
         for existing in self.cumulative_violations:
-            if (
-                existing.get("ruleId") == v_dict.get("ruleId")
-                and existing.get("turnIndex") == v_dict.get("turnIndex")
-            ):
+            if existing.get("ruleId") == v_dict.get("ruleId") and existing.get(
+                "turnIndex"
+            ) == v_dict.get("turnIndex"):
                 return
         self.cumulative_violations.append(v_dict)
 
@@ -547,6 +656,7 @@ class TUIState:
             try:
                 from src.core.analyzer.scorer import PollutionScorer
                 from src.schema.ast import CanonicalTurn
+
                 canonical_turns = []
                 for t in self.turns:
                     try:
@@ -603,7 +713,7 @@ class TUIState:
         return []
 
     def get_context_breakdown_for_selected_turn(self) -> Dict[str, int]:
-        """Return token breakdown for active selected turn."""
+        """Return token breakdown for active selected turn including fine-grained categories."""
         turn = self.get_selected_turn()
         if not turn:
             return {
@@ -613,6 +723,10 @@ class TUIState:
                 "toolResults": 0,
                 "assistant": 0,
                 "cache": 0,
+                "skills": 0,
+                "thought": 0,
+                "thoughts": 0,
+                "injected_state": 0,
             }
         breakdown = dict(turn.get("tokenBreakdown", {}))
         breakdown.setdefault("system", 0)
@@ -621,14 +735,308 @@ class TUIState:
         breakdown.setdefault("toolResults", 0)
         breakdown.setdefault("assistant", 0)
         breakdown.setdefault("cache", turn.get("cachedReadTokens", 0))
+
+        # Check blocks if skills, thought, or injected_state missing or 0
+        blocks = self._extract_blocks_from_turn(turn)
+
+        if "skills" not in breakdown or breakdown["skills"] == 0:
+            skills_tok = sum(
+                int(b.get("token_count", b.get("tokenCount", 0)))
+                for b in blocks
+                if str(b.get("block_type", b.get("blockType", ""))).lower() in ("skill", "skills")
+            )
+            if skills_tok > 0 or "skills" not in breakdown:
+                breakdown["skills"] = skills_tok
+
+        if "thought" not in breakdown or breakdown["thought"] == 0:
+            thought_val = breakdown.get("thoughts", 0)
+            if not thought_val:
+                thought_val = sum(
+                    int(b.get("token_count", b.get("tokenCount", 0)))
+                    for b in blocks
+                    if str(b.get("block_type", b.get("blockType", ""))).lower()
+                    in ("thought", "thoughts")
+                    or (
+                        isinstance(b.get("metadata"), dict)
+                        and (
+                            b.get("metadata", {}).get("type") in ("thinking", "thought")
+                            or b.get("metadata", {}).get("thought") is True
+                        )
+                    )
+                )
+            breakdown["thought"] = thought_val
+            breakdown.setdefault("thoughts", thought_val)
+        else:
+            breakdown.setdefault("thoughts", breakdown["thought"])
+
+        if "injected_state" not in breakdown or breakdown["injected_state"] == 0:
+            injected_tok = sum(
+                int(b.get("token_count", b.get("tokenCount", 0)))
+                for b in blocks
+                if str(b.get("block_type", b.get("blockType", ""))).lower()
+                in ("injected_state", "injected_context")
+            )
+            if injected_tok > 0 or "injected_state" not in breakdown:
+                breakdown["injected_state"] = injected_tok
+
         return breakdown
+
+    def _extract_blocks_from_turn(
+        self, turn_dict: Optional[Dict[str, Any]]
+    ) -> List[Dict[str, Any]]:
+        """Helper to extract normalized block dictionaries from a turn dictionary."""
+        if not turn_dict:
+            return []
+        raw = turn_dict.get("blocks") or turn_dict.get("all_blocks")
+        if not raw:
+            raw = (
+                turn_dict.get("system_blocks", [])
+                + turn_dict.get("tool_defs", [])
+                + turn_dict.get("conversation_history", [])
+                + turn_dict.get("tool_results", [])
+                + turn_dict.get("assistant_blocks", [])
+            )
+        res: List[Dict[str, Any]] = []
+        for b in raw or []:
+            if hasattr(b, "to_dict"):
+                res.append(b.to_dict())
+            elif isinstance(b, dict):
+                res.append(dict(b))
+        return res
 
     def get_blocks_for_selected_turn(self) -> List[Dict[str, Any]]:
         """Return AST context blocks belonging to the active selected turn."""
         turn = self.get_selected_turn()
         if not turn:
             return []
-        return list(turn.get("blocks", []))
+        blocks = self._extract_blocks_from_turn(turn)
+        return blocks if blocks else list(turn.get("blocks", []))
+
+    def get_delta_for_selected_turn(self) -> Dict[str, Any]:
+        """Compute or retrieve TurnDelta and block transitions for active selected turn."""
+        return self.get_turn_delta(self.selected_turn_index)
+
+    def get_turn_delta(self, turn_index: Optional[int] = None) -> Dict[str, Any]:
+        """Compute or retrieve TurnDelta and block transitions for a given turn index."""
+        if not self.turns:
+            return {
+                "turn_index": 0,
+                "added_block_ids": [],
+                "persisted_block_ids": [],
+                "mutated_block_ids": [],
+                "removed_block_ids": [],
+                "evicted_block_ids": [],
+                "cache_breakpoint_block_id": None,
+                "token_growth": 0,
+                "added_count": 0,
+                "persisted_count": 0,
+                "mutated_count": 0,
+                "evicted_count": 0,
+                "transitions": [],
+            }
+
+        target_idx = self.selected_turn_index if turn_index is None else turn_index
+        turn_curr: Optional[Dict[str, Any]] = None
+        curr_i = -1
+        for i, t in enumerate(self.turns):
+            if t.get("turnIndex") == target_idx:
+                turn_curr = t
+                curr_i = i
+                break
+
+        if turn_curr is None:
+            if 0 <= target_idx < len(self.turns):
+                turn_curr = self.turns[target_idx]
+                curr_i = target_idx
+            else:
+                turn_curr = self.turns[-1]
+                curr_i = len(self.turns) - 1
+
+        turn_prev: Optional[Dict[str, Any]] = self.turns[curr_i - 1] if curr_i > 0 else None
+        actual_turn_idx = int(turn_curr.get("turnIndex", target_idx))
+
+        curr_blocks = self._extract_blocks_from_turn(turn_curr)
+        prev_blocks = self._extract_blocks_from_turn(turn_prev)
+
+        def _block_match_key(b: Dict[str, Any]) -> tuple[str, str]:
+            b_type = str(b.get("block_type", b.get("blockType", "")))
+            id_key = str(b.get("identity_key", b.get("identityKey", "")))
+            c_hash = str(b.get("content_hash", b.get("contentHash", "")))
+            bid = str(b.get("block_id", b.get("blockId", "")))
+            if id_key:
+                return (b_type, id_key)
+            if c_hash:
+                return (b_type, c_hash)
+            return (b_type, bid)
+
+        def _make_transition(b: Dict[str, Any], status: str, status_tag: str) -> Dict[str, Any]:
+            return {
+                "block_id": b.get("block_id", b.get("blockId", "")),
+                "identity_key": b.get("identity_key", b.get("identityKey", "")),
+                "block_type": b.get("block_type", b.get("blockType", "unknown")),
+                "status": status,
+                "status_tag": status_tag,
+                "token_count": int(b.get("token_count", b.get("tokenCount", 0))),
+                "content": b.get("content", ""),
+                "block": b,
+            }
+
+        # Check if turn has delta explicitly attached (e.g. from SessionStore or TurnDelta)
+        raw_delta = turn_curr.get("delta") or turn_curr.get("turnDelta")
+        if raw_delta and isinstance(raw_delta, (dict, object)):
+            if hasattr(raw_delta, "to_dict"):
+                d_dict = raw_delta.to_dict()
+            elif isinstance(raw_delta, dict):
+                d_dict = dict(raw_delta)
+            else:
+                d_dict = {}
+        else:
+            d_dict = {}
+
+        if turn_prev is None and not d_dict:
+            added_ids: List[str] = []
+            transitions: List[Dict[str, Any]] = []
+            seen_curr: set[str] = set()
+            for b in curr_blocks:
+                bid = b.get("block_id", b.get("blockId", ""))
+                if bid not in seen_curr:
+                    seen_curr.add(bid)
+                    added_ids.append(bid)
+                    transitions.append(_make_transition(b, "added", "[+] Added"))
+
+            growth = int(turn_curr.get("inputTokens", turn_curr.get("input_tokens", 0)))
+            if growth == 0:
+                growth = sum(int(b.get("token_count", b.get("tokenCount", 0))) for b in curr_blocks)
+
+            return {
+                "turn_index": actual_turn_idx,
+                "added_block_ids": added_ids,
+                "persisted_block_ids": [],
+                "mutated_block_ids": [],
+                "removed_block_ids": [],
+                "evicted_block_ids": [],
+                "cache_breakpoint_block_id": None,
+                "token_growth": growth,
+                "added_count": len(added_ids),
+                "persisted_count": 0,
+                "mutated_count": 0,
+                "evicted_count": 0,
+                "transitions": transitions,
+            }
+
+        prev_by_key: Dict[tuple[str, str], Dict[str, Any]] = {}
+        for b in prev_blocks:
+            k = _block_match_key(b)
+            if k not in prev_by_key:
+                prev_by_key[k] = b
+
+        curr_by_key: Dict[tuple[str, str], Dict[str, Any]] = {}
+        for b in curr_blocks:
+            k = _block_match_key(b)
+            if k not in curr_by_key:
+                curr_by_key[k] = b
+
+        added_ids = list(d_dict.get("added_block_ids", d_dict.get("addedBlockIds", [])))
+        persisted_ids = list(d_dict.get("persisted_block_ids", d_dict.get("persistedBlockIds", [])))
+        mutated_ids = list(d_dict.get("mutated_block_ids", d_dict.get("mutatedBlockIds", [])))
+        removed_ids = list(d_dict.get("removed_block_ids", d_dict.get("removedBlockIds", [])))
+
+        compute_ids = not (added_ids or persisted_ids or mutated_ids or removed_ids)
+        transitions = []
+        seen_curr_ids: set[str] = set()
+
+        for b in curr_blocks:
+            bid = b.get("block_id", b.get("blockId", ""))
+            if bid in seen_curr_ids:
+                continue
+            seen_curr_ids.add(bid)
+
+            key = _block_match_key(b)
+            if compute_ids:
+                if key in prev_by_key:
+                    prev_b = prev_by_key[key]
+                    b_idkey = b.get("identity_key", b.get("identityKey", ""))
+                    b_chash = b.get("content_hash", b.get("contentHash", ""))
+                    prev_chash = prev_b.get("content_hash", prev_b.get("contentHash", ""))
+                    if b_idkey and b_chash != prev_chash:
+                        mutated_ids.append(bid)
+                        transitions.append(_make_transition(b, "mutated", "[~] Mutated"))
+                    else:
+                        persisted_ids.append(bid)
+                        transitions.append(_make_transition(b, "persisted", "[=] Persisted"))
+                else:
+                    added_ids.append(bid)
+                    transitions.append(_make_transition(b, "added", "[+] Added"))
+            else:
+                if bid in mutated_ids:
+                    transitions.append(_make_transition(b, "mutated", "[~] Mutated"))
+                elif bid in persisted_ids:
+                    transitions.append(_make_transition(b, "persisted", "[=] Persisted"))
+                else:
+                    transitions.append(_make_transition(b, "added", "[+] Added"))
+
+        seen_prev_ids: set[str] = set()
+        for b in prev_blocks:
+            bid = b.get("block_id", b.get("blockId", ""))
+            if bid in seen_prev_ids:
+                continue
+            seen_prev_ids.add(bid)
+            key = _block_match_key(b)
+            if compute_ids:
+                if key not in curr_by_key:
+                    removed_ids.append(bid)
+                    transitions.append(_make_transition(b, "evicted", "[-] Evicted"))
+            else:
+                if bid in removed_ids:
+                    transitions.append(_make_transition(b, "evicted", "[-] Evicted"))
+
+        cache_breakpoint: Optional[str] = d_dict.get(
+            "cache_breakpoint_block_id", d_dict.get("cacheBreakpointBlockId")
+        )
+        if cache_breakpoint is None:
+            persisted_set = set(persisted_ids)
+            for b in curr_blocks:
+                bid = b.get("block_id", b.get("blockId", ""))
+                if bid not in persisted_set:
+                    cache_breakpoint = bid
+                    break
+
+        if "token_growth" in d_dict or "tokenGrowth" in d_dict:
+            growth = int(d_dict.get("token_growth", d_dict.get("tokenGrowth", 0)))
+        else:
+            curr_inp = int(turn_curr.get("inputTokens", turn_curr.get("input_tokens", 0)))
+            prev_inp = (
+                int(turn_prev.get("inputTokens", turn_prev.get("input_tokens", 0)))
+                if turn_prev
+                else 0
+            )
+            if curr_inp > 0 or prev_inp > 0:
+                growth = curr_inp - prev_inp
+            else:
+                growth = sum(
+                    int(b.get("token_count", b.get("tokenCount", 0))) for b in curr_blocks
+                ) - sum(int(b.get("token_count", b.get("tokenCount", 0))) for b in prev_blocks)
+
+        return {
+            "turn_index": actual_turn_idx,
+            "added_block_ids": added_ids,
+            "persisted_block_ids": persisted_ids,
+            "mutated_block_ids": mutated_ids,
+            "removed_block_ids": removed_ids,
+            "evicted_block_ids": removed_ids,
+            "cache_breakpoint_block_id": cache_breakpoint,
+            "token_growth": growth,
+            "added_count": len(added_ids),
+            "persisted_count": len(persisted_ids),
+            "mutated_count": len(mutated_ids),
+            "evicted_count": len(removed_ids),
+            "transitions": transitions,
+        }
+
+    def get_block_transitions_for_selected_turn(self) -> List[Dict[str, Any]]:
+        """Return itemized block transitions for active selected turn."""
+        delta = self.get_delta_for_selected_turn()
+        return list(delta.get("transitions", []))
 
     def export_to_jsonc(self, filepath: Optional[Union[str, Path]] = None) -> Path:
         """Serialize current state into canonical .jsonc schema and write to file."""

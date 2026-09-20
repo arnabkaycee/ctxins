@@ -140,7 +140,6 @@ class ActiveTurnContext:
     response_payload: Optional[Dict[str, Any]] = None
 
 
-
 @dataclass(slots=True)
 class WireEnvelope:
     """Top-level frame payload transmitted over Unix Domain Socket IPC."""

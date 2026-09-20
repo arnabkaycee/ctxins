@@ -45,7 +45,11 @@ class StreamTap:
             return b""
 
         now = time.monotonic()
-        if self._first_chunk and isinstance(chunk, (bytes, bytearray, memoryview)) and len(chunk.strip()) > 0:
+        if (
+            self._first_chunk
+            and isinstance(chunk, (bytes, bytearray, memoryview))
+            and len(chunk.strip()) > 0
+        ):
             if self.turn.timing is not None:
                 self.turn.timing.first_byte_received_at = now
             self._first_chunk = False

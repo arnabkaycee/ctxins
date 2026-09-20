@@ -222,7 +222,9 @@ def configure_logging(
         except Exception as e:
             # If unable to open log file, fallback to stderr only if not in TUI mode
             if stream or mode not in ("tui", "run"):
-                sys.stderr.write(f"Warning: Failed to initialize log file at {effective_log_file}: {e}\n")
+                sys.stderr.write(
+                    f"Warning: Failed to initialize log file at {effective_log_file}: {e}\n"
+                )
 
     # 2. Console/Stream Handler (stderr only, never stdout)
     if stream and mode not in ("tui", "run"):

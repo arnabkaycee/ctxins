@@ -246,7 +246,7 @@ def test_export_session_jsonc(client: TestClient) -> None:
     response = client.get("/api/v1/sessions/sess_test_1/export?format=jsonc")
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("application/jsonc")
-    assert "attachment; filename=\"sess_test_1.jsonc\"" in response.headers["content-disposition"]
+    assert 'attachment; filename="sess_test_1.jsonc"' in response.headers["content-disposition"]
     text = response.text
     assert "https://ctxins.dev/schemas/session.v1.json" in text
     assert "// 0 = pristine, 100 = critical bloat" in text

@@ -16,8 +16,9 @@ class OpenAIASTNormalizer(BaseNormalizer):
     def __init__(
         self,
         token_counter: Optional[Callable[[str], int]] = None,
+        decomposer: Optional[Any] = None,
     ) -> None:
-        super().__init__(token_counter=token_counter)
+        super().__init__(token_counter=token_counter, decomposer=decomposer)
 
     def normalize(
         self,
@@ -57,20 +58,22 @@ class OpenAIASTNormalizer(BaseNormalizer):
             content = msg.get("content")
 
             if role in ("system", "developer"):
-                sys_text = content if isinstance(content, str) else json.dumps(content, sort_keys=True)
-                system_blocks.append(
-                    ContextBlock(
-                        block_id=f"sys_{msg_idx}",
-                        block_type=BlockType.SYSTEM,
-                        content_hash=compute_block_hash(sys_text),
-                        token_count=self.estimate_tokens(sys_text),
-                        content=sys_text,
+                sys_text = (
+                    content if isinstance(content, str) else json.dumps(content, sort_keys=True)
+                )
+                system_blocks.extend(
+                    self.decomposer.decompose(
+                        sys_text,
+                        default_block_type=BlockType.SYSTEM,
+                        base_id=f"sys_{msg_idx}",
                         metadata={"role": role},
                     )
                 )
             elif role == "tool":
                 call_id = msg.get("tool_call_id", f"call_{msg_idx}")
-                res_str = content if isinstance(content, str) else json.dumps(content, sort_keys=True)
+                res_str = (
+                    content if isinstance(content, str) else json.dumps(content, sort_keys=True)
+                )
                 tool_results.append(
                     ContextBlock(
                         block_id=f"tool_res_{call_id}",
@@ -82,18 +85,43 @@ class OpenAIASTNormalizer(BaseNormalizer):
                     )
                 )
             elif role == "assistant":
-                if content:
-                    content_str = content if isinstance(content, str) else json.dumps(content, sort_keys=True)
+                reasoning = msg.get("reasoning_content") or msg.get("reasoning")
+                if reasoning:
                     history.append(
                         ContextBlock(
-                            block_id=f"hist_{msg_idx}",
-                            block_type=BlockType.ASSISTANT_MSG,
-                            content_hash=compute_block_hash(content_str),
-                            token_count=self.estimate_tokens(content_str),
-                            content=content_str,
-                            metadata={"role": "assistant"},
+                            block_id=f"hist_{msg_idx}_thought",
+                            block_type=BlockType.THOUGHT,
+                            content_hash=compute_block_hash(str(reasoning)),
+                            token_count=self.estimate_tokens(str(reasoning)),
+                            content=str(reasoning),
+                            metadata={"role": "assistant", "type": "reasoning"},
+                            identity_key=f"thought:{msg_idx}",
                         )
                     )
+                if content:
+                    content_str = (
+                        content if isinstance(content, str) else json.dumps(content, sort_keys=True)
+                    )
+                    if "<thought>" in content_str.lower() or "<thinking>" in content_str.lower():
+                        history.extend(
+                            self.decomposer.decompose(
+                                content_str,
+                                default_block_type=BlockType.ASSISTANT_MSG,
+                                base_id=f"hist_{msg_idx}",
+                                metadata={"role": "assistant"},
+                            )
+                        )
+                    else:
+                        history.append(
+                            ContextBlock(
+                                block_id=f"hist_{msg_idx}",
+                                block_type=BlockType.ASSISTANT_MSG,
+                                content_hash=compute_block_hash(content_str),
+                                token_count=self.estimate_tokens(content_str),
+                                content=content_str,
+                                metadata={"role": "assistant"},
+                            )
+                        )
                 tool_calls = msg.get("tool_calls", [])
                 for tc_idx, tc in enumerate(tool_calls):
                     call_id = tc.get("id", f"call_{msg_idx}_{tc_idx}")
@@ -114,26 +142,22 @@ class OpenAIASTNormalizer(BaseNormalizer):
                     )
             else:  # user
                 if isinstance(content, str):
-                    history.append(
-                        ContextBlock(
-                            block_id=f"hist_{msg_idx}",
-                            block_type=BlockType.USER_MSG,
-                            content_hash=compute_block_hash(content),
-                            token_count=self.estimate_tokens(content),
-                            content=content,
+                    history.extend(
+                        self.decomposer.decompose(
+                            content,
+                            default_block_type=BlockType.USER_MSG,
+                            base_id=f"hist_{msg_idx}",
                             metadata={"role": role},
                         )
                     )
                 elif isinstance(content, list):
                     for part_idx, part in enumerate(content):
                         part_text = part.get("text", "") if isinstance(part, dict) else str(part)
-                        history.append(
-                            ContextBlock(
-                                block_id=f"hist_{msg_idx}_{part_idx}",
-                                block_type=BlockType.USER_MSG,
-                                content_hash=compute_block_hash(part_text),
-                                token_count=self.estimate_tokens(part_text),
-                                content=part_text,
+                        history.extend(
+                            self.decomposer.decompose(
+                                part_text,
+                                default_block_type=BlockType.USER_MSG,
+                                base_id=f"hist_{msg_idx}_{part_idx}",
                                 metadata={"role": role},
                             )
                         )
@@ -144,18 +168,41 @@ class OpenAIASTNormalizer(BaseNormalizer):
         if isinstance(choices, list) and choices:
             for c_idx, choice in enumerate(choices):
                 c_msg = choice.get("message", {}) or choice.get("delta", {})
-                content = c_msg.get("content")
-                if content:
+                reasoning = c_msg.get("reasoning_content") or c_msg.get("reasoning")
+                if reasoning:
                     assistant_blocks.append(
                         ContextBlock(
-                            block_id=f"resp_text_{c_idx}",
-                            block_type=BlockType.ASSISTANT_MSG,
-                            content_hash=compute_block_hash(content),
-                            token_count=self.estimate_tokens(content),
-                            content=content,
-                            metadata={"role": "assistant"},
+                            block_id=f"resp_thought_{c_idx}",
+                            block_type=BlockType.THOUGHT,
+                            content_hash=compute_block_hash(str(reasoning)),
+                            token_count=self.estimate_tokens(str(reasoning)),
+                            content=str(reasoning),
+                            metadata={"role": "assistant", "type": "reasoning"},
+                            identity_key=f"thought:{c_idx}",
                         )
                     )
+                content = c_msg.get("content")
+                if content:
+                    if "<thought>" in content.lower() or "<thinking>" in content.lower():
+                        assistant_blocks.extend(
+                            self.decomposer.decompose(
+                                content,
+                                default_block_type=BlockType.ASSISTANT_MSG,
+                                base_id=f"resp_text_{c_idx}",
+                                metadata={"role": "assistant"},
+                            )
+                        )
+                    else:
+                        assistant_blocks.append(
+                            ContextBlock(
+                                block_id=f"resp_text_{c_idx}",
+                                block_type=BlockType.ASSISTANT_MSG,
+                                content_hash=compute_block_hash(content),
+                                token_count=self.estimate_tokens(content),
+                                content=content,
+                                metadata={"role": "assistant"},
+                            )
+                        )
                 tool_calls = c_msg.get("tool_calls", [])
                 for tc_idx, tc in enumerate(tool_calls):
                     call_id = tc.get("id", f"call_{c_idx}_{tc_idx}")

@@ -74,10 +74,7 @@ class JsoncExporter:
         client_metadata: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """Construct canonical dictionary representation of session adhering to schema."""
-        resolved_sid = (
-            session_id
-            or (turns[0].session_id if turns else "sess_default")
-        )
+        resolved_sid = session_id or (turns[0].session_id if turns else "sess_default")
 
         first_turn = turns[0] if turns else None
         provider = first_turn.provider if first_turn else "unknown"
@@ -87,7 +84,9 @@ class JsoncExporter:
 
         detected_harness = "claude-code"
         if first_turn and hasattr(first_turn, "metadata") and isinstance(first_turn.metadata, dict):
-            detected_harness = first_turn.metadata.get("harness") or first_turn.metadata.get("agent", {}).get("name", "claude-code")
+            detected_harness = first_turn.metadata.get("harness") or first_turn.metadata.get(
+                "agent", {}
+            ).get("name", "claude-code")
 
         client_info = client_metadata or {
             "harness": detected_harness,
@@ -100,11 +99,14 @@ class JsoncExporter:
             thoughts_tokens = sum(
                 b.token_count for b in t.assistant_blocks if b.metadata.get("type") == "thinking"
             )
-            output_tokens = sum(
-                b.token_count
-                for b in t.assistant_blocks
-                if b.metadata.get("type") not in ("thinking", "tool_use")
-            ) or t.output_tokens
+            output_tokens = (
+                sum(
+                    b.token_count
+                    for b in t.assistant_blocks
+                    if b.metadata.get("type") not in ("thinking", "tool_use")
+                )
+                or t.output_tokens
+            )
 
             turn_dict = {
                 "turnIndex": t.turn_index,

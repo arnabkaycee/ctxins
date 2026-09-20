@@ -74,29 +74,46 @@ class TurnTimelineWidget(Widget):
         ol.clear_options()
         if not self.state.turns:
             sid = self.state.session_id or "default"
+            ol.add_option(Option(Text.from_markup(f"[dim bold]Session: {sid}[/]"), disabled=True))
             ol.add_option(
-                Option(Text.from_markup(f"[dim bold]Session: {sid}[/]"), disabled=True)
+                Option(
+                    Text.from_markup("[dim italic](No LLM turns captured yet)[/]"), disabled=True
+                )
             )
             ol.add_option(
-                Option(Text.from_markup("[dim italic](No LLM turns captured yet)[/]"), disabled=True)
+                Option(
+                    Text.from_markup(
+                        "[bold #e3b341]Notice: Unproxied requests are NOT auto-detected.[/]"
+                    ),
+                    disabled=True,
+                )
             )
             ol.add_option(
-                Option(Text.from_markup("[bold #e3b341]Notice: Unproxied requests are NOT auto-detected.[/]"), disabled=True)
+                Option(
+                    Text.from_markup("[dim]OS cannot auto-route traffic without root/VPN.[/]"),
+                    disabled=True,
+                )
             )
             ol.add_option(
-                Option(Text.from_markup("[dim]OS cannot auto-route traffic without root/VPN.[/]"), disabled=True)
-            )
-            ol.add_option(
-                Option(Text.from_markup("[dim]To capture traffic, launch agent via proxy:[/]"), disabled=True)
+                Option(
+                    Text.from_markup("[dim]To capture traffic, launch agent via proxy:[/]"),
+                    disabled=True,
+                )
             )
             ol.add_option(
                 Option(Text.from_markup("[bold #58a6ff]  ctxins run -- <agent>[/]"), disabled=True)
             )
             ol.add_option(
-                Option(Text.from_markup("[dim]or eval: [bold #58a6ff]eval $(ctxins env)[/][/]"), disabled=True)
+                Option(
+                    Text.from_markup("[dim]or eval: [bold #58a6ff]eval $(ctxins env)[/][/]"),
+                    disabled=True,
+                )
             )
             ol.add_option(
-                Option(Text.from_markup("[dim]Press [c] to copy env, [u] to unset env.[/]"), disabled=True)
+                Option(
+                    Text.from_markup("[dim]Press [c] to copy env, [u] to unset env.[/]"),
+                    disabled=True,
+                )
             )
             return
 
@@ -133,7 +150,7 @@ class TurnTimelineWidget(Widget):
     def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
         if event.option and not event.option.disabled:
             if event.option.id and event.option.id.startswith("sess:"):
-                sid = event.option.id[len("sess:"):]
+                sid = event.option.id[len("sess:") :]
                 self.state.switch_session(sid)
                 self.post_message(SessionSelected(sid))
                 self.update_from_state()

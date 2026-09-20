@@ -539,9 +539,24 @@ def test_context_breakdown_block_cycling() -> None:
             "cachedReadTokens": 1000,
             "tokenBreakdown": {"system": 1000, "tools": 1000, "history": 1000},
             "blocks": [
-                {"block_id": "blk_0", "block_type": "system", "token_count": 1000, "content": "sys prompt"},
-                {"block_id": "blk_1", "block_type": "tool_def", "token_count": 1000, "content": "def run()"},
-                {"block_id": "blk_2", "block_type": "user_msg", "token_count": 1000, "content": "hello world"},
+                {
+                    "block_id": "blk_0",
+                    "block_type": "system",
+                    "token_count": 1000,
+                    "content": "sys prompt",
+                },
+                {
+                    "block_id": "blk_1",
+                    "block_type": "tool_def",
+                    "token_count": 1000,
+                    "content": "def run()",
+                },
+                {
+                    "block_id": "blk_2",
+                    "block_type": "user_msg",
+                    "token_count": 1000,
+                    "content": "hello world",
+                },
             ],
         }
     )
@@ -589,7 +604,9 @@ def test_tui_app_actions_and_browser(monkeypatch: pytest.MonkeyPatch) -> None:
     pushed_screens = []
 
     monkeypatch.setattr("webbrowser.open", lambda url: opened_urls.append(url))
-    monkeypatch.setattr("src.presentation.tui.app.copy_to_clipboard", lambda text: copied_texts.append(text))
+    monkeypatch.setattr(
+        "src.presentation.tui.app.copy_to_clipboard", lambda text: copied_texts.append(text)
+    )
 
     app = CtxinsTUIApp(state=state, proxy_port=8080, web_url="http://127.0.0.1:8484")
     monkeypatch.setattr(app, "notify", lambda msg, **kwargs: None)
@@ -677,7 +694,10 @@ def test_sessions_panel_widget_render_and_options() -> None:
     }
     state.sessions_turns = {
         "sess_agy_1": [{"turnIndex": 0, "status": "completed"}],
-        "sess_claude_2": [{"turnIndex": 0, "status": "completed"}, {"turnIndex": 1, "status": "completed"}],
+        "sess_claude_2": [
+            {"turnIndex": 0, "status": "completed"},
+            {"turnIndex": 1, "status": "completed"},
+        ],
     }
 
     widget = SessionsPanelWidget(state)
@@ -740,10 +760,13 @@ async def test_multi_session_turn_switching_and_isolation() -> None:
     )
     store.append_turn(t1_0)
     store.append_turn(t1_1)
-    store.register_session("sess_agy", metadata={
-        "agentHarness": "agy",
-        "agent": {"display_name": "Antigravity", "pid": 1111, "command": "agy run"},
-    })
+    store.register_session(
+        "sess_agy",
+        metadata={
+            "agentHarness": "agy",
+            "agent": {"display_name": "Antigravity", "pid": 1111, "command": "agy run"},
+        },
+    )
 
     # Populate session 2: sess_claude with 1 turn
     t2_0 = CanonicalTurn(
@@ -760,10 +783,13 @@ async def test_multi_session_turn_switching_and_isolation() -> None:
         turn_cost_usd=0.03,
     )
     store.append_turn(t2_0)
-    store.register_session("sess_claude", metadata={
-        "agentHarness": "claude-code",
-        "agent": {"display_name": "Claude Code", "pid": 2222, "command": "claude"},
-    })
+    store.register_session(
+        "sess_claude",
+        metadata={
+            "agentHarness": "claude-code",
+            "agent": {"display_name": "Claude Code", "pid": 2222, "command": "claude"},
+        },
+    )
 
     app = CtxinsTUIApp(store=store)
     async with app.run_test() as pilot:
@@ -912,7 +938,9 @@ async def test_session_selection_populates_data_and_widgets() -> None:
         wasted_cost_usd=0.001,
         system_blocks=[ContextBlock("b1", BlockType.SYSTEM, "h1", 500, "system prompt")],
         conversation_history=[ContextBlock("b2", BlockType.USER_MSG, "h2", 1000, "user question")],
-        assistant_blocks=[ContextBlock("b3", BlockType.ASSISTANT_MSG, "h3", 300, "assistant answer")],
+        assistant_blocks=[
+            ContextBlock("b3", BlockType.ASSISTANT_MSG, "h3", 300, "assistant answer")
+        ],
     )
     store.append_turn(t1)
     store.register_session(
@@ -936,7 +964,9 @@ async def test_session_selection_populates_data_and_widgets() -> None:
         wasted_cost_usd=0.002,
         system_blocks=[ContextBlock("b4", BlockType.SYSTEM, "h4", 800, "system prompt 2")],
         conversation_history=[ContextBlock("b5", BlockType.USER_MSG, "h5", 1200, "user query 2")],
-        assistant_blocks=[ContextBlock("b6", BlockType.ASSISTANT_MSG, "h6", 400, "assistant reply 2")],
+        assistant_blocks=[
+            ContextBlock("b6", BlockType.ASSISTANT_MSG, "h6", 400, "assistant reply 2")
+        ],
     )
     store.append_turn(t2)
     store.register_session(
@@ -995,6 +1025,3 @@ async def test_session_selection_populates_data_and_widgets() -> None:
 
         assert app.state.session_id == sid1
         assert app.state.total_tokens == 1800
-
-
-

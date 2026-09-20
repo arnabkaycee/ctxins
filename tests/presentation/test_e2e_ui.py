@@ -101,13 +101,22 @@ async def test_e2e_uds_to_presentation_broadcaster() -> None:
                             {
                                 "role": "assistant",
                                 "content": [
-                                    {"type": "tool_use", "id": "call_1", "name": "run_cmd", "input": {"cmd": "pytest"}}
+                                    {
+                                        "type": "tool_use",
+                                        "id": "call_1",
+                                        "name": "run_cmd",
+                                        "input": {"cmd": "pytest"},
+                                    }
                                 ],
                             },
                             {
                                 "role": "user",
                                 "content": [
-                                    {"type": "tool_result", "tool_use_id": "call_1", "content": "all 100 tests passed"}
+                                    {
+                                        "type": "tool_result",
+                                        "tool_use_id": "call_1",
+                                        "content": "all 100 tests passed",
+                                    }
                                 ],
                             },
                         ],

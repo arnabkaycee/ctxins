@@ -54,7 +54,11 @@ class GeminiAccumulator(BaseAccumulator):
 
         if self._mode is None:
             trimmed = chunk.lstrip()
-            if trimmed.startswith(b"data:") or trimmed.startswith(b"event:") or trimmed.startswith(b":"):
+            if (
+                trimmed.startswith(b"data:")
+                or trimmed.startswith(b"event:")
+                or trimmed.startswith(b":")
+            ):
                 self._mode = "sse"
             elif trimmed.startswith(b"[") or trimmed.startswith(b"{"):
                 self._mode = "json"

@@ -88,13 +88,22 @@ class SessionsPanelWidget(Widget):
         sessions = self.state.available_sessions
         if not sessions:
             ol.add_option(
-                Option(Text.from_markup("[dim italic](Waiting for agent traffic on :8080...)[/]"), disabled=True)
+                Option(
+                    Text.from_markup("[dim italic](Waiting for agent traffic on :8080...)[/]"),
+                    disabled=True,
+                )
             )
             ol.add_option(
-                Option(Text.from_markup("[dim]Run: [bold #58a6ff]ctxins run -- <agent>[/][/]"), disabled=True)
+                Option(
+                    Text.from_markup("[dim]Run: [bold #58a6ff]ctxins run -- <agent>[/][/]"),
+                    disabled=True,
+                )
             )
             ol.add_option(
-                Option(Text.from_markup("[dim]Or:  [bold #58a6ff]eval $(ctxins env)[/][/]"), disabled=True)
+                Option(
+                    Text.from_markup("[dim]Or:  [bold #58a6ff]eval $(ctxins env)[/][/]"),
+                    disabled=True,
+                )
             )
             return
 
@@ -108,9 +117,11 @@ class SessionsPanelWidget(Widget):
             if len(cmd) > 28:
                 cmd = cmd[:25] + "..."
 
-            display_name = agent_dict.get("display_name") or self.HARNESS_TITLES.get(harness, harness.upper())
+            display_name = agent_dict.get("display_name") or self.HARNESS_TITLES.get(
+                harness, harness.upper()
+            )
             color = self.HARNESS_COLORS.get(harness, "bold white")
-            is_active = (sid == self.state.session_id)
+            is_active = sid == self.state.session_id
 
             # Count turns for this session
             sess_turns = self.state.sessions_turns.get(sid, [])

@@ -285,9 +285,7 @@ def test_gemini_normalizer_full_turn():
         "turn_index": 0,
         "request_payload": {
             "model": "gemini-1.5-pro",
-            "systemInstruction": {
-                "parts": [{"text": "You are a search agent."}]
-            },
+            "systemInstruction": {"parts": [{"text": "You are a search agent."}]},
             "tools": [
                 {
                     "functionDeclarations": [
@@ -400,9 +398,7 @@ def test_gemini_normalizer_wrapped_cloudcode_payload():
         "request_payload": {
             "model": "gemini-3.1-flash-lite",
             "request": {
-                "systemInstruction": {
-                    "parts": [{"text": "You are Antigravity CLI."}]
-                },
+                "systemInstruction": {"parts": [{"text": "You are Antigravity CLI."}]},
                 "contents": [
                     {
                         "role": "user",
@@ -523,9 +519,7 @@ def test_content_hashing_consistency():
     payload = {
         "requestPayload": {
             "system": "Identical instruction text.",
-            "messages": [
-                {"role": "user", "content": "Identical instruction text."}
-            ],
+            "messages": [{"role": "user", "content": "Identical instruction text."}],
         }
     }
     turn = normalizer.normalize(payload)

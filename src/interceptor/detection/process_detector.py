@@ -152,11 +152,15 @@ class ProcessDetector:
 
         if shutil.which("ps"):
             try:
-                out = subprocess.check_output(
-                    ["ps", "-p", str(pid), "-o", "args="],
-                    stderr=subprocess.DEVNULL,
-                    timeout=0.5,
-                ).decode("utf-8", errors="replace").strip()
+                out = (
+                    subprocess.check_output(
+                        ["ps", "-p", str(pid), "-o", "args="],
+                        stderr=subprocess.DEVNULL,
+                        timeout=0.5,
+                    )
+                    .decode("utf-8", errors="replace")
+                    .strip()
+                )
                 if out:
                     return out
             except (subprocess.SubprocessError, OSError):
@@ -301,10 +305,7 @@ class ProcessDetector:
             )
 
         # 4. OpenCode (opencode)
-        if (
-            comm == "opencode"
-            or "opencode" in cmdline
-        ):
+        if comm == "opencode" or "opencode" in cmdline:
             return AgentIdentity(
                 name="opencode",
                 display_name="OpenCode",

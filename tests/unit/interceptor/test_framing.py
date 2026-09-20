@@ -101,6 +101,7 @@ class TestFraming:
 
     def test_encode_exceeds_max_size(self):
         """Test that encode_frame raises ValueError when payload exceeds uint32 max."""
+
         class MockHugePayload(bytes):
             def __len__(self):
                 return MAX_PAYLOAD_SIZE + 1

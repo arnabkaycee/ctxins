@@ -69,8 +69,13 @@ class RecommendationsWidget(Widget):
                 msg.append("ctxins continuously evaluates context hygiene rules:\n\n", style="dim")
                 msg.append("  • CTX-001: Stale Tool Output persistence\n", style="yellow")
                 msg.append("  • CTX-002: Tool Schema bloat & unused definitions\n", style="yellow")
-                msg.append("  • CACHE-001: Prompt cache prefix shifts & invalidations\n\n", style="yellow")
-                msg.append("Actionable recommendations, waste calculations ($), and\nremediation suggestions will appear here once turns execute.\n", style="dim")
+                msg.append(
+                    "  • CACHE-001: Prompt cache prefix shifts & invalidations\n\n", style="yellow"
+                )
+                msg.append(
+                    "Actionable recommendations, waste calculations ($), and\nremediation suggestions will appear here once turns execute.\n",
+                    style="dim",
+                )
             else:
                 msg.append("\n✓ No rule violations detected.\n", style=f"bold {COLOR_SUCCESS}")
                 msg.append("Context composition is clean and optimal.", style="dim")

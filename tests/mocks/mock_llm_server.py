@@ -244,17 +244,19 @@ class MockLLMServer:
             content.append({"type": "text", "text": text})
         if tool_calls:
             for tc in tool_calls:
-                content.append({
-                    "type": "tool_use",
-                    "id": tc.get("id", "toolu_01"),
-                    "name": tc.get("name", "bash"),
-                    "input": tc.get("input", {}),
-                })
+                content.append(
+                    {
+                        "type": "tool_use",
+                        "id": tc.get("id", "toolu_01"),
+                        "name": tc.get("name", "bash"),
+                        "input": tc.get("input", {}),
+                    }
+                )
 
         resolved_stop_reason = stop_reason or ("tool_use" if tool_calls else "end_turn")
 
         resp = {
-            "id": f"msg_{int(time.time()*1000)}",
+            "id": f"msg_{int(time.time() * 1000)}",
             "type": "message",
             "role": "assistant",
             "model": model,
@@ -288,29 +290,39 @@ class MockLLMServer:
         chunk_delay_sec: float = 0.0,
     ) -> MockResponseConfig:
         """Construct streaming SSE Anthropic /v1/messages response chunks."""
-        msg_id = f"msg_{int(time.time()*1000)}"
+        msg_id = f"msg_{int(time.time() * 1000)}"
         resolved_stop_reason = stop_reason or ("tool_use" if tool_calls else "end_turn")
 
         chunks: List[bytes] = [
-            f'event: message_start\ndata: {{"type":"message_start","message":{{"id":"{msg_id}","type":"message","role":"assistant","model":"{model}","usage":{{"input_tokens":{input_tokens},"cache_creation_input_tokens":0,"cache_read_input_tokens":0}}}}\n\n'.encode("utf-8")
+            f'event: message_start\ndata: {{"type":"message_start","message":{{"id":"{msg_id}","type":"message","role":"assistant","model":"{model}","usage":{{"input_tokens":{input_tokens},"cache_creation_input_tokens":0,"cache_read_input_tokens":0}}}}\n\n'.encode(
+                "utf-8"
+            )
         ]
 
         block_index = 0
         if text:
             chunks.append(
-                f'event: content_block_start\ndata: {{"type":"content_block_start","index":{block_index},"content_block":{{"type":"text","text":""}}}}\n\n'.encode("utf-8")
+                f'event: content_block_start\ndata: {{"type":"content_block_start","index":{block_index},"content_block":{{"type":"text","text":""}}}}\n\n'.encode(
+                    "utf-8"
+                )
             )
             # Split text into 2 chunks to test streaming reassembly
             mid = len(text) // 2
             t1, t2 = text[:mid], text[mid:]
             chunks.append(
-                f'event: content_block_delta\ndata: {{"type":"content_block_delta","index":{block_index},"delta":{{"type":"text_delta","text":{json.dumps(t1)}}}}}\n\n'.encode("utf-8")
+                f'event: content_block_delta\ndata: {{"type":"content_block_delta","index":{block_index},"delta":{{"type":"text_delta","text":{json.dumps(t1)}}}}}\n\n'.encode(
+                    "utf-8"
+                )
             )
             chunks.append(
-                f'event: content_block_delta\ndata: {{"type":"content_block_delta","index":{block_index},"delta":{{"type":"text_delta","text":{json.dumps(t2)}}}}}\n\n'.encode("utf-8")
+                f'event: content_block_delta\ndata: {{"type":"content_block_delta","index":{block_index},"delta":{{"type":"text_delta","text":{json.dumps(t2)}}}}}\n\n'.encode(
+                    "utf-8"
+                )
             )
             chunks.append(
-                f'event: content_block_stop\ndata: {{"type":"content_block_stop","index":{block_index}}}\n\n'.encode("utf-8")
+                f'event: content_block_stop\ndata: {{"type":"content_block_stop","index":{block_index}}}\n\n'.encode(
+                    "utf-8"
+                )
             )
             block_index += 1
 
@@ -321,18 +333,26 @@ class MockLLMServer:
                 tinput = json.dumps(tc.get("input", {}))
 
                 chunks.append(
-                    f'event: content_block_start\ndata: {{"type":"content_block_start","index":{block_index},"content_block":{{"type":"tool_use","id":"{tid}","name":"{tname}","input":{{}}}}\n\n'.encode("utf-8")
+                    f'event: content_block_start\ndata: {{"type":"content_block_start","index":{block_index},"content_block":{{"type":"tool_use","id":"{tid}","name":"{tname}","input":{{}}}}\n\n'.encode(
+                        "utf-8"
+                    )
                 )
                 chunks.append(
-                    f'event: content_block_delta\ndata: {{"type":"content_block_delta","index":{block_index},"delta":{{"type":"input_json_delta","partial_json":{json.dumps(tinput)}}}}}\n\n'.encode("utf-8")
+                    f'event: content_block_delta\ndata: {{"type":"content_block_delta","index":{block_index},"delta":{{"type":"input_json_delta","partial_json":{json.dumps(tinput)}}}}}\n\n'.encode(
+                        "utf-8"
+                    )
                 )
                 chunks.append(
-                    f'event: content_block_stop\ndata: {{"type":"content_block_stop","index":{block_index}}}\n\n'.encode("utf-8")
+                    f'event: content_block_stop\ndata: {{"type":"content_block_stop","index":{block_index}}}\n\n'.encode(
+                        "utf-8"
+                    )
                 )
                 block_index += 1
 
         chunks.append(
-            f'event: message_delta\ndata: {{"type":"message_delta","delta":{{"stop_reason":"{resolved_stop_reason}"}},"usage":{{"output_tokens":{output_tokens}}}}}\n\n'.encode("utf-8")
+            f'event: message_delta\ndata: {{"type":"message_delta","delta":{{"stop_reason":"{resolved_stop_reason}"}},"usage":{{"output_tokens":{output_tokens}}}}}\n\n'.encode(
+                "utf-8"
+            )
         )
         chunks.append(b'event: message_stop\ndata: {"type":"message_stop"}\n\n')
 
@@ -378,7 +398,7 @@ class MockLLMServer:
 
         resolved_finish = finish_reason or ("tool_calls" if tool_calls else "stop")
         resp = {
-            "id": f"chatcmpl-{int(time.time()*1000)}",
+            "id": f"chatcmpl-{int(time.time() * 1000)}",
             "object": "chat.completion",
             "model": model,
             "choices": [
@@ -415,7 +435,7 @@ class MockLLMServer:
         chunk_delay_sec: float = 0.0,
     ) -> MockResponseConfig:
         """Construct streaming SSE OpenAI /v1/chat/completions response chunks."""
-        cmpl_id = f"chatcmpl-{int(time.time()*1000)}"
+        cmpl_id = f"chatcmpl-{int(time.time() * 1000)}"
         resolved_finish = finish_reason or ("tool_calls" if tool_calls else "stop")
         chunks: List[bytes] = []
 
@@ -424,7 +444,9 @@ class MockLLMServer:
             "id": cmpl_id,
             "object": "chat.completion.chunk",
             "model": model,
-            "choices": [{"index": 0, "delta": {"role": "assistant", "content": ""}, "finish_reason": None}],
+            "choices": [
+                {"index": 0, "delta": {"role": "assistant", "content": ""}, "finish_reason": None}
+            ],
         }
         chunks.append(f"data: {json.dumps(start_chunk)}\n\n".encode("utf-8"))
 
@@ -432,10 +454,14 @@ class MockLLMServer:
             mid = len(text) // 2
             t1, t2 = text[:mid], text[mid:]
             chunks.append(
-                f'data: {json.dumps({"id": cmpl_id, "object": "chat.completion.chunk", "model": model, "choices": [{"index": 0, "delta": {"content": t1}, "finish_reason": None}]})}\n\n'.encode("utf-8")
+                f"data: {json.dumps({'id': cmpl_id, 'object': 'chat.completion.chunk', 'model': model, 'choices': [{'index': 0, 'delta': {'content': t1}, 'finish_reason': None}]})}\n\n".encode(
+                    "utf-8"
+                )
             )
             chunks.append(
-                f'data: {json.dumps({"id": cmpl_id, "object": "chat.completion.chunk", "model": model, "choices": [{"index": 0, "delta": {"content": t2}, "finish_reason": None}]})}\n\n'.encode("utf-8")
+                f"data: {json.dumps({'id': cmpl_id, 'object': 'chat.completion.chunk', 'model': model, 'choices': [{'index': 0, 'delta': {'content': t2}, 'finish_reason': None}]})}\n\n".encode(
+                    "utf-8"
+                )
             )
 
         if tool_calls:
@@ -536,12 +562,14 @@ class MockLLMServer:
             parts.append({"text": text})
         if tool_calls:
             for tc in tool_calls:
-                parts.append({
-                    "functionCall": {
-                        "name": tc.get("name", "query_db"),
-                        "args": tc.get("input", tc.get("args", {})),
+                parts.append(
+                    {
+                        "functionCall": {
+                            "name": tc.get("name", "query_db"),
+                            "args": tc.get("input", tc.get("args", {})),
+                        }
                     }
-                })
+                )
 
         resp = {
             "candidates": [

@@ -141,9 +141,7 @@ class TestBoundedRingBuffer:
             max_workers=num_producers + num_consumers
         ) as executor:
             consumer_futures = [executor.submit(consumer_task) for _ in range(num_consumers)]
-            producer_futures = [
-                executor.submit(producer_task, pid) for pid in range(num_producers)
-            ]
+            producer_futures = [executor.submit(producer_task, pid) for pid in range(num_producers)]
 
             # Wait for all producers to finish
             for pf in producer_futures:

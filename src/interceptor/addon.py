@@ -72,7 +72,9 @@ class CtxinsAddon:
         process_detector: Optional[ProcessDetector] = None,
         auto_start: bool = False,
     ) -> None:
-        self.buffer = ring_buffer if ring_buffer is not None else BoundedRingBuffer(capacity=buffer_capacity)
+        self.buffer = (
+            ring_buffer if ring_buffer is not None else BoundedRingBuffer(capacity=buffer_capacity)
+        )
 
         effective_socket_path = socket_path or os.environ.get("CTXINS_SOCKET_PATH")
         if uds_client is not None:
@@ -104,12 +106,18 @@ class CtxinsAddon:
 
         # Thread-safe chunk tee queue consumed by background worker or drained on response
         self.chunk_queue: queue.Queue[tuple[str, bytes, float]] = queue.Queue(maxsize=10000)
-        self.passthrough = passthrough if passthrough is not None else StreamPassthrough(self.chunk_queue)
+        self.passthrough = (
+            passthrough if passthrough is not None else StreamPassthrough(self.chunk_queue)
+        )
 
         # Correlation tracker wired with error emitter callback
-        self.tracker = tracker if tracker is not None else ActiveTurnTracker(
-            on_turn_error=self.emit_envelope,
-            auto_start_reaper=False,
+        self.tracker = (
+            tracker
+            if tracker is not None
+            else ActiveTurnTracker(
+                on_turn_error=self.emit_envelope,
+                auto_start_reaper=False,
+            )
         )
         if tracker is not None and tracker.on_turn_error is None:
             tracker.on_turn_error = self.emit_envelope
@@ -152,7 +160,10 @@ class CtxinsAddon:
         """Stop background worker threads and socket client."""
         self._running = False
 
-        if self._worker_thread is not None and self._worker_thread is not threading.current_thread():
+        if (
+            self._worker_thread is not None
+            and self._worker_thread is not threading.current_thread()
+        ):
             self._worker_thread.join(timeout=timeout)
             self._worker_thread = None
 
@@ -235,7 +246,14 @@ class CtxinsAddon:
                 break
 
         if not session_id and isinstance(body, dict):
-            for key in ("sessionId", "session_id", "conversationId", "conversation_id", "chatId", "chat_id"):
+            for key in (
+                "sessionId",
+                "session_id",
+                "conversationId",
+                "conversation_id",
+                "chatId",
+                "chat_id",
+            ):
                 val = body.get(key)
                 if val and isinstance(val, (str, int)) and str(val).strip():
                     session_id = str(val).strip()
@@ -244,7 +262,15 @@ class CtxinsAddon:
             if not session_id:
                 meta = body.get("metadata")
                 if isinstance(meta, dict):
-                    for key in ("sessionId", "session_id", "conversationId", "conversation_id", "chatId", "chat_id", "user_id"):
+                    for key in (
+                        "sessionId",
+                        "session_id",
+                        "conversationId",
+                        "conversation_id",
+                        "chatId",
+                        "chat_id",
+                        "user_id",
+                    ):
                         val = meta.get(key)
                         if val and isinstance(val, (str, int)) and str(val).strip():
                             session_id = str(val).strip()
@@ -344,13 +370,16 @@ class CtxinsAddon:
 
         if hasattr(flow, "request") and flow.request:
             path = getattr(flow.request, "path", "")
-            if any(s in path for s in (
-                "streamGenerateContent",
-                "streamGenerateChat",
-                "bidiGenerateContent",
-                "serverStreamingPredict",
-                "streamRawPredict",
-            )):
+            if any(
+                s in path
+                for s in (
+                    "streamGenerateContent",
+                    "streamGenerateChat",
+                    "bidiGenerateContent",
+                    "serverStreamingPredict",
+                    "streamRawPredict",
+                )
+            ):
                 return True
 
         metadata = getattr(flow, "metadata", {})
@@ -456,8 +485,18 @@ class CtxinsAddon:
     ) -> UsageMetrics:
         """Extract usage metrics from a non-streaming response JSON payload."""
         usage = UsageMetrics()
-        inner = payload.get("response", payload) if isinstance(payload.get("response"), dict) else payload
-        raw = inner.get("usage") or inner.get("usageMetadata") or payload.get("usage") or payload.get("usageMetadata") or {}
+        inner = (
+            payload.get("response", payload)
+            if isinstance(payload.get("response"), dict)
+            else payload
+        )
+        raw = (
+            inner.get("usage")
+            or inner.get("usageMetadata")
+            or payload.get("usage")
+            or payload.get("usageMetadata")
+            or {}
+        )
         if not isinstance(raw, dict):
             return usage
 
@@ -487,11 +526,13 @@ class CtxinsAddon:
 
         return usage
 
-    def _extract_stop_reason(
-        self, provider: Provider, payload: Dict[str, Any]
-    ) -> Optional[str]:
+    def _extract_stop_reason(self, provider: Provider, payload: Dict[str, Any]) -> Optional[str]:
         """Extract stop/finish reason from a non-streaming response JSON payload."""
-        inner = payload.get("response", payload) if isinstance(payload.get("response"), dict) else payload
+        inner = (
+            payload.get("response", payload)
+            if isinstance(payload.get("response"), dict)
+            else payload
+        )
         if provider == Provider.ANTHROPIC:
             return inner.get("stop_reason")
         elif provider in (
@@ -529,7 +570,10 @@ class CtxinsAddon:
         """Called by mitmproxy when the proxy starts up."""
         try:
             self.start()
-            logger.info("Ctxins mitmproxy addon initialized on port %s", os.environ.get("CTXINS_PROXY_PORT", "8080"))
+            logger.info(
+                "Ctxins mitmproxy addon initialized on port %s",
+                os.environ.get("CTXINS_PROXY_PORT", "8080"),
+            )
         except Exception as e:
             logger.error("Error starting CtxinsAddon in running hook: %s", e)
 
@@ -605,13 +649,13 @@ class CtxinsAddon:
             port = getattr(req, "port", None)
             method = getattr(req, "method", "HTTP")
 
-            logger.info("Proxy received %s request: host=%s path=%s port=%s", method, host, path, port)
+            logger.info(
+                "Proxy received %s request: host=%s path=%s port=%s", method, host, path, port
+            )
 
             # Check if this is a direct gateway request to ctxins proxy itself
             proxy_port = int(os.environ.get("CTXINS_PROXY_PORT", "8080"))
-            is_gateway = (
-                host.lower() in ("localhost", "127.0.0.1") and port == proxy_port
-            )
+            is_gateway = host.lower() in ("localhost", "127.0.0.1") and port == proxy_port
             target_env = os.environ.get("CTXINS_TARGET")
 
             is_match, provider = self.router.match(host, path, port)
@@ -622,7 +666,9 @@ class CtxinsAddon:
                 is_match, provider = self.router.match(parsed_target.netloc, path)
 
             if not is_match:
-                logger.info("Non-LLM request bypassed (no route match): host=%s path=%s", host, path)
+                logger.info(
+                    "Non-LLM request bypassed (no route match): host=%s path=%s", host, path
+                )
                 return
 
             if is_gateway or target_env:
@@ -630,7 +676,9 @@ class CtxinsAddon:
 
             client_conn = getattr(flow, "client_conn", None)
             peer = getattr(client_conn, "peername", None)
-            client_ip, client_port = (peer[0], peer[1]) if (peer and len(peer) >= 2) else ("127.0.0.1", 0)
+            client_ip, client_port = (
+                (peer[0], peer[1]) if (peer and len(peer) >= 2) else ("127.0.0.1", 0)
+            )
             raw_headers = dict(req.headers) if hasattr(req, "headers") else {}
 
             # Identify client process FIRST before intercepting traffic
@@ -639,11 +687,19 @@ class CtxinsAddon:
             )
 
             session_id, correlation_id = self._extract_ids(flow)
-            logger.info("Intercepting %s LLM request: %s %s (session=%s)", provider.value, host, path, session_id)
+            logger.info(
+                "Intercepting %s LLM request: %s %s (session=%s)",
+                provider.value,
+                host,
+                path,
+                session_id,
+            )
 
             # Format default session_id with detected agent name and pid
             if session_id == self.default_session_id and agent_identity.is_known:
-                session_id = f"sess_{agent_identity.name}_{agent_identity.pid or uuid.uuid4().hex[:6]}"
+                session_id = (
+                    f"sess_{agent_identity.name}_{agent_identity.pid or uuid.uuid4().hex[:6]}"
+                )
 
             # Associate client connection with session
             if client_port > 0:
@@ -720,7 +776,9 @@ class CtxinsAddon:
             extracted_sid, _ = self._extract_ids(flow, body=payload_dict)
             agent_identity = metadata.get("ctxins_agent")
             pid = agent_identity.pid if (agent_identity and agent_identity.pid) else None
-            harness_name = agent_identity.name if (agent_identity and agent_identity.is_known) else "agent"
+            harness_name = (
+                agent_identity.name if (agent_identity and agent_identity.is_known) else "agent"
+            )
 
             if extracted_sid and extracted_sid != self.default_session_id:
                 # Explicit session ID present in headers or request body
@@ -745,7 +803,11 @@ class CtxinsAddon:
                 if messages:
                     first_msg = messages[0]
                     first_content = str(first_msg.get("content", first_msg.get("parts", "")))[:200]
-                first_hash = hashlib.sha256(first_content.encode("utf-8")).hexdigest()[:8] if first_content else ""
+                first_hash = (
+                    hashlib.sha256(first_content.encode("utf-8")).hexdigest()[:8]
+                    if first_content
+                    else ""
+                )
                 msg_count = len(messages)
 
                 curr_sid = self._pid_active_session.get(pid)
@@ -773,7 +835,9 @@ class CtxinsAddon:
                 if first_hash:
                     self._pid_last_first_msg_hash[pid] = first_hash
             elif agent_identity and agent_identity.is_known:
-                computed_sid = f"sess_{agent_identity.name}_{agent_identity.pid or uuid.uuid4().hex[:6]}"
+                computed_sid = (
+                    f"sess_{agent_identity.name}_{agent_identity.pid or uuid.uuid4().hex[:6]}"
+                )
             else:
                 computed_sid = turn.session_id or self.default_session_id
 
@@ -806,8 +870,12 @@ class CtxinsAddon:
                     "request_payload": turn.request_payload,
                     "timing": turn.timing.to_dict() if turn.timing is not None else None,
                     "client_metadata": turn.client_metadata,
-                    "harness": agent_identity.name if agent_identity else turn.client_metadata.get("harness", "unknown"),
-                    "agent": agent_identity.to_dict() if agent_identity else turn.client_metadata.get("agent"),
+                    "harness": agent_identity.name
+                    if agent_identity
+                    else turn.client_metadata.get("harness", "unknown"),
+                    "agent": agent_identity.to_dict()
+                    if agent_identity
+                    else turn.client_metadata.get("agent"),
                 },
             )
             self.emit_envelope(init_envelope)
@@ -902,9 +970,7 @@ class CtxinsAddon:
                 blocks = turn.accumulator.get_content_blocks()
                 usage = turn.accumulator.get_usage()
                 stop_reason = turn.accumulator.get_stop_reason()
-                response_payload = self._build_synthetic_response(
-                    turn, blocks, usage, stop_reason
-                )
+                response_payload = self._build_synthetic_response(turn, blocks, usage, stop_reason)
             else:
                 # Non-streaming response body
                 now_mono = time.monotonic()
@@ -918,7 +984,9 @@ class CtxinsAddon:
                         raw_json = json.loads(resp.content.decode("utf-8", errors="replace"))
                         if isinstance(raw_json, dict):
                             response_payload = self.sanitizer.sanitize_payload(raw_json)
-                            usage = self._extract_usage_from_payload(turn.provider, response_payload)
+                            usage = self._extract_usage_from_payload(
+                                turn.provider, response_payload
+                            )
                             stop_reason = self._extract_stop_reason(turn.provider, response_payload)
                         elif isinstance(raw_json, list):
                             merged_candidates = []
@@ -926,8 +994,14 @@ class CtxinsAddon:
                             last_stop: Optional[str] = None
                             for item in raw_json:
                                 if isinstance(item, dict):
-                                    inner_item = item.get("response", item) if isinstance(item.get("response"), dict) else item
-                                    if "candidates" in inner_item and isinstance(inner_item["candidates"], list):
+                                    inner_item = (
+                                        item.get("response", item)
+                                        if isinstance(item.get("response"), dict)
+                                        else item
+                                    )
+                                    if "candidates" in inner_item and isinstance(
+                                        inner_item["candidates"], list
+                                    ):
                                         merged_candidates.extend(inner_item["candidates"])
                                     u = self._extract_usage_from_payload(turn.provider, inner_item)
                                     if u.input_tokens or u.output_tokens:
@@ -944,9 +1018,7 @@ class CtxinsAddon:
                         else:
                             response_payload = {"_data": raw_json}
                     except Exception:
-                        response_payload = {
-                            "_raw": resp.text if hasattr(resp, "text") else ""
-                        }
+                        response_payload = {"_raw": resp.text if hasattr(resp, "text") else ""}
 
             agent_identity = metadata.get("ctxins_agent")
             completed_envelope = WireEnvelope(
@@ -968,8 +1040,12 @@ class CtxinsAddon:
                     "timing": turn.timing.to_dict() if turn.timing is not None else None,
                     "stop_reason": stop_reason,
                     "client_metadata": turn.client_metadata,
-                    "harness": agent_identity.name if agent_identity else turn.client_metadata.get("harness", "unknown"),
-                    "agent": agent_identity.to_dict() if agent_identity else turn.client_metadata.get("agent"),
+                    "harness": agent_identity.name
+                    if agent_identity
+                    else turn.client_metadata.get("harness", "unknown"),
+                    "agent": agent_identity.to_dict()
+                    if agent_identity
+                    else turn.client_metadata.get("agent"),
                 },
             )
             self.emit_envelope(completed_envelope)
