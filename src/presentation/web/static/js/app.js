@@ -1,4 +1,329 @@
 /**
+ * Theme-matched custom dropdown component replacing native <select> elements.
+ * Features fixed-height scroll container, keyboard navigation, search filtering, and theme parity.
+ */
+class CustomDropdown {
+  constructor(selectElement, options = {}) {
+    if (!selectElement) return;
+    this.select = selectElement;
+    this.options = Object.assign(
+      {
+        placeholder: 'Select...',
+        icon: null,
+        minWidth: null,
+        customClass: '',
+        enableSearch: true,
+        searchThreshold: 5,
+      },
+      options
+    );
+
+    this.isOpen = false;
+    this.items = [];
+    this.selectedIndex = -1;
+
+    this._init();
+  }
+
+  _init() {
+    this.select.classList.add('custom-select-native-hidden');
+    this.select.setAttribute('tabindex', '-1');
+    this.select.setAttribute('aria-hidden', 'true');
+
+    this.container = document.createElement('div');
+    this.container.className = `custom-dropdown ${this.options.customClass}`.trim();
+    if (this.options.minWidth) {
+      this.container.style.minWidth = this.options.minWidth;
+    }
+
+    this.trigger = document.createElement('button');
+    this.trigger.type = 'button';
+    this.trigger.className = 'custom-dropdown-trigger';
+    this.trigger.setAttribute('aria-haspopup', 'listbox');
+    this.trigger.setAttribute('aria-expanded', 'false');
+
+    this.menu = document.createElement('div');
+    this.menu.className = 'custom-dropdown-menu';
+    this.menu.setAttribute('role', 'listbox');
+
+    this.searchWrapper = document.createElement('div');
+    this.searchWrapper.className = 'custom-dropdown-search-wrapper';
+    this.searchInput = document.createElement('input');
+    this.searchInput.type = 'text';
+    this.searchInput.className = 'custom-dropdown-search-input';
+    this.searchInput.placeholder = 'Search...';
+    this.searchInput.setAttribute('aria-label', 'Search items');
+    this.searchWrapper.appendChild(this.searchInput);
+    this.menu.appendChild(this.searchWrapper);
+
+    this.list = document.createElement('div');
+    this.list.className = 'custom-dropdown-list';
+    this.menu.appendChild(this.list);
+
+    this.container.appendChild(this.trigger);
+    this.container.appendChild(this.menu);
+
+    this.select.parentNode.insertBefore(this.container, this.select.nextSibling);
+
+    this._bindEvents();
+    this.sync();
+
+    if (window.MutationObserver) {
+      this.observer = new MutationObserver(() => this.sync());
+      this.observer.observe(this.select, { childList: true, subtree: true, attributes: true });
+    }
+  }
+
+  _parseOption(opt) {
+    const rawText = opt.textContent || '';
+    const value = opt.value;
+    const disabled = opt.disabled;
+
+    const tokMatch = rawText.match(/^(.*?)\s*\(([\d,.]+\s*tok(?:ens)?)\)$/i);
+    if (tokMatch) {
+      return {
+        value,
+        title: tokMatch[1].trim(),
+        badge: tokMatch[2].trim(),
+        rawText,
+        disabled,
+      };
+    }
+
+    const sessMatch = rawText.match(/^(sess_[^\s]+)(?:\s*\[([^\]]+)\])?(?:\s*\(([^)]+)\))?/i);
+    if (sessMatch) {
+      return {
+        value,
+        title: sessMatch[1],
+        harness: sessMatch[2] || null,
+        model: sessMatch[3] || null,
+        rawText,
+        disabled,
+      };
+    }
+
+    return {
+      value,
+      title: rawText,
+      badge: null,
+      rawText,
+      disabled,
+    };
+  }
+
+  _renderTrigger(selectedItem) {
+    this.trigger.innerHTML = '';
+
+    const left = document.createElement('div');
+    left.className = 'custom-dropdown-trigger-left';
+
+    if (this.options.icon) {
+      const icon = document.createElement('span');
+      icon.className = 'custom-dropdown-icon';
+      icon.innerHTML = this.options.icon;
+      left.appendChild(icon);
+    }
+
+    const label = document.createElement('span');
+    label.className = 'custom-dropdown-label';
+    label.textContent = selectedItem && selectedItem.title ? selectedItem.title : this.options.placeholder;
+    left.appendChild(label);
+
+    if (selectedItem && selectedItem.badge) {
+      const badge = document.createElement('span');
+      badge.className = 'custom-dropdown-pill badge-token';
+      badge.textContent = selectedItem.badge;
+      left.appendChild(badge);
+    } else if (selectedItem && selectedItem.harness) {
+      const hBadge = document.createElement('span');
+      hBadge.className = 'custom-dropdown-pill badge-harness';
+      hBadge.textContent = selectedItem.harness;
+      left.appendChild(hBadge);
+      if (selectedItem.model) {
+        const mBadge = document.createElement('span');
+        mBadge.className = 'custom-dropdown-pill badge-model';
+        mBadge.textContent = selectedItem.model;
+        left.appendChild(mBadge);
+      }
+    }
+
+    this.trigger.appendChild(left);
+
+    const chevron = document.createElement('span');
+    chevron.className = 'custom-dropdown-chevron';
+    chevron.innerHTML = `
+      <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
+        <path d="M4.427 6.427l3.396 3.396a.25.25 0 00.354 0l3.396-3.396A.25.25 0 0011.396 6H4.604a.25.25 0 00-.177.427z"/>
+      </svg>
+    `;
+    this.trigger.appendChild(chevron);
+  }
+
+  _renderItems(filterQuery = '') {
+    this.list.innerHTML = '';
+    const q = filterQuery.toLowerCase().trim();
+
+    const filtered = this.items.filter((item) => {
+      if (!q) return true;
+      return (
+        item.rawText.toLowerCase().includes(q) ||
+        item.title.toLowerCase().includes(q) ||
+        (item.harness && item.harness.toLowerCase().includes(q)) ||
+        (item.model && item.model.toLowerCase().includes(q))
+      );
+    });
+
+    if (filtered.length === 0) {
+      const empty = document.createElement('div');
+      empty.className = 'custom-dropdown-empty';
+      empty.textContent = 'No matching options';
+      this.list.appendChild(empty);
+      return;
+    }
+
+    filtered.forEach((item) => {
+      const optEl = document.createElement('div');
+      const isSelected = String(item.value) === String(this.select.value);
+      optEl.className = `custom-dropdown-item ${isSelected ? 'selected' : ''}`;
+      optEl.setAttribute('role', 'option');
+      optEl.setAttribute('aria-selected', isSelected ? 'true' : 'false');
+      if (item.disabled) optEl.classList.add('disabled');
+
+      const content = document.createElement('div');
+      content.className = 'custom-dropdown-item-content';
+
+      const check = document.createElement('span');
+      check.className = 'custom-dropdown-check';
+      check.innerHTML = isSelected ? '✓' : '';
+      content.appendChild(check);
+
+      const title = document.createElement('span');
+      title.className = 'custom-dropdown-item-title';
+      title.textContent = item.title;
+      content.appendChild(title);
+
+      optEl.appendChild(content);
+
+      if (item.badge) {
+        const badge = document.createElement('span');
+        badge.className = 'custom-dropdown-item-badge';
+        badge.textContent = item.badge;
+        optEl.appendChild(badge);
+      } else if (item.harness) {
+        const meta = document.createElement('div');
+        meta.className = 'custom-dropdown-item-meta';
+        const hBadge = document.createElement('span');
+        hBadge.className = 'custom-dropdown-item-badge badge-harness';
+        hBadge.textContent = item.harness;
+        meta.appendChild(hBadge);
+        if (item.model) {
+          const mBadge = document.createElement('span');
+          mBadge.className = 'custom-dropdown-item-badge badge-model';
+          mBadge.textContent = item.model;
+          meta.appendChild(mBadge);
+        }
+        optEl.appendChild(meta);
+      }
+
+      optEl.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (item.disabled) return;
+        this.selectValue(item.value);
+        this.close();
+      });
+
+      this.list.appendChild(optEl);
+    });
+  }
+
+  selectValue(val) {
+    if (String(this.select.value) !== String(val)) {
+      this.select.value = val;
+      this.select.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+    this.sync();
+  }
+
+  sync() {
+    const options = Array.from(this.select.options || []);
+    this.items = options.map((opt) => this._parseOption(opt));
+    const selected =
+      this.items.find((it) => String(it.value) === String(this.select.value)) ||
+      this.items[0] ||
+      null;
+    this._renderTrigger(selected);
+
+    if (this.options.enableSearch && this.items.length >= this.options.searchThreshold) {
+      this.searchWrapper.style.display = 'block';
+    } else {
+      this.searchWrapper.style.display = 'none';
+    }
+
+    if (this.isOpen) {
+      this._renderItems(this.searchInput.value);
+    }
+  }
+
+  open() {
+    document.querySelectorAll('.custom-dropdown.open').forEach((dd) => {
+      if (dd !== this.container) dd.classList.remove('open');
+    });
+
+    this.isOpen = true;
+    this.container.classList.add('open');
+    this.trigger.setAttribute('aria-expanded', 'true');
+    this.searchInput.value = '';
+    this._renderItems('');
+
+    const selectedEl = this.list.querySelector('.custom-dropdown-item.selected');
+    if (selectedEl) {
+      selectedEl.scrollIntoView({ block: 'nearest' });
+    }
+
+    if (this.searchWrapper.style.display !== 'none') {
+      setTimeout(() => this.searchInput.focus(), 50);
+    }
+  }
+
+  close() {
+    this.isOpen = false;
+    this.container.classList.remove('open');
+    this.trigger.setAttribute('aria-expanded', 'false');
+  }
+
+  toggle() {
+    if (this.isOpen) this.close();
+    else this.open();
+  }
+
+  _bindEvents() {
+    this.trigger.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.toggle();
+    });
+
+    this.searchInput.addEventListener('input', (e) => {
+      this._renderItems(e.target.value);
+    });
+
+    this.searchInput.addEventListener('click', (e) => e.stopPropagation());
+
+    document.addEventListener('click', (e) => {
+      if (!this.container.contains(e.target)) {
+        this.close();
+      }
+    });
+
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && this.isOpen) {
+        this.close();
+        this.trigger.focus();
+      }
+    });
+  }
+}
+
+/**
  * Main application coordinator for ctxins Web Dashboard.
  */
 class DashboardApp {
@@ -123,6 +448,47 @@ class DashboardApp {
       onEvent: (event) => this.handleEvent(event),
       onStatusChange: (status) => this.updateConnectionStatus(status),
     });
+
+    // Initialize Theme-Matched Custom Dropdowns
+    if (this.sessionSelect) {
+      this.sessionCustomDropdown = new CustomDropdown(this.sessionSelect, {
+        placeholder: 'Select session...',
+        icon: '⚡',
+        customClass: 'custom-dropdown-session',
+        enableSearch: true,
+        searchThreshold: 4,
+      });
+    }
+
+    if (this.turnInspectorSelect) {
+      this.turnCustomDropdown = new CustomDropdown(this.turnInspectorSelect, {
+        placeholder: 'Select turn...',
+        icon: '⏱️',
+        customClass: 'custom-dropdown-time-machine',
+        enableSearch: true,
+        searchThreshold: 5,
+      });
+    }
+
+    if (this.diffT1) {
+      this.diffT1CustomDropdown = new CustomDropdown(this.diffT1, {
+        placeholder: 'From Turn',
+        icon: null,
+        customClass: 'custom-dropdown-diff',
+        enableSearch: true,
+        searchThreshold: 6,
+      });
+    }
+
+    if (this.diffT2) {
+      this.diffT2CustomDropdown = new CustomDropdown(this.diffT2, {
+        placeholder: 'To Turn',
+        icon: null,
+        customClass: 'custom-dropdown-diff',
+        enableSearch: true,
+        searchThreshold: 6,
+      });
+    }
 
     // Initial fetch of active sessions
     await this.refreshSessions();
@@ -391,6 +757,7 @@ class DashboardApp {
       opt.value = '';
       opt.textContent = 'Waiting for agent traffic on proxy...';
       this.sessionSelect.appendChild(opt);
+      if (this.sessionCustomDropdown) this.sessionCustomDropdown.sync();
       return;
     }
 
@@ -411,6 +778,8 @@ class DashboardApp {
       this.activeSessionId = this.sessions[0].sessionId;
       this.sessionSelect.value = this.activeSessionId;
     }
+
+    if (this.sessionCustomDropdown) this.sessionCustomDropdown.sync();
   }
 
   switchSession(sessionId) {
@@ -420,6 +789,9 @@ class DashboardApp {
     this.selectedTurnIndex = null;
     if (this.sessionSelect) {
       this.sessionSelect.value = sessionId;
+    }
+    if (this.sessionCustomDropdown) {
+      this.sessionCustomDropdown.sync();
     }
     if (this.wsClient) {
       this.wsClient.switchSession(sessionId);
@@ -2589,6 +2961,9 @@ class DashboardApp {
       this.diffT1.value = currentT1 || onlyIdx;
       this.diffT2.value = currentT2 || onlyIdx;
     }
+
+    if (this.diffT1CustomDropdown) this.diffT1CustomDropdown.sync();
+    if (this.diffT2CustomDropdown) this.diffT2CustomDropdown.sync();
   }
 
   _populateTurnSelect() {
@@ -2626,6 +3001,7 @@ class DashboardApp {
       if (this.turnPrevBtn) this.turnPrevBtn.disabled = true;
       if (this.turnNextBtn) this.turnNextBtn.disabled = true;
       if (this.turnLatestBtn) this.turnLatestBtn.style.display = 'none';
+      if (this.turnCustomDropdown) this.turnCustomDropdown.sync();
       return;
     }
 
@@ -2654,6 +3030,10 @@ class DashboardApp {
       } else {
         this.timeMachineStepText.textContent = '—';
       }
+    }
+
+    if (this.turnCustomDropdown) {
+      this.turnCustomDropdown.sync();
     }
   }
 

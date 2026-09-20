@@ -682,3 +682,44 @@ def test_turn_inspector_navigation_controls_and_selector(client: TestClient) -> 
     charts_text = res_charts.text
     assert "Turn #${Number(idx) + 1}" in charts_text
     assert "this.onTurnSelect(turnIdx, true);" in charts_text
+
+
+def test_custom_dropdown_component(client: TestClient) -> None:
+    """Verify custom theme-matched dropdowns with fixed height, scrolling, and search."""
+    # 1. index.html does not contain the awkward static emoji span, but retains all select elements
+    res_html = client.get("/")
+    assert res_html.status_code == 200
+    html_text = res_html.text
+    assert 'class="picker-clock-icon"' not in html_text
+    assert 'id="session-select"' in html_text
+    assert 'id="turn-inspector-select"' in html_text
+    assert 'id="diff-t1"' in html_text
+    assert 'id="diff-t2"' in html_text
+
+    # 2. styles.css contains styling for custom dropdowns
+    res_css = client.get("/css/styles.css")
+    assert res_css.status_code == 200
+    css_text = res_css.text
+    assert ".custom-select-native-hidden" in css_text
+    assert ".custom-dropdown" in css_text
+    assert ".custom-dropdown-trigger" in css_text
+    assert ".custom-dropdown-menu" in css_text
+    assert ".custom-dropdown-list" in css_text
+    assert ".custom-dropdown-item" in css_text
+    assert ".custom-dropdown-search-wrapper" in css_text
+    assert ".custom-dropdown-search-input" in css_text
+    assert ".custom-dropdown-time-machine" in css_text
+
+    # 3. app.js contains CustomDropdown class implementation and wiring
+    res_js = client.get("/js/app.js")
+    assert res_js.status_code == 200
+    js_text = res_js.text
+    assert "class CustomDropdown" in js_text
+    assert "this.sessionCustomDropdown" in js_text
+    assert "this.turnCustomDropdown" in js_text
+    assert "this.diffT1CustomDropdown" in js_text
+    assert "this.diffT2CustomDropdown" in js_text
+    assert "_renderTrigger" in js_text
+    assert "_renderItems" in js_text
+    assert "searchThreshold" in js_text
+    assert "selectValue" in js_text
