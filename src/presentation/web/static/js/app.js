@@ -416,10 +416,33 @@ class DashboardApp {
     this.modalToolbar = document.getElementById('modal-toolbar');
 
     this.jsonViewer = null;
+    this.granularity = 'step';
+    this.granularityText = document.getElementById('granularity-text');
+  }
+
+  setGranularity(mode) {
+    if (!mode) return;
+    this.granularity = String(mode).toLowerCase();
+    if (this.granularityText) {
+      this.granularityText.textContent =
+        this.granularity.charAt(0).toUpperCase() + this.granularity.slice(1);
+    }
   }
 
   async init() {
     this._bindEvents();
+
+    try {
+      const res = await fetch('/api/v1/config');
+      if (res.ok) {
+        const cfg = await res.json();
+        if (cfg.granularity) {
+          this.setGranularity(cfg.granularity);
+        }
+      }
+    } catch (e) {
+      // Offline / standalone fallback
+    }
 
     // Initialize Charts
     this.charts = new DashboardCharts('token-chart', (turnIndex, userAction) => {
@@ -841,6 +864,9 @@ class DashboardApp {
       const payload = event.payload || event;
       if (event.sessionId) {
         this.activeSessionId = event.sessionId;
+      }
+      if (payload.granularity || event.granularity) {
+        this.setGranularity(payload.granularity || event.granularity);
       }
       this.summary = payload.summary || null;
       this.turns = payload.turns || [];
@@ -1851,12 +1877,18 @@ class DashboardApp {
       content !== null &&
       (content.action === 'call' || (content.tool && !content.output && content.arguments !== undefined));
     return (
+      Boolean(block.call_id || block.callId) ||
       bType === 'tool_use' ||
+      bType === 'tool_call' ||
       meta.type === 'tool_use' ||
+      meta.type === 'tool_call' ||
+      meta.type === 'function_call' ||
       meta.tool_use_id !== undefined ||
       meta.tool_call_id !== undefined ||
+      meta.call_id !== undefined ||
       bId.includes('_call_') ||
       bId.startsWith('blk-call-') ||
+      bId.startsWith('resp_tool_') ||
       idKey.includes('tool_call:') ||
       hasCallAction
     );
@@ -1957,6 +1989,8 @@ class DashboardApp {
 
   _getToolCallId(block) {
     if (!block) return '';
+    if (block.call_id) return String(block.call_id);
+    if (block.callId) return String(block.callId);
     const meta = block.metadata || {};
     if (meta.tool_use_id) return String(meta.tool_use_id);
     if (meta.tool_call_id) return String(meta.tool_call_id);

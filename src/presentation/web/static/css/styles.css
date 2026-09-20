@@ -164,6 +164,25 @@ body {
   100% { opacity: 1; }
 }
 
+.granularity-pill {
+  background-color: var(--bg-secondary);
+  border-color: var(--border-color);
+  color: var(--text-secondary);
+}
+
+.granularity-pill .granularity-label {
+  color: var(--text-muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.granularity-pill .granularity-value {
+  font-weight: 600;
+  color: #58a6ff;
+  text-transform: capitalize;
+}
+
 .btn {
   display: inline-flex;
   align-items: center;

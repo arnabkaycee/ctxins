@@ -25,15 +25,20 @@ class WebSocketHub:
         self,
         broadcaster: Optional[PresentationBroadcaster] = None,
         store: Optional[SessionStore] = None,
+        granularity: str = "step",
     ) -> None:
         """Initialize WebSocketHub.
 
         Args:
             broadcaster: Optional PresentationBroadcaster instance for event consumption.
             store: Optional SessionStore for hydrating initial connection snapshots.
+            granularity: Turn counting granularity ('step' or 'human').
         """
         self.broadcaster = broadcaster
         self.store = store
+        self.granularity = (
+            granularity or getattr(store, "granularity", "step") or "step"
+        ).lower()
         self._clients: Set[WebSocket] = set()
         self._client_sessions: Dict[WebSocket, Optional[str]] = {}
 
@@ -148,6 +153,7 @@ class WebSocketHub:
                 "summary": summary,
                 "turns": turns_data,
                 "violations": violations,
+                "granularity": self.granularity,
             }
             snapshot_event: Dict[str, Any] = {
                 "type": "SNAPSHOT",
@@ -157,6 +163,7 @@ class WebSocketHub:
                 "summary": summary,
                 "turns": turns_data,
                 "violations": violations,
+                "granularity": self.granularity,
             }
             try:
                 await websocket.send_json(snapshot_event)

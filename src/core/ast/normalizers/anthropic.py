@@ -134,6 +134,7 @@ class AnthropicASTNormalizer(BaseNormalizer):
                                     "tool_use_id": tool_use_id,
                                     "is_error": part.get("is_error", False),
                                 },
+                                call_id=tool_use_id,
                             )
                         )
                     elif p_type == "text":
@@ -163,7 +164,9 @@ class AnthropicASTNormalizer(BaseNormalizer):
                                     "role": role,
                                     "tool_use_id": call_id,
                                     "name": part.get("name"),
+                                    "type": "tool_use",
                                 },
+                                call_id=call_id,
                             )
                         )
                     elif p_type == "thinking":
@@ -247,6 +250,7 @@ class AnthropicASTNormalizer(BaseNormalizer):
                                     "name": blk.get("name"),
                                     "tool_use_id": tool_id,
                                 },
+                                call_id=tool_id,
                             )
                         )
                     else:

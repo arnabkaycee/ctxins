@@ -18,9 +18,20 @@ from src.presentation.web.turn_serializer import (
 from src.presentation.web.ws import WebSocketHub
 
 
-def create_api_router(store: SessionStore, ws_hub: WebSocketHub) -> APIRouter:
+def create_api_router(
+    store: SessionStore, ws_hub: WebSocketHub, granularity: str = "step"
+) -> APIRouter:
     """Create configured FastAPI APIRouter for dashboard REST endpoints."""
     router = APIRouter()
+    eff_granularity = (granularity or getattr(store, "granularity", "step") or "step").lower()
+
+    @router.get("/config")
+    def get_server_config() -> Dict[str, Any]:
+        """Return server configuration metadata including turn counting granularity."""
+        return {
+            "granularity": getattr(store, "granularity", eff_granularity),
+            "version": "0.1.0",
+        }
 
     @router.get("/sessions")
     def list_sessions() -> List[Dict[str, Any]]:
@@ -58,6 +69,7 @@ def create_api_router(store: SessionStore, ws_hub: WebSocketHub) -> APIRouter:
                     "agentHarness": meta.get("agentHarness") or meta.get("harness", "unknown"),
                     "agent": meta.get("agent"),
                     "status": meta.get("status", "active"),
+                    "granularity": meta.get("granularity", getattr(store, "granularity", eff_granularity)),
                     "summary": summary,
                 }
             )
@@ -100,6 +112,7 @@ def create_api_router(store: SessionStore, ws_hub: WebSocketHub) -> APIRouter:
             "agentHarness": meta.get("agentHarness") or meta.get("harness", "unknown"),
             "agent": meta.get("agent"),
             "status": meta.get("status", "active"),
+            "granularity": meta.get("granularity", getattr(store, "granularity", eff_granularity)),
             "summary": summary,
             "turnIndices": [t.turn_index for t in turns],
             "turns": session_turns,

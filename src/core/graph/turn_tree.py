@@ -153,6 +153,36 @@ class ContextGraph:
 
         return delta
 
+    def update_turn(self, turn: CanonicalTurn) -> None:
+        """Update an existing turn in the context graph and refresh block lineage."""
+        if 0 <= turn.turn_index < len(self.turns):
+            self.turns[turn.turn_index] = turn
+        elif self.turns:
+            self.turns[-1] = turn
+
+        self._turns_by_id[turn.turn_id] = turn
+        self._turns_by_index[turn.turn_index] = turn
+
+        for block in turn.all_blocks:
+            key = self._block_key(block)
+            if key in self._lineage:
+                rec = self._lineage[key]
+                rec.last_seen_turn = turn.turn_index
+                if turn.turn_index not in rec.seen_turns:
+                    rec.seen_turns.append(turn.turn_index)
+            else:
+                historical_hashes = [block.content_hash] if block.content_hash else []
+                self._lineage[key] = BlockLineage(
+                    block_type=block.block_type,
+                    content_hash=block.content_hash,
+                    first_seen_turn=turn.turn_index,
+                    last_seen_turn=turn.turn_index,
+                    turns_survived=0,
+                    seen_turns=[turn.turn_index],
+                    identity_key=block.identity_key,
+                    historical_hashes=historical_hashes,
+                )
+
     def get_turn(self, turn_index: int) -> Optional[CanonicalTurn]:
         """Retrieve a turn by its 0-based turn index."""
         return self._turns_by_index.get(turn_index)
@@ -223,6 +253,117 @@ class ContextGraph:
             return []
         latest = self.turns[-1]
         return [b for b in latest.all_blocks if b.turns_survived >= min_turns]
+
+    def get_tool_call_for_result(
+        self,
+        result_block_or_id: ContextBlock | str,
+    ) -> Optional[tuple[CanonicalTurn, ContextBlock]]:
+        """Find the CanonicalTurn and ContextBlock of the tool call that produced this result.
+
+        Supports querying across all turns in the session DAG by matching call_id,
+        metadata tool_use_id, or tool name.
+
+        Args:
+            result_block_or_id: ContextBlock instance or block_id string of the tool result.
+
+        Returns:
+            Tuple of (CanonicalTurn, ContextBlock) where the tool call was made, or None.
+        """
+        target_res: Optional[ContextBlock] = None
+        if isinstance(result_block_or_id, ContextBlock):
+            target_res = result_block_or_id
+        else:
+            for turn in self.turns:
+                for b in turn.tool_results:
+                    if b.block_id == result_block_or_id:
+                        target_res = b
+                        break
+                if target_res:
+                    break
+
+        if not target_res:
+            return None
+
+        call_id = target_res.call_id or target_res.metadata.get("tool_use_id") or ""
+        tool_name = (
+            target_res.metadata.get("name")
+            or target_res.metadata.get("tool_name")
+            or ""
+        )
+
+        # 1. Exact call_id match across all turns (searching assistant_blocks + conversation_history)
+        if call_id:
+            for turn in self.turns:
+                for b in turn.assistant_blocks + turn.conversation_history:
+                    if b.block_type != BlockType.TOOL_RESULT and (
+                        b.call_id == call_id
+                        or b.metadata.get("tool_use_id") == call_id
+                    ):
+                        return (turn, b)
+
+        # 2. Tool name fallback: search turns for assistant block with matching name
+        if tool_name:
+            for turn in self.turns:
+                for b in turn.assistant_blocks + turn.conversation_history:
+                    b_name = b.metadata.get("name") or b.metadata.get("tool_name") or ""
+                    if b.block_type != BlockType.TOOL_RESULT and b_name == tool_name:
+                        return (turn, b)
+
+        return None
+
+    def get_tool_result_for_call(
+        self,
+        call_block_or_id: ContextBlock | str,
+    ) -> Optional[tuple[CanonicalTurn, ContextBlock]]:
+        """Find the CanonicalTurn and ContextBlock of the tool result produced by this tool call.
+
+        Args:
+            call_block_or_id: ContextBlock instance or block_id string of the tool call.
+
+        Returns:
+            Tuple of (CanonicalTurn, ContextBlock) where the result was delivered, or None.
+        """
+        target_call: Optional[ContextBlock] = None
+        if isinstance(call_block_or_id, ContextBlock):
+            target_call = call_block_or_id
+        else:
+            for turn in self.turns:
+                for b in turn.assistant_blocks + turn.conversation_history:
+                    if b.block_id == call_block_or_id:
+                        target_call = b
+                        break
+                if target_call:
+                    break
+
+        if not target_call:
+            return None
+
+        call_id = target_call.call_id or target_call.metadata.get("tool_use_id") or ""
+        tool_name = (
+            target_call.metadata.get("name")
+            or target_call.metadata.get("tool_name")
+            or ""
+        )
+
+        # 1. Exact call_id match
+        if call_id:
+            for turn in self.turns:
+                for b in turn.tool_results:
+                    if (
+                        b.call_id == call_id
+                        or b.metadata.get("tool_use_id") == call_id
+                    ):
+                        return (turn, b)
+
+        # 2. Tool name fallback
+        if tool_name:
+            for turn in self.turns:
+                for b in turn.tool_results:
+                    b_name = b.metadata.get("name") or b.metadata.get("tool_name") or ""
+                    if b_name == tool_name:
+                        return (turn, b)
+
+        return None
 
     @staticmethod
     def _block_key(block: ContextBlock) -> tuple[str, str]:

@@ -38,12 +38,14 @@ class HeaderBarWidget(Widget):
         state: TUIState,
         proxy_port: int = 8080,
         web_url: Optional[str] = None,
+        granularity: str = "step",
         **kwargs: Any,
     ) -> None:
         super().__init__(**kwargs)
         self.state = state
         self.proxy_port = proxy_port
         self.web_url = web_url
+        self.granularity = granularity
 
     def update_from_state(self) -> None:
         """Trigger re-render with latest state values."""
@@ -60,6 +62,7 @@ class HeaderBarWidget(Widget):
         model = summary["model"] or "default-model"
         provider = summary["provider"] or "default-provider"
         status = summary["status"]
+        gran = getattr(self.state, "granularity", self.granularity or "step").upper()
 
         # Row 1: Cockpit badges, Session, Model, Status
         row1 = Text()
@@ -70,6 +73,8 @@ class HeaderBarWidget(Widget):
             row1.append(" │ WEB: ", style=COLOR_MUTED)
             row1.append(f"{self.web_url}", style=f"bold {COLOR_ACCENT}")
             row1.append(" [w]", style=f"{COLOR_MUTED}")
+        row1.append(" │ Granularity: ", style=COLOR_MUTED)
+        row1.append(f"{gran}", style="bold #58a6ff")
         row1.append(" │ Session: ", style=COLOR_MUTED)
         row1.append(f"{sess_id} ({harness})", style="bold white")
         if len(self.state.available_sessions) > 1:

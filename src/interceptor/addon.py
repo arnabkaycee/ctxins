@@ -105,6 +105,14 @@ class CtxinsAddon:
         self._pid_last_history_len: Dict[int, int] = {}
         self._pid_last_first_msg_hash: Dict[int, str] = {}
 
+        # Per-explicit-session-id tracking for agents that reuse the same session hash across
+        # distinct conversations (e.g. agy uses the same Cloud Code int64 hash indefinitely).
+        # Keys are the *extracted* (raw) session ID; values track conversation state.
+        self._sid_active_mapped: Dict[str, str] = {}  # extracted_sid -> currently active mapped sid
+        self._sid_session_counter: Dict[str, int] = {}  # extracted_sid -> counter for sub-sessions
+        self._sid_last_history_len: Dict[str, int] = {}  # extracted_sid -> last message count
+        self._sid_last_first_msg_hash: Dict[str, str] = {}  # extracted_sid -> hash of first message
+
         # Thread-safe chunk tee queue consumed by background worker or drained on response
         self.chunk_queue: queue.Queue[tuple[str, bytes, float]] = queue.Queue(maxsize=10000)
         self.passthrough = (
@@ -781,8 +789,67 @@ class CtxinsAddon:
             )
 
             if extracted_sid and extracted_sid != self.default_session_id:
-                # Explicit session ID present in headers or request body
-                computed_sid = extracted_sid
+                # Explicit session ID present in headers or request body.
+                # Even with an explicit ID, detect conversation resets: some agents (e.g. agy)
+                # reuse the same int64 session hash across completely different conversations.
+                # We apply the same message-history heuristic keyed on the extracted_sid itself.
+                messages = []
+                if "messages" in payload_dict and isinstance(payload_dict["messages"], list):
+                    messages = [m for m in payload_dict["messages"] if isinstance(m, dict)]
+                elif "contents" in payload_dict and isinstance(payload_dict["contents"], list):
+                    messages = [m for m in payload_dict["contents"] if isinstance(m, dict)]
+                elif "request" in payload_dict and isinstance(payload_dict["request"], dict):
+                    req_inner = payload_dict["request"]
+                    if "messages" in req_inner and isinstance(req_inner["messages"], list):
+                        messages = [m for m in req_inner["messages"] if isinstance(m, dict)]
+                    elif "contents" in req_inner and isinstance(req_inner["contents"], list):
+                        messages = [m for m in req_inner["contents"] if isinstance(m, dict)]
+
+                first_content = ""
+                if messages:
+                    first_msg = messages[0]
+                    content_val = first_msg.get("content") or first_msg.get("parts") or ""
+                    if isinstance(content_val, list):
+                        parts_text = []
+                        for p in content_val:
+                            if isinstance(p, dict):
+                                parts_text.append(str(p.get("text") or p.get("content") or p))
+                            else:
+                                parts_text.append(str(p))
+                        first_content = "".join(parts_text)[:500]
+                    else:
+                        first_content = str(content_val)[:500]
+                first_hash = (
+                    hashlib.sha256(first_content.encode("utf-8")).hexdigest()[:8]
+                    if first_content
+                    else ""
+                )
+                msg_count = len(messages)
+
+                curr_mapped = self._sid_active_mapped.get(extracted_sid)
+                prev_first_hash = self._sid_last_first_msg_hash.get(extracted_sid)
+                prev_count = self._sid_last_history_len.get(extracted_sid, 0)
+
+                is_new_session = False
+                if curr_mapped is not None:
+                    if prev_first_hash and first_hash and prev_first_hash != first_hash:
+                        is_new_session = True
+                    elif msg_count <= 1 and prev_count >= 2:
+                        is_new_session = True
+
+                if is_new_session or curr_mapped is None:
+                    counter = self._sid_session_counter.get(extracted_sid, 0) + 1
+                    self._sid_session_counter[extracted_sid] = counter
+                    counter_suffix = f"_{counter}" if counter > 1 else ""
+                    computed_sid = f"{extracted_sid}{counter_suffix}"
+                    self._sid_active_mapped[extracted_sid] = computed_sid
+                else:
+                    computed_sid = curr_mapped
+
+                self._sid_last_history_len[extracted_sid] = msg_count
+                if first_hash:
+                    self._sid_last_first_msg_hash[extracted_sid] = first_hash
+
                 if pid:
                     self._pid_active_session[pid] = computed_sid
             elif pid:

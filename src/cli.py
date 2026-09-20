@@ -217,6 +217,92 @@ async def _shutdown_uvicorn(server: Optional[Any], task: Optional[asyncio.Task[A
                 pass
 
 
+def is_human_interaction(envelope: WireEnvelope) -> bool:
+    """Determine if a wire envelope represents an actual human interaction vs an automated tool execution.
+
+    In agentic harnesses (Claude Code, OpenCode, Aider, etc.):
+    - A human interaction starts when the user provides an instruction/prompt.
+    - Autonomous tool loops send tool results back to the LLM (e.g. Anthropic tool_result,
+      OpenAI role='tool', Gemini functionResponse).
+    """
+    payload = envelope.payload or {}
+    req = payload.get("request_payload") or payload.get("request") or {}
+
+    # 1. Anthropic format
+    messages = req.get("messages")
+    if messages and isinstance(messages, list):
+        last_msg = messages[-1]
+        if isinstance(last_msg, dict):
+            role = last_msg.get("role")
+            content = last_msg.get("content")
+            if role == "user":
+                if isinstance(content, list):
+                    has_tool_result = any(
+                        isinstance(part, dict) and part.get("type") == "tool_result"
+                        for part in content
+                    )
+                    has_user_text = any(
+                        isinstance(part, str)
+                        or (
+                            isinstance(part, dict)
+                            and part.get("type") == "text"
+                            and bool(part.get("text", "").strip())
+                        )
+                        for part in content
+                    )
+                    if has_tool_result and not has_user_text:
+                        return False
+                    if has_user_text:
+                        return True
+                elif isinstance(content, str) and content.strip():
+                    return True
+            elif role == "assistant":
+                return False
+
+    # 2. OpenAI format
+    if messages and isinstance(messages, list):
+        last_msg = messages[-1]
+        if isinstance(last_msg, dict):
+            role = last_msg.get("role")
+            if role == "tool":
+                return False
+            if role == "user":
+                return True
+
+    # 3. Gemini format
+    contents = req.get("contents")
+    if contents and isinstance(contents, list):
+        last_item = contents[-1]
+        if isinstance(last_item, dict):
+            role = last_item.get("role")
+            parts = last_item.get("parts", [])
+            if isinstance(parts, list):
+                has_fn_resp = any(
+                    isinstance(p, dict)
+                    and ("functionResponse" in p or "function_response" in p)
+                    for p in parts
+                )
+                has_text = any(
+                    isinstance(p, str)
+                    or (
+                        isinstance(p, dict)
+                        and "text" in p
+                        and bool(p.get("text", "").strip())
+                    )
+                    for p in parts
+                )
+                if has_fn_resp and not has_text:
+                    return False
+                if has_text and role == "user":
+                    return True
+
+    # 4. Fallback: check if tool_results are in payload
+    if payload.get("tool_results"):
+        return False
+
+    return True
+
+
 class CorePipelineBridge:
     """Bridges Core UDS telemetry ingestion to PresentationBroadcaster and SessionStore."""
 
@@ -226,8 +312,10 @@ class CorePipelineBridge:
         broadcaster: Optional[PresentationBroadcaster] = None,
         analyzer: Optional[PollutionAnalyzer] = None,
         auto_scan: bool = False,
+        granularity: str = "step",
     ) -> None:
-        self.store = store or SessionStore()
+        self.granularity = (granularity or "step").lower()
+        self.store = store or SessionStore(granularity=self.granularity)
         self.broadcaster = broadcaster or PresentationBroadcaster()
         self.analyzer = analyzer or PollutionAnalyzer()
         if auto_scan:
@@ -392,16 +480,31 @@ class CorePipelineBridge:
                             "agentHarness": harness,
                             "harness": harness,
                             "agent": agent_info,
+                            "granularity": self.granularity,
                         },
                     )
                 )
+
+            if self.granularity == "human":
+                is_human = is_human_interaction(envelope)
+                if len(existing_turns) == 0 or is_human:
+                    turn_index = len(existing_turns)
+                else:
+                    turn_index = max(0, len(existing_turns) - 1)
+            else:
+                turn_index = len(existing_turns)
+
+            start_payload = dict(envelope.payload)
+            start_payload["turn_index"] = turn_index
+            start_payload["turnIndex"] = turn_index
+            start_payload["granularity"] = self.granularity
 
             self.broadcaster.publish_nowait(
                 UIEvent(
                     event_type=UIEventType.TURN_STARTED,
                     session_id=session_id,
                     timestamp=envelope.timestamp,
-                    payload=envelope.payload,
+                    payload=start_payload,
                 )
             )
 
@@ -423,17 +526,70 @@ class CorePipelineBridge:
                 normalizer = get_normalizer("anthropic")
 
             existing_turns = self.store.get_session(session_id) or []
-            turn_index = len(existing_turns)
+
+            if self.granularity == "human":
+                is_human = is_human_interaction(envelope)
+                if len(existing_turns) == 0 or is_human:
+                    turn_index = len(existing_turns)
+                    try:
+                        turn = normalizer.normalize(envelope.to_dict(), turn_index=turn_index)
+                        turn.metadata["granularity"] = "human"
+                        turn.metadata["step_count"] = 1
+                        self.store.append_turn(turn)
+                    except Exception as e:
+                        logger.error("Error normalizing or analyzing turn: %s", e)
+                        return
+                else:
+                    turn_index = max(0, len(existing_turns) - 1)
+                    try:
+                        step_turn = normalizer.normalize(envelope.to_dict(), turn_index=turn_index)
+                        active_turn = existing_turns[turn_index]
+
+                        # Accumulate metrics into active human turn
+                        active_turn.input_tokens += step_turn.input_tokens
+                        active_turn.output_tokens += step_turn.output_tokens
+                        active_turn.cached_read_tokens += step_turn.cached_read_tokens
+                        active_turn.cached_created_tokens += step_turn.cached_created_tokens
+                        active_turn.duration_ms += step_turn.duration_ms
+                        active_turn.turn_cost_usd += step_turn.turn_cost_usd
+                        active_turn.wasted_cost_usd += step_turn.wasted_cost_usd
+
+                        # Update context blocks to latest snapshot
+                        active_turn.system_blocks = step_turn.system_blocks
+                        active_turn.tool_defs = step_turn.tool_defs
+                        active_turn.conversation_history = step_turn.conversation_history
+                        active_turn.tool_results = step_turn.tool_results
+                        active_turn.assistant_blocks = step_turn.assistant_blocks
+
+                        active_turn.metadata["step_count"] = (
+                            active_turn.metadata.get("step_count", 1) + 1
+                        )
+                        active_turn.metadata["granularity"] = "human"
+
+                        self.store.update_turn(active_turn)
+                        turn = active_turn
+                    except Exception as e:
+                        logger.error("Error updating human turn with step: %s", e)
+                        return
+            else:
+                turn_index = len(existing_turns)
+                try:
+                    turn = normalizer.normalize(envelope.to_dict(), turn_index=turn_index)
+                    turn.metadata["granularity"] = "step"
+                    turn.metadata["step_count"] = 1
+                    self.store.append_turn(turn)
+                except Exception as e:
+                    logger.error("Error normalizing or analyzing turn: %s", e)
+                    return
 
             try:
-                turn = normalizer.normalize(envelope.to_dict(), turn_index=turn_index)
-                self.store.append_turn(turn)
                 violations = self.analyzer.analyze_turn(
                     turn, graph=self.store.get_graph(session_id)
                 )
+                turn.violations = violations
             except Exception as e:
-                logger.error("Error normalizing or analyzing turn: %s", e)
-                return
+                logger.error("Error analyzing turn violations: %s", e)
+                violations = []
 
             all_turns = self.store.get_session(session_id) or []
             summary = PollutionScorer.calculate_summary(all_turns)
@@ -491,6 +647,10 @@ class CorePipelineBridge:
                 "totalTokens": turn.total_tokens,
                 "violations": [v.to_dict() for v in violations],
                 "blocks": [b.to_dict() for b in turn.all_blocks],
+                "granularity": self.granularity,
+                "step_count": turn.metadata.get("step_count", 1),
+                "stepCount": turn.metadata.get("step_count", 1),
+                "metadata": dict(turn.metadata),
             }
 
             self.broadcaster.publish_nowait(
@@ -651,9 +811,10 @@ def run_tui(
     target_port: Optional[int] = None,
     no_web: bool = False,
     web_port: int = DEFAULT_WEB_PORT,
+    granularity: str = "step",
 ) -> None:
     """Launch standalone Textual TUI attached to running Core Engine."""
-    bridge = CorePipelineBridge()
+    bridge = CorePipelineBridge(granularity=granularity)
     server = UDSFrameServer(socket_path=socket_path, on_turn_callback=bridge.handle_wire_envelope)
     actual_proxy_port = find_available_port(proxy_port)
     mitm_proc = spawn_mitmproxy(
@@ -663,7 +824,12 @@ def run_tui(
         target_port=target_port,
     )
 
-    logger.info("Launching Ctxins TUI (proxy port: %s, socket: %s)", actual_proxy_port, socket_path)
+    logger.info(
+        "Launching Ctxins TUI (proxy port: %s, socket: %s, granularity: %s)",
+        actual_proxy_port,
+        socket_path,
+        granularity,
+    )
 
     async def _start_and_run() -> None:
         await server.start()
@@ -675,7 +841,9 @@ def run_tui(
             try:
                 import uvicorn
 
-                web_app = create_app(store=bridge.store, broadcaster=bridge.broadcaster)
+                web_app = create_app(
+                    store=bridge.store, broadcaster=bridge.broadcaster, granularity=granularity
+                )
                 config = uvicorn.Config(
                     app=web_app, host="127.0.0.1", port=actual_web_port, log_level="error"
                 )
@@ -685,13 +853,14 @@ def run_tui(
                 logger.warning("Could not start background Web Dashboard: %s", e)
 
         try:
-            state = TUIState()
+            state = TUIState(granularity=granularity)
             app = CtxinsTUIApp(
                 state=state,
                 broadcaster=bridge.broadcaster,
                 store=bridge.store,
                 proxy_port=actual_proxy_port,
                 web_url=f"http://127.0.0.1:{actual_web_port}" if not no_web else None,
+                granularity=granularity,
             )
             await app.run_async()
         finally:
@@ -717,11 +886,12 @@ def run_web(
     proxy_port: int = DEFAULT_PROXY_PORT,
     target: Optional[str] = None,
     target_port: Optional[int] = None,
+    granularity: str = "step",
 ) -> None:
     """Launch standalone Web Dashboard attached to running Core Engine."""
     import uvicorn
 
-    bridge = CorePipelineBridge()
+    bridge = CorePipelineBridge(granularity=granularity)
     server = UDSFrameServer(socket_path=socket_path, on_turn_callback=bridge.handle_wire_envelope)
     actual_proxy_port = find_available_port(proxy_port)
     actual_web_port = find_available_port(port)
@@ -736,7 +906,9 @@ def run_web(
         await server.start()
         uvi_server: Optional[Any] = None
         try:
-            web_app = create_app(store=bridge.store, broadcaster=bridge.broadcaster)
+            web_app = create_app(
+                store=bridge.store, broadcaster=bridge.broadcaster, granularity=granularity
+            )
             config = uvicorn.Config(
                 app=web_app, host=host, port=actual_web_port, log_level="warning"
             )
@@ -769,6 +941,7 @@ def run_live(
     target_port: Optional[int] = None,
     no_web: bool = False,
     web_port: int = DEFAULT_WEB_PORT,
+    granularity: str = "step",
 ) -> None:
     """Start Core Engine + selected UI."""
     if ui_mode == "web":
@@ -779,6 +952,7 @@ def run_live(
             proxy_port=proxy_port,
             target=target,
             target_port=target_port,
+            granularity=granularity,
         )
     else:
         run_tui(
@@ -788,6 +962,7 @@ def run_live(
             target_port=target_port,
             no_web=no_web,
             web_port=web_port,
+            granularity=granularity,
         )
 
 
@@ -802,9 +977,10 @@ def run_with_harness(
     target_port: Optional[int] = None,
     no_web: bool = False,
     web_port: int = DEFAULT_WEB_PORT,
+    granularity: str = "step",
 ) -> None:
     """Start proxy, launch agent harness command, and run presentation UI without terminal conflict."""
-    bridge = CorePipelineBridge()
+    bridge = CorePipelineBridge(granularity=granularity)
     server = UDSFrameServer(socket_path=socket_path, on_turn_callback=bridge.handle_wire_envelope)
     actual_proxy_port = find_available_port(proxy_port)
     actual_web_port = find_available_port(web_port)
@@ -845,7 +1021,9 @@ def run_with_harness(
             try:
                 import uvicorn
 
-                web_app = create_app(store=bridge.store, broadcaster=bridge.broadcaster)
+                web_app = create_app(
+                    store=bridge.store, broadcaster=bridge.broadcaster, granularity=granularity
+                )
                 config = uvicorn.Config(
                     app=web_app, host=host, port=actual_web_port, log_level="error"
                 )
@@ -865,7 +1043,7 @@ def run_with_harness(
                                 "tmux",
                                 "split-window",
                                 "-h",
-                                f"ctxins tui --proxy-port {actual_proxy_port}",
+                                f"ctxins tui --proxy-port {actual_proxy_port} --granularity {granularity}",
                             ],
                             check=False,
                         )
@@ -886,13 +1064,14 @@ def run_with_harness(
                     if uvi_task:
                         await uvi_task
                 else:
-                    state = TUIState()
+                    state = TUIState(granularity=granularity)
                     tui_app = CtxinsTUIApp(
                         state=state,
                         broadcaster=bridge.broadcaster,
                         store=bridge.store,
                         proxy_port=actual_proxy_port,
                         web_url=f"http://127.0.0.1:{actual_web_port}" if not no_web else None,
+                        granularity=granularity,
                     )
                     await tui_app.run_async()
 
@@ -1059,6 +1238,19 @@ def build_parser() -> argparse.ArgumentParser:
     )
     unset_p.add_argument("--json", action="store_true", help="Output JSON format")
 
+    gran_help = (
+        "Turn counting granularity on startup: 'step' (every LLM/tool cycle) or 'human' "
+        "(actual human interaction boundary). Default: 'step'."
+    )
+    for p in (tui_p, web_p, live_p, run_p):
+        p.add_argument(
+            "--granularity",
+            "--turn-granularity",
+            choices=["step", "human"],
+            default=None,
+            help=gran_help,
+        )
+
     return parser
 
 
@@ -1084,6 +1276,13 @@ def main(args: Optional[List[str]] = None) -> int:
     effective_debug = bool(getattr(parsed, "debug", False) or top_opts.debug)
     effective_log_level = getattr(parsed, "log_level", None) or top_opts.log_level
     effective_log_file = getattr(parsed, "log_file", None) or top_opts.log_file
+
+    eff_granularity = (
+        getattr(parsed, "granularity", None)
+        or os.environ.get("CTXINS_GRANULARITY")
+        or "step"
+    ).lower()
+    os.environ["CTXINS_GRANULARITY"] = eff_granularity
 
     # Propagate into environment so child subprocesses automatically inherit them
     if effective_debug:
@@ -1136,6 +1335,7 @@ def main(args: Optional[List[str]] = None) -> int:
                 target_port=getattr(parsed, "target_port", None),
                 no_web=getattr(parsed, "no_web", False),
                 web_port=getattr(parsed, "web_port", DEFAULT_WEB_PORT),
+                granularity=eff_granularity,
             )
         elif parsed.subcommand == "web":
             run_web(
@@ -1145,6 +1345,7 @@ def main(args: Optional[List[str]] = None) -> int:
                 proxy_port=parsed.proxy_port,
                 target=getattr(parsed, "target", None),
                 target_port=getattr(parsed, "target_port", None),
+                granularity=eff_granularity,
             )
         elif parsed.subcommand == "live":
             run_live(
@@ -1157,6 +1358,7 @@ def main(args: Optional[List[str]] = None) -> int:
                 target_port=getattr(parsed, "target_port", None),
                 no_web=getattr(parsed, "no_web", False),
                 web_port=getattr(parsed, "web_port", DEFAULT_WEB_PORT),
+                granularity=eff_granularity,
             )
         elif parsed.subcommand == "run":
             cmd = parsed.command
@@ -1173,6 +1375,7 @@ def main(args: Optional[List[str]] = None) -> int:
                 target_port=getattr(parsed, "target_port", None),
                 no_web=getattr(parsed, "no_web", False),
                 web_port=getattr(parsed, "web_port", DEFAULT_WEB_PORT),
+                granularity=eff_granularity,
             )
         return 0
     except KeyboardInterrupt:

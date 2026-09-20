@@ -58,7 +58,9 @@ class TurnTimelineWidget(Widget):
         self.state = state
 
     def compose(self) -> ComposeResult:
-        yield Static("[1] TURNS & TIMELINE", classes="pane-title")
+        gran = getattr(self.state, "granularity", "step")
+        gran_label = "HUMAN" if gran == "human" else "STEP"
+        yield Static(f"[1] TURNS [{gran_label}]", classes="pane-title", id="timeline-title")
         yield OptionList(id="turns-option-list")
 
     def on_mount(self) -> None:
@@ -125,13 +127,16 @@ class TurnTimelineWidget(Widget):
             violations = list(turn.get("violations", []))
             dur_sec = float(turn.get("durationMs", 0.0)) / 1000.0
             cost = float(turn.get("cost", 0.0))
+            gran = getattr(self.state, "granularity", "step")
+            step_count = int(turn.get("stepCount", turn.get("step_count", 1)))
+            steps_str = f" · {step_count} steps" if gran == "human" and step_count > 1 else ""
 
             if status == "streaming":
-                markup = f"[bold cyan]●[/] Turn #{idx} [dim]\\[streaming {dur_sec:.1f}s\\][/] {tok_str} tok"
+                markup = f"[bold cyan]●[/] Turn #{idx}[dim]{steps_str}[/] [dim]\\[streaming {dur_sec:.1f}s\\][/] {tok_str} tok"
             elif len(violations) > 0:
-                markup = f"[bold yellow]⚠[/] Turn #{idx} ({tok_str} tok, {len(violations)} viols)"
+                markup = f"[bold yellow]⚠[/] Turn #{idx}[dim]{steps_str}[/] ({tok_str} tok, {len(violations)} viols)"
             else:
-                markup = f"[bold green]✓[/] Turn #{idx} ({tok_str} tok, ${cost:.3f})"
+                markup = f"[bold green]✓[/] Turn #{idx}[dim]{steps_str}[/] ({tok_str} tok, ${cost:.3f})"
 
             ol.add_option(Option(Text.from_markup(markup), id=str(idx)))
 

@@ -41,6 +41,11 @@ class ContextBlock:
     first_seen_turn: int = 0
     turns_survived: int = 0
 
+    # Tool call/result correlation ID — populated by normalizers for all providers.
+    # Links a tool_call block (in conversation_history or assistant_blocks) to its
+    # corresponding tool_result block via a shared provider-assigned ID.
+    call_id: str = ""
+
     def to_dict(self) -> Dict[str, Any]:
         data = asdict(self)
         data["block_type"] = self.block_type.value
@@ -58,6 +63,41 @@ class ContextBlock:
             identity_key=data.get("identity_key", ""),
             first_seen_turn=data.get("first_seen_turn", 0),
             turns_survived=data.get("turns_survived", 0),
+            call_id=data.get("call_id", ""),
+        )
+
+
+@dataclass(slots=True)
+class ToolInvocation:
+    """Represents a correlated tool call + result pair within a single turn.
+
+    Both fields are optional: an orphaned call (result not yet present) or an
+    orphaned result (call came from a prior turn) are valid states.
+    """
+
+    call_id: str
+    tool_name: str
+    call_block_id: Optional[str]
+    result_block_id: Optional[str]
+    is_error: bool = False
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "call_id": self.call_id,
+            "tool_name": self.tool_name,
+            "call_block_id": self.call_block_id,
+            "result_block_id": self.result_block_id,
+            "is_error": self.is_error,
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "ToolInvocation":
+        return cls(
+            call_id=data.get("call_id", ""),
+            tool_name=data.get("tool_name", ""),
+            call_block_id=data.get("call_block_id"),
+            result_block_id=data.get("result_block_id"),
+            is_error=bool(data.get("is_error", False)),
         )
 
 
@@ -124,6 +164,7 @@ class CanonicalTurn:
     violations: List[RuleViolation] = field(default_factory=list)
     turn_cost_usd: float = 0.0
     wasted_cost_usd: float = 0.0
+    metadata: Dict[str, Any] = field(default_factory=dict)
 
     @property
     def total_tokens(self) -> int:
@@ -138,6 +179,123 @@ class CanonicalTurn:
             + self.tool_results
             + self.assistant_blocks
         )
+
+    @property
+    def tool_invocations(self) -> "List[ToolInvocation]":
+        """Return correlated tool call → result pairs for this turn.
+
+        Matching priority:
+        1. Exact ``call_id`` match (provider-assigned ID on both blocks).
+        2. Tool-name match for any remaining unpaired blocks (best-effort).
+        3. Orphaned calls (no result yet) and orphaned results (result from a
+           prior turn's call) are included with their counterpart set to None.
+        """
+        # Gather all call blocks — both in-flight (assistant_blocks) and historical
+        call_blocks = [
+            b
+            for b in (self.conversation_history + self.assistant_blocks)
+            if b.call_id or b.metadata.get("type") in ("tool_use", "tool_call", "function_call")
+        ]
+        result_blocks = list(self.tool_results)
+
+        invocations: List[ToolInvocation] = []
+        used_call_ids: set = set()
+        used_result_ids: set = set()
+
+        def _tool_name(block: ContextBlock) -> str:
+            meta = block.metadata
+            return (
+                meta.get("name")
+                or meta.get("tool_name")
+                or meta.get("tool")
+                or ""
+            )
+
+        def _is_error(block: ContextBlock) -> bool:
+            return bool(
+                block.metadata.get("is_error")
+                or block.metadata.get("error")
+                or "error" in block.content[:50].lower()
+            )
+
+        # Pass 1: exact call_id matching
+        for call in call_blocks:
+            cid = call.call_id
+            if not cid:
+                continue
+            match = next(
+                (r for r in result_blocks if r.call_id == cid and r.block_id not in used_result_ids),
+                None,
+            )
+            if match:
+                used_call_ids.add(call.block_id)
+                used_result_ids.add(match.block_id)
+                invocations.append(
+                    ToolInvocation(
+                        call_id=cid,
+                        tool_name=_tool_name(call) or _tool_name(match),
+                        call_block_id=call.block_id,
+                        result_block_id=match.block_id,
+                        is_error=_is_error(match),
+                    )
+                )
+
+        # Pass 2: tool-name matching for remaining unpaired blocks
+        for call in call_blocks:
+            if call.block_id in used_call_ids:
+                continue
+            call_name = _tool_name(call)
+            match = next(
+                (
+                    r
+                    for r in result_blocks
+                    if r.block_id not in used_result_ids and _tool_name(r) == call_name and call_name
+                ),
+                None,
+            )
+            cid = call.call_id or f"name:{call_name}"
+            if match:
+                used_call_ids.add(call.block_id)
+                used_result_ids.add(match.block_id)
+                invocations.append(
+                    ToolInvocation(
+                        call_id=cid,
+                        tool_name=call_name or _tool_name(match),
+                        call_block_id=call.block_id,
+                        result_block_id=match.block_id,
+                        is_error=_is_error(match),
+                    )
+                )
+            else:
+                # Orphaned call — result not present in this turn
+                used_call_ids.add(call.block_id)
+                invocations.append(
+                    ToolInvocation(
+                        call_id=cid,
+                        tool_name=call_name,
+                        call_block_id=call.block_id,
+                        result_block_id=None,
+                        is_error=False,
+                    )
+                )
+
+        # Pass 3: orphaned results (no matching call found — from prior turn)
+        for result in result_blocks:
+            if result.block_id in used_result_ids:
+                continue
+            cid = result.call_id or f"orphan:{result.block_id}"
+            invocations.append(
+                ToolInvocation(
+                    call_id=cid,
+                    tool_name=_tool_name(result),
+                    call_block_id=None,
+                    result_block_id=result.block_id,
+                    is_error=_is_error(result),
+                )
+            )
+
+        return invocations
+
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -162,7 +320,10 @@ class CanonicalTurn:
             "violations": [v.to_dict() for v in self.violations],
             "turn_cost_usd": self.turn_cost_usd,
             "wasted_cost_usd": self.wasted_cost_usd,
+            "metadata": dict(self.metadata),
+            "tool_invocations": [inv.to_dict() for inv in self.tool_invocations],
         }
+
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> CanonicalTurn:
@@ -190,6 +351,7 @@ class CanonicalTurn:
             violations=[RuleViolation.from_dict(v) for v in data.get("violations", [])],
             turn_cost_usd=float(data.get("turn_cost_usd", 0.0)),
             wasted_cost_usd=float(data.get("wasted_cost_usd", 0.0)),
+            metadata=dict(data.get("metadata", {})),
         )
 
 

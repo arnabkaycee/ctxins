@@ -82,6 +82,7 @@ class OpenAIASTNormalizer(BaseNormalizer):
                         token_count=self.estimate_tokens(res_str),
                         content=res_str,
                         metadata={"tool_use_id": call_id, "name": msg.get("name")},
+                        call_id=call_id,
                     )
                 )
             elif role == "assistant":
@@ -135,9 +136,11 @@ class OpenAIASTNormalizer(BaseNormalizer):
                             content=tc_str,
                             metadata={
                                 "role": "assistant",
+                                "type": "tool_call",
                                 "tool_use_id": call_id,
                                 "name": tc.get("function", {}).get("name"),
                             },
+                            call_id=call_id,
                         )
                     )
             else:  # user
@@ -220,6 +223,7 @@ class OpenAIASTNormalizer(BaseNormalizer):
                                 "name": fn.get("name"),
                                 "tool_use_id": call_id,
                             },
+                            call_id=call_id,
                         )
                     )
         elif resp.get("blocks"):

@@ -103,3 +103,24 @@ ctxins web --port 8484 --socket /tmp/ctxins.sock
 # Diff two runs to track token bloat, cache hit ratio, and cost
 ctxins diff sessions/baseline.jsonc sessions/current.jsonc
 ```
+
+### 4. Turn Granularity (`--granularity`)
+
+ctxins supports two modes for counting LLM turns, set **once at startup** (cannot be changed without restarting):
+
+| Mode | Flag | Behaviour |
+|------|------|-----------|
+| **step** (default) | `--granularity step` | Every LLM API call is a separate turn — including autonomous tool-call continuations. |
+| **human** | `--granularity human` | Only messages initiated by a human prompt start a new turn. Intermediate tool-call steps are rolled up into the same turn with an accumulated step count. |
+
+```bash
+# Human-interaction granularity via flag
+ctxins run --tui --granularity human -- claude
+
+# Or via environment variable (lower priority than flag)
+CTXINS_GRANULARITY=human ctxins live --web
+```
+
+**UI indicators:**
+- **TUI** – The header bar shows a `STEP` or `HUMAN` badge. The turn timeline panel title becomes `[1] TURNS [STEP]` or `[1] TURNS [HUMAN]`. In human mode, each turn entry also shows a step count (e.g. `✓ Turn #1 · 3 steps (12.4k tok, $0.031)`).
+- **Web dashboard** – A colour-coded pill in the navbar shows `STEP` or `HUMAN` mode, loaded from the `/api/v1/config` endpoint on connect.

@@ -153,12 +153,18 @@ class GeminiASTNormalizer(BaseNormalizer):
                 if "functionResponse" in part or "function_response" in part:
                     fn_resp = part.get("functionResponse") or part.get("function_response") or {}
                     name = fn_resp.get("name", f"tool_{msg_idx}")
+                    call_id = str(fn_resp.get("id") or fn_resp.get("call_id") or "")
                     resp_data = fn_resp.get("response", {})
                     resp_str = (
                         json.dumps(resp_data, sort_keys=True)
                         if isinstance(resp_data, (dict, list))
                         else str(resp_data)
                     )
+                    is_error = False
+                    if "is_error" in fn_resp:
+                        is_error = bool(fn_resp["is_error"])
+                    elif isinstance(resp_data, dict) and ("error" in resp_data or "is_error" in resp_data):
+                        is_error = bool(resp_data.get("is_error", resp_data.get("error")))
                     tool_results.append(
                         ContextBlock(
                             block_id=f"tool_res_{name}_{msg_idx}_{part_idx}",
@@ -166,12 +172,20 @@ class GeminiASTNormalizer(BaseNormalizer):
                             content_hash=compute_block_hash(resp_str),
                             token_count=self.estimate_tokens(resp_str),
                             content=resp_str,
-                            metadata={"name": name, "role": role},
+                            metadata={
+                                "name": name,
+                                "tool_name": name,
+                                "role": role,
+                                "tool_use_id": call_id,
+                                "is_error": is_error,
+                            },
+                            call_id=call_id,
                         )
                     )
                 elif "functionCall" in part or "function_call" in part:
                     fn_call = part.get("functionCall") or part.get("function_call") or {}
                     name = fn_call.get("name", f"call_{msg_idx}")
+                    call_id = str(fn_call.get("id") or fn_call.get("call_id") or "")
                     call_str = json.dumps(fn_call, sort_keys=True)
                     history.append(
                         ContextBlock(
@@ -180,7 +194,14 @@ class GeminiASTNormalizer(BaseNormalizer):
                             content_hash=compute_block_hash(call_str),
                             token_count=self.estimate_tokens(call_str),
                             content=call_str,
-                            metadata={"role": role, "name": name, "type": "function_call"},
+                            metadata={
+                                "role": role,
+                                "name": name,
+                                "tool_name": name,
+                                "type": "function_call",
+                                "tool_use_id": call_id,
+                            },
+                            call_id=call_id,
                         )
                     )
                 elif "text" in part:
@@ -274,6 +295,7 @@ class GeminiASTNormalizer(BaseNormalizer):
                         elif "functionCall" in part or "function_call" in part:
                             fn_call = part.get("functionCall") or part.get("function_call") or {}
                             name = fn_call.get("name", f"call_{c_idx}_{p_idx}")
+                            call_id = str(fn_call.get("id") or fn_call.get("call_id") or "")
                             call_str = json.dumps(fn_call, sort_keys=True)
                             assistant_blocks.append(
                                 ContextBlock(
@@ -286,7 +308,10 @@ class GeminiASTNormalizer(BaseNormalizer):
                                         "role": "model",
                                         "type": "function_call",
                                         "name": name,
+                                        "tool_name": name,
+                                        "tool_use_id": call_id,
                                     },
+                                    call_id=call_id,
                                 )
                             )
                     elif isinstance(part, str):

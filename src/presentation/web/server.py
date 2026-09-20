@@ -28,17 +28,20 @@ class NoCacheStaticFiles(StaticFiles):
 def create_app(
     store: Optional[SessionStore] = None,
     broadcaster: Optional[PresentationBroadcaster] = None,
+    granularity: str = "step",
 ) -> FastAPI:
     """Create and configure the FastAPI web dashboard application.
 
     Args:
         store: Optional SessionStore instance. Defaults to a new in-memory SessionStore.
         broadcaster: Optional PresentationBroadcaster instance. Defaults to a new PresentationBroadcaster.
+        granularity: Turn counting granularity ('step' or 'human').
 
     Returns:
         Configured FastAPI application instance.
     """
-    resolved_store = store if store is not None else SessionStore()
+    eff_granularity = (granularity or getattr(store, "granularity", "step") or "step").lower()
+    resolved_store = store if store is not None else SessionStore(granularity=eff_granularity)
     resolved_broadcaster = broadcaster if broadcaster is not None else PresentationBroadcaster()
 
     app = FastAPI(
@@ -47,15 +50,20 @@ def create_app(
         description="Context Inspector Real-Time Web Dashboard",
     )
 
-    ws_hub = WebSocketHub(broadcaster=resolved_broadcaster, store=resolved_store)
+    ws_hub = WebSocketHub(
+        broadcaster=resolved_broadcaster, store=resolved_store, granularity=eff_granularity
+    )
 
     # Attach shared instances to app.state
     app.state.store = resolved_store
     app.state.broadcaster = resolved_broadcaster
     app.state.ws_hub = ws_hub
+    app.state.granularity = eff_granularity
 
     # Register REST API router under /api/v1 and /api
-    api_router = create_api_router(store=resolved_store, ws_hub=ws_hub)
+    api_router = create_api_router(
+        store=resolved_store, ws_hub=ws_hub, granularity=eff_granularity
+    )
     app.include_router(api_router, prefix="/api/v1")
     app.include_router(api_router, prefix="/api")
 

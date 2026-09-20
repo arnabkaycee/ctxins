@@ -13,13 +13,15 @@ from src.schema.ast import CanonicalTurn, RuleViolation, TurnDelta
 class SessionStore:
     """Thread-safe storage for active sessions, indexing turns, metrics, and violations."""
 
-    def __init__(self, max_sessions: int = 100) -> None:
+    def __init__(self, max_sessions: int = 100, granularity: str = "step") -> None:
         """Initialize SessionStore with bounded capacity.
 
         Args:
             max_sessions: Maximum number of active sessions before evicting oldest.
+            granularity: Turn granularity ('step' or 'human').
         """
         self.max_sessions = max_sessions
+        self.granularity = (granularity or "step").lower()
         # OrderedDict maintains session insertion/activity order for FIFO eviction
         self.sessions: OrderedDict[str, List[CanonicalTurn]] = OrderedDict()
         self.graphs: Dict[str, ContextGraph] = {}
@@ -96,6 +98,34 @@ class SessionStore:
 
             return delta
 
+    def update_turn(self, turn: CanonicalTurn) -> None:
+        """Update an existing canonical turn in-place in its session."""
+        with self.lock:
+            session_id = turn.session_id
+            if session_id not in self.sessions or not self.sessions[session_id]:
+                return
+            turns = self.sessions[session_id]
+            idx = turn.turn_index
+            if 0 <= idx < len(turns):
+                turns[idx] = turn
+            else:
+                turns[-1] = turn
+
+            if session_id in self.graphs:
+                self.graphs[session_id].update_turn(turn)
+
+            if turn.model:
+                norm_model = turn.model.lower()
+                if norm_model not in self._model_to_sessions:
+                    self._model_to_sessions[norm_model] = set()
+                self._model_to_sessions[norm_model].add(session_id)
+
+            for v in turn.violations:
+                rule_id = v.rule_id
+                if rule_id not in self._violation_to_sessions:
+                    self._violation_to_sessions[rule_id] = set()
+                self._violation_to_sessions[rule_id].add(session_id)
+
     def register_session(
         self,
         session_id: str,
@@ -109,8 +139,12 @@ class SessionStore:
                     self._evict_session(oldest_session_id)
                 self.sessions[session_id] = []
                 self.graphs[session_id] = ContextGraph(session_id=session_id)
-            if metadata:
-                self.session_metadata[session_id] = dict(metadata)
+            if metadata is not None:
+                meta = dict(metadata)
+                meta.setdefault("granularity", self.granularity)
+                self.session_metadata[session_id] = meta
+            elif session_id not in self.session_metadata:
+                self.session_metadata[session_id] = {"granularity": self.granularity}
             self.sessions.move_to_end(session_id)
 
     def get_session_metadata(self, session_id: str) -> Optional[Dict[str, Any]]:

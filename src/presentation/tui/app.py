@@ -65,6 +65,7 @@ class CtxinsTUIApp(App[None]):
         store: Optional[SessionStore] = None,
         proxy_port: int = 8080,
         web_url: Optional[str] = None,
+        granularity: str = "step",
     ) -> None:
         super().__init__()
         self.state = state if state is not None else TUIState()
@@ -72,6 +73,9 @@ class CtxinsTUIApp(App[None]):
         self.store = store
         self.proxy_port = proxy_port
         self.web_url = web_url
+        self.granularity = granularity
+        # Seed state granularity so header bar reflects CLI flag immediately
+        self.state.granularity = granularity
         if self.store is not None:
             self._sync_store_sessions()
 
@@ -101,7 +105,7 @@ class CtxinsTUIApp(App[None]):
             self.selected_turn_index = self.state.selected_turn_index
 
     def compose(self) -> ComposeResult:
-        yield HeaderBarWidget(self.state, proxy_port=self.proxy_port, web_url=self.web_url)
+        yield HeaderBarWidget(self.state, proxy_port=self.proxy_port, web_url=self.web_url, granularity=self.granularity)
         with Horizontal(id="main-container"):
             yield SessionsPanelWidget(self.state, id="sessions-pane")
             yield TurnTimelineWidget(self.state, id="timeline-pane")
