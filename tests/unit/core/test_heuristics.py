@@ -348,6 +348,62 @@ def test_cache001_static_system_prompt_no_violation():
     assert violations == []
 
 
+def test_cache001_multi_block_decomposed_system_prompt_detects_mutation():
+    """When system prompt is decomposed into multiple blocks, mutation in subsequent blocks is detected."""
+    heuristic = PrefixBreakHeuristic()
+
+    sys_preamble = _make_block("sys_0", BlockType.SYSTEM, "Root system prompt", token_count=100)
+    sys_dyn_1 = _make_block("sys_1", BlockType.SYSTEM, "State: timestamp=100", token_count=40)
+    sys_dyn_2 = _make_block("sys_1", BlockType.SYSTEM, "State: timestamp=101", token_count=40)
+
+    turn_1 = _make_turn(0, [sys_preamble, sys_dyn_1], input_tokens=1500)
+    turn_2 = _make_turn(1, [sys_preamble, sys_dyn_2], input_tokens=1500)
+
+    violations = heuristic.analyze(turn_2, previous_turns=[turn_1])
+    assert len(violations) == 1
+    assert violations[0].rule_id == "CACHE-001"
+    assert "sys_1" in violations[0].block_ids
+
+
+def test_cache001_large_system_prompt_mutation_detects_violation():
+    """Large system prompt modifications (>100 tokens drift without substring match) are detected."""
+    heuristic = PrefixBreakHeuristic(max_token_drift=100)
+
+    sys_1 = _make_block(
+        "sys_large", BlockType.SYSTEM, "Instructions version A: " + "alpha " * 100, token_count=200
+    )
+    sys_2 = _make_block(
+        "sys_large",
+        BlockType.SYSTEM,
+        "Completely rewritten instructions version B: " + "beta " * 180,
+        token_count=360,
+    )
+
+    turn_1 = _make_turn(0, [sys_1], input_tokens=2000)
+    turn_2 = _make_turn(1, [sys_2], input_tokens=2000)
+
+    violations = heuristic.analyze(turn_2, previous_turns=[turn_1])
+    assert len(violations) == 1
+    assert violations[0].rule_id == "CACHE-001"
+    assert "sys_large" in violations[0].block_ids
+
+
+def test_cache001_system_block_added_or_removed_detects_violation():
+    """Adding or removing a system block changes the prefix structure and triggers CACHE-001."""
+    heuristic = PrefixBreakHeuristic()
+
+    sys_0 = _make_block("sys_0", BlockType.SYSTEM, "Preamble", token_count=50)
+    sys_1 = _make_block("sys_1", BlockType.SYSTEM, "Inserted policy block", token_count=80)
+
+    turn_1 = _make_turn(0, [sys_0], input_tokens=1000)
+    turn_2 = _make_turn(1, [sys_0, sys_1], input_tokens=1080)
+
+    violations = heuristic.analyze(turn_2, previous_turns=[turn_1])
+    assert len(violations) == 1
+    assert violations[0].rule_id == "CACHE-001"
+    assert "sys_1" in violations[0].block_ids
+
+
 # ===========================================================================
 # PollutionAnalyzer Orchestration Tests
 # ===========================================================================
