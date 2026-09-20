@@ -208,3 +208,39 @@ def test_e2e_web_rest_and_websocket_snapshot() -> None:
         assert snapshot["type"] == "SNAPSHOT"
         assert snapshot["sessionId"] == "sess_web_e2e"
         assert len(snapshot["turns"]) == 1
+
+
+def test_actionable_context_health_alerts_assets() -> None:
+    """Verify app.js and styles.css include actionable Context Health Alerts logic."""
+    static_dir = os.path.join(os.path.dirname(__file__), "../../src/presentation/web/static")
+    js_file = os.path.join(static_dir, "js/app.js")
+    css_file = os.path.join(static_dir, "css/styles.css")
+
+    with open(js_file, "r", encoding="utf-8") as f:
+        js_content = f.read()
+
+    with open(css_file, "r", encoding="utf-8") as f:
+        css_content = f.read()
+
+    # Verify buttons and handlers in JS
+    assert "inspect-culprit-btn" in js_content
+    assert "copy-directive-btn" in js_content
+    assert "highlight-culprit-row" in js_content
+    assert "generateDirective" in js_content
+    assert "showToast" in js_content
+    assert "fallbackCopyText" in js_content
+    assert "CTX001" in js_content
+    assert "CTX002" in js_content
+    assert "CACHE001" in js_content
+    assert "Compact Stale Tool Results" in js_content
+    assert "Prune Unused Tool Schemas" in js_content
+    assert "Cache Stability" in js_content
+    assert "✓ Copied!" in js_content
+
+    # Verify CSS styling
+    assert ".violation-actions" in css_content
+    assert ".violation-action-btn" in css_content
+    assert ".highlight-culprit-row" in css_content
+    assert "@keyframes culprit-pulse" in css_content
+    assert ".ctxins-toast-container" in css_content
+    assert ".ctxins-toast" in css_content

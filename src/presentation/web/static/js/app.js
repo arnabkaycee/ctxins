@@ -272,7 +272,12 @@ class DashboardApp {
         }
       }
       if (turnData.violations) {
-        turnData.violations.forEach((v) => this.violations.push(v));
+        turnData.violations.forEach((v) => {
+          if (v.turn_index === undefined && v.turnIndex === undefined && tIdx !== undefined) {
+            v.turn_index = tIdx;
+          }
+          this.violations.push(v);
+        });
       }
       if (payload.summary) {
         this.summary = payload.summary;
@@ -434,7 +439,126 @@ class DashboardApp {
         </div>
         <div class="violation-msg">${v.message || ''}</div>
         ${v.suggested_fix || v.suggestedFix ? `<div class="violation-fix">💡 Fix: ${v.suggested_fix || v.suggestedFix}</div>` : ''}
+        <div class="violation-actions">
+          <button class="violation-action-btn inspect-culprit-btn" type="button">
+            <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor" style="vertical-align: -2px; margin-right: 4px;">
+              <path d="M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001c.03.04.062.078.098.115l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85a1.007 1.007 0 0 0-.115-.1zM12 6.5a5.5 5.5 0 1 1-11 0 5.5 5.5 0 0 1 11 0z"/>
+            </svg>
+            Inspect Culprit
+          </button>
+          <button class="violation-action-btn copy-directive-btn" type="button">
+            <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor" style="vertical-align: -2px; margin-right: 4px;">
+              <path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 0 1 0 1.5h-1.5a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-1.5a.75.75 0 0 1 1.5 0v1.5A1.75 1.75 0 0 1 9.25 16h-7.5A1.75 1.75 0 0 1 0 14.25Z"/>
+              <path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0 1 14.25 11h-7.5A1.75 1.75 0 0 1 5 9.25Zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25Z"/>
+            </svg>
+            Copy Directive
+          </button>
+        </div>
       `;
+
+      const inspectBtn = card.querySelector('.inspect-culprit-btn');
+      if (inspectBtn) {
+        inspectBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const targetBlockId =
+            v.block_id ||
+            v.blockId ||
+            (Array.isArray(v.block_ids) && v.block_ids.length > 0 ? v.block_ids[0] : null) ||
+            (Array.isArray(v.blockIds) && v.blockIds.length > 0 ? v.blockIds[0] : null);
+
+          let targetTurn =
+            v.turn_index !== undefined
+              ? v.turn_index
+              : v.turnIndex !== undefined
+              ? v.turnIndex
+              : null;
+
+          if ((targetTurn === null || targetTurn === undefined) && targetBlockId && this.turns) {
+            for (const t of this.turns) {
+              const blocks =
+                t.all_blocks ||
+                t.blocks || [
+                  ...(t.system_blocks || t.systemBlocks || []),
+                  ...(t.tool_defs || t.toolDefs || []),
+                  ...(t.conversation_history || t.conversationHistory || []),
+                  ...(t.tool_results || t.toolResults || []),
+                  ...(t.assistant_blocks || t.assistantBlocks || []),
+                ];
+              if (blocks.some((b) => (b.block_id || b.blockId) === targetBlockId)) {
+                targetTurn = t.turn_index !== undefined ? t.turn_index : t.turnIndex;
+                break;
+              }
+            }
+          }
+
+          if (targetTurn !== null && targetTurn !== undefined) {
+            this.selectTurn(targetTurn);
+          }
+
+          document.getElementById('blocks-table-body')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+          if (targetBlockId && this.blocksTableBody) {
+            const rows = Array.from(this.blocksTableBody.querySelectorAll('tr'));
+            const matchingRow = rows.find(
+              (tr) =>
+                tr.dataset.blockId === targetBlockId ||
+                tr.querySelector('.code-cell')?.textContent.includes(targetBlockId)
+            );
+
+            if (matchingRow) {
+              matchingRow.classList.remove('highlight-culprit-row');
+              void matchingRow.offsetWidth;
+              matchingRow.classList.add('highlight-culprit-row');
+              setTimeout(() => {
+                matchingRow.classList.remove('highlight-culprit-row');
+              }, 2500);
+            } else {
+              this.showToast(`Turn #${targetTurn ?? '?'}: Culprit block ${targetBlockId} not found in active blocks`);
+            }
+          } else {
+            const turnLabel = targetTurn !== null && targetTurn !== undefined ? `Turn #${targetTurn}` : 'Current turn';
+            this.showToast(`⚠️ Turn-level alert: Violation applies across ${turnLabel}`);
+            const subtitle = document.querySelector('.inspector-panel .panel-subtitle');
+            if (subtitle) {
+              const originalText = subtitle.textContent;
+              subtitle.textContent = `⚠️ Turn-level alert: ${v.title || v.rule_id || 'Alert'} applies across ${turnLabel}`;
+              subtitle.style.color = 'var(--color-warning)';
+              setTimeout(() => {
+                subtitle.textContent = originalText;
+                subtitle.style.color = '';
+              }, 2500);
+            }
+          }
+        });
+      }
+
+      const copyBtn = card.querySelector('.copy-directive-btn');
+      if (copyBtn) {
+        copyBtn.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          const directive = this.generateDirective(v);
+          const originalHTML = copyBtn.innerHTML;
+
+          try {
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+              await navigator.clipboard.writeText(directive);
+            } else {
+              this.fallbackCopyText(directive);
+            }
+          } catch (err) {
+            console.warn('Clipboard write failed, using fallback:', err);
+            this.fallbackCopyText(directive);
+          }
+
+          copyBtn.textContent = '✓ Copied!';
+          copyBtn.classList.add('copied');
+          setTimeout(() => {
+            copyBtn.innerHTML = originalHTML;
+            copyBtn.classList.remove('copied');
+          }, 2000);
+        });
+      }
+
       this.recommendationsFeed.appendChild(card);
     });
   }
@@ -514,6 +638,7 @@ class DashboardApp {
     blocks.forEach((b) => {
       const row = document.createElement('tr');
       const bId = b.block_id || b.blockId || '—';
+      row.dataset.blockId = bId;
       const bType = b.block_type || b.blockType || 'block';
       const identityKey = b.identity_key || b.identityKey || '';
       const status = b.lifecycle_status || b.status || '';
@@ -715,6 +840,61 @@ class DashboardApp {
 
   closeModal() {
     if (this.modalOverlay) this.modalOverlay.classList.remove('active');
+  }
+
+  generateDirective(v) {
+    const ruleId = (v.rule_id || v.ruleId || '').toUpperCase();
+    if (ruleId.includes('CTX001')) {
+      return `# Context Directive: Compact Stale Tool Results
+- Summarize tool outputs older than 3 turns into key findings; omit raw stdout/stderr.`;
+    } else if (ruleId.includes('CTX002')) {
+      return `# Context Directive: Prune Unused Tool Schemas
+- Do not include tool schemas in system prompt until invoked or explicitly required.`;
+    } else if (ruleId.includes('CACHE001')) {
+      return `# Context Directive: Cache Stability
+- Keep system prompts and tool declarations deterministic and static at the start of context.`;
+    } else {
+      const title = v.title || v.rule_id || v.ruleId || 'Context Directive';
+      const fix = v.suggested_fix || v.suggestedFix || v.message || 'Optimize context efficiency.';
+      return `# Context Directive: ${title}
+- ${fix}`;
+    }
+  }
+
+  showToast(message, duration = 3000) {
+    let toastContainer = document.getElementById('ctxins-toast-container');
+    if (!toastContainer) {
+      toastContainer = document.createElement('div');
+      toastContainer.id = 'ctxins-toast-container';
+      toastContainer.className = 'ctxins-toast-container';
+      document.body.appendChild(toastContainer);
+    }
+    const toast = document.createElement('div');
+    toast.className = 'ctxins-toast';
+    toast.textContent = message;
+    toastContainer.appendChild(toast);
+    setTimeout(() => {
+      toast.classList.add('fade-out');
+      setTimeout(() => toast.remove(), 300);
+    }, duration);
+  }
+
+  fallbackCopyText(text) {
+    try {
+      const textarea = document.createElement('textarea');
+      textarea.value = text;
+      textarea.style.position = 'fixed';
+      textarea.style.top = '-9999px';
+      textarea.style.left = '-9999px';
+      textarea.setAttribute('readonly', '');
+      document.body.appendChild(textarea);
+      textarea.focus();
+      textarea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textarea);
+    } catch (err) {
+      console.warn('[DashboardApp] Fallback copy failed:', err);
+    }
   }
 }
 
