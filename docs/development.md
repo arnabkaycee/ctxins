@@ -26,7 +26,7 @@ The `ctxins` test suite verifies network interception, streaming token reconstru
 ### Running Tests
 
 ```bash
-# Run all tests (221 tests)
+# Run all tests (367 tests)
 uv run pytest
 
 # Run with verbose output and short failure traces
