@@ -166,6 +166,65 @@ class DashboardApp {
       this.diffBtn.addEventListener('click', () => this.computeDiff());
     }
 
+    if (this.diffT1) {
+      this.diffT1.addEventListener('change', () => this.computeDiff());
+    }
+
+    if (this.diffT2) {
+      this.diffT2.addEventListener('change', () => this.computeDiff());
+    }
+
+    const diffDetails = document.querySelector('.diff-advanced-details');
+    if (diffDetails) {
+      diffDetails.addEventListener('toggle', () => {
+        if (diffDetails.open && (!this.diffResults.innerHTML || this.diffResults.innerHTML.trim() === '')) {
+          this.computeDiff();
+        }
+      });
+    }
+
+    if (this.diffResults) {
+      this.diffResults.addEventListener('click', (e) => {
+        const inspectBtn = e.target.closest('.diff-block-inspect-btn');
+        if (inspectBtn) {
+          e.stopPropagation();
+          const blockId = inspectBtn.dataset.blockId;
+          const turnVal = inspectBtn.dataset.turn ? parseInt(inspectBtn.dataset.turn, 10) : null;
+          this.locateAndHighlightBlock(blockId, turnVal, true);
+          return;
+        }
+
+        const pill = e.target.closest('.diff-block-pill');
+        if (pill) {
+          const blockId = pill.dataset.blockId;
+          const turnVal = pill.dataset.turn ? parseInt(pill.dataset.turn, 10) : null;
+          this.locateAndHighlightBlock(blockId, turnVal, false);
+        }
+      });
+
+      this.diffResults.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          const inspectBtn = e.target.closest('.diff-block-inspect-btn');
+          if (inspectBtn) {
+            e.preventDefault();
+            e.stopPropagation();
+            const blockId = inspectBtn.dataset.blockId;
+            const turnVal = inspectBtn.dataset.turn ? parseInt(inspectBtn.dataset.turn, 10) : null;
+            this.locateAndHighlightBlock(blockId, turnVal, true);
+            return;
+          }
+
+          const pill = e.target.closest('.diff-block-pill');
+          if (pill) {
+            e.preventDefault();
+            const blockId = pill.dataset.blockId;
+            const turnVal = pill.dataset.turn ? parseInt(pill.dataset.turn, 10) : null;
+            this.locateAndHighlightBlock(blockId, turnVal, false);
+          }
+        }
+      });
+    }
+
     if (this.filterChipsContainer) {
       this.filterChipsContainer.addEventListener('click', (e) => {
         const chip = e.target.closest('.filter-chip');
@@ -2283,6 +2342,151 @@ class DashboardApp {
     }
   }
 
+  getBlockInfo(blockId, preferredTurnIdx = null) {
+    let foundBlock = null;
+    let foundTurnIdx = null;
+
+    if (preferredTurnIdx !== null && preferredTurnIdx !== undefined && !isNaN(Number(preferredTurnIdx))) {
+      const pIdx = Number(preferredTurnIdx);
+      const turn = this.turns.find((t) => (t.turn_index !== undefined ? t.turn_index : t.turnIndex) === pIdx);
+      if (turn) {
+        const blocks =
+          turn.all_blocks ||
+          turn.blocks || [
+            ...(turn.system_blocks || turn.systemBlocks || []),
+            ...(turn.tool_defs || turn.toolDefs || []),
+            ...(turn.conversation_history || turn.conversationHistory || []),
+            ...(turn.tool_results || turn.toolResults || []),
+            ...(turn.assistant_blocks || turn.assistantBlocks || []),
+          ];
+        foundBlock = blocks.find((b) => (b.block_id || b.blockId) === blockId);
+        if (foundBlock) foundTurnIdx = pIdx;
+      }
+    }
+
+    if (!foundBlock) {
+      for (const turn of this.turns) {
+        const tIdx = turn.turn_index !== undefined ? turn.turn_index : turn.turnIndex;
+        const blocks =
+          turn.all_blocks ||
+          turn.blocks || [
+            ...(turn.system_blocks || turn.systemBlocks || []),
+            ...(turn.tool_defs || turn.toolDefs || []),
+            ...(turn.conversation_history || turn.conversationHistory || []),
+            ...(turn.tool_results || turn.toolResults || []),
+            ...(turn.assistant_blocks || turn.assistantBlocks || []),
+          ];
+        const b = blocks.find((blk) => (blk.block_id || blk.blockId) === blockId);
+        if (b) {
+          foundBlock = b;
+          foundTurnIdx = tIdx;
+          break;
+        }
+      }
+    }
+
+    return { block: foundBlock, turnIndex: foundTurnIdx };
+  }
+
+  locateAndHighlightBlock(blockId, preferredTurnIndex = null, openModal = false) {
+    if (!blockId) return;
+
+    // 1. Determine target turn
+    const { block, turnIndex } = this.getBlockInfo(blockId, preferredTurnIndex);
+    const targetTurn = turnIndex !== null && turnIndex !== undefined ? turnIndex : preferredTurnIndex;
+
+    // 2. Switch turn if needed
+    if (targetTurn !== null && targetTurn !== undefined) {
+      if (this.selectedTurnIndex !== targetTurn) {
+        this.selectTurn(targetTurn);
+      }
+    }
+
+    const currentTurn = this.getSelectedTurn();
+
+    // 3. Reset filter if active filter hides this block
+    if (this.currentBlockFilter !== 'ALL') {
+      let isVisible = false;
+      if (block) {
+        const f = this.currentBlockFilter;
+        if (f === 'SYSTEM' && this._isSystemBlock(block)) isVisible = true;
+        else if (f === 'SKILLS' && this._isSkillBlock(block)) isVisible = true;
+        else if (f === 'TOOLS' && this._isToolDefBlock(block)) isVisible = true;
+        else if (f === 'MESSAGES' && this._isMessageBlock(block)) isVisible = true;
+        else if (f === 'TOOL_RESULTS' && (this._isToolResultBlock(block) || this._isToolCallBlock(block))) isVisible = true;
+        else if (f === 'ADDED' && (block.lifecycle_status || block.status) === 'added') isVisible = true;
+        else if (f === 'MUTATED' && (block.lifecycle_status || block.status) === 'mutated') isVisible = true;
+      }
+      if (!isVisible) {
+        this.setBlockFilter('ALL');
+      }
+    }
+
+    // 4. Check if section or exchange is collapsed
+    let matchingRow = null;
+    if (this.blocksTableBody) {
+      const rows = Array.from(this.blocksTableBody.querySelectorAll('tr'));
+      matchingRow = rows.find(
+        (tr) =>
+          tr.dataset.blockId === blockId ||
+          tr.querySelector('.code-cell')?.textContent.includes(blockId)
+      );
+    }
+
+    if (matchingRow) {
+      const sec = matchingRow.dataset.section;
+      const ex = matchingRow.dataset.exchange;
+      let uncollapsedAny = false;
+      if (sec && this.collapsedSections.has(sec)) {
+        this.collapsedSections.delete(sec);
+        uncollapsedAny = true;
+      }
+      if (ex && this.collapsedExchanges.has(ex)) {
+        this.collapsedExchanges.delete(ex);
+        uncollapsedAny = true;
+      }
+      if (this.collapsedSections.has('messages') && (sec === 'messages' || ex)) {
+        this.collapsedSections.delete('messages');
+        uncollapsedAny = true;
+      }
+      if (uncollapsedAny && currentTurn) {
+        this.renderBlocksTable(currentTurn);
+        const newRows = Array.from(this.blocksTableBody.querySelectorAll('tr'));
+        matchingRow = newRows.find(
+          (tr) =>
+            tr.dataset.blockId === blockId ||
+            tr.querySelector('.code-cell')?.textContent.includes(blockId)
+        );
+      }
+    }
+
+    // 5. Scroll and highlight
+    if (matchingRow) {
+      matchingRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      matchingRow.classList.remove('highlight-diff-target');
+      matchingRow.classList.remove('highlight-culprit-row');
+      void matchingRow.offsetWidth; // Force CSS reflow to restart animation
+      matchingRow.classList.add('highlight-diff-target');
+      setTimeout(() => {
+        matchingRow.classList.remove('highlight-diff-target');
+      }, 3500);
+
+      const turnLabel = targetTurn !== null && targetTurn !== undefined ? `Turn #${targetTurn}` : 'current turn';
+      this.showToast(`Traced block ${blockId} to ${turnLabel} context panel`);
+    } else {
+      document.getElementById('blocks-table-body')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      const turnLabel = targetTurn !== null && targetTurn !== undefined ? `Turn #${targetTurn}` : 'current turn';
+      this.showToast(`Block ${blockId} in ${turnLabel}`);
+    }
+
+    // 6. Open modal if requested
+    if (openModal) {
+      const modalBlock = block || { block_id: blockId };
+      const roleLabel = block ? (block.block_type || block.blockType || 'Block') : 'Block';
+      this.openModal(`Block: ${blockId} (${roleLabel})`, modalBlock.content || JSON.stringify(modalBlock, null, 2));
+    }
+  }
+
   async computeDiff() {
     if (!this.activeSessionId || !this.diffT1 || !this.diffT2 || !this.diffResults) return;
     const t1 = this.diffT1.value;
@@ -2314,7 +2518,7 @@ class DashboardApp {
           removedBlockIds: removed,
           persistedBlockIds: persisted,
           cacheBreakpointBlockId: added.length > 0 ? added[0] : null,
-        });
+        }, t1, t2);
         return;
       }
     }
@@ -2323,7 +2527,7 @@ class DashboardApp {
       const res = await fetch(`/api/v1/sessions/${encodeURIComponent(this.activeSessionId)}/diff/${t1}/${t2}`);
       if (res.ok) {
         const data = await res.json();
-        this.renderDiffResults(data);
+        this.renderDiffResults(data, t1, t2);
       } else {
         const err = await res.json();
         this.diffResults.innerHTML = `<div style="color: var(--color-critical); padding: 8px;">Error: ${err.detail || 'Diff failed'}</div>`;
@@ -2333,9 +2537,9 @@ class DashboardApp {
     }
   }
 
-  renderDiffResults(data) {
+  renderDiffResults(data, fromTurnOverride = null, toTurnOverride = null) {
     if (!this.diffResults) return;
-    const growth = data.tokenGrowth || data.token_growth || 0;
+    const growth = data.tokenGrowth ?? data.token_growth ?? 0;
     const growthColor = growth > 0 ? 'var(--color-critical)' : 'var(--color-success)';
     const growthPrefix = growth > 0 ? '+' : '';
 
@@ -2345,37 +2549,95 @@ class DashboardApp {
     const persisted = data.persistedBlockIds || data.persisted_block_ids || [];
     const breakpoint = data.cacheBreakpointBlockId || data.cache_breakpoint_block_id || null;
 
-    const renderBadges = (arr, badgeClass) => {
+    const t1Val = fromTurnOverride !== null && fromTurnOverride !== undefined
+      ? parseInt(fromTurnOverride, 10)
+      : (data.fromTurnIndex !== undefined ? data.fromTurnIndex : (this.diffT1 ? parseInt(this.diffT1.value, 10) : null));
+    const t2Val = toTurnOverride !== null && toTurnOverride !== undefined
+      ? parseInt(toTurnOverride, 10)
+      : (data.toTurnIndex !== undefined ? data.toTurnIndex : (this.diffT2 ? parseInt(this.diffT2.value, 10) : null));
+
+    const renderBlockPills = (arr, badgeClass, targetTurn, actionDesc) => {
       if (arr.length === 0) return '<span style="color: var(--text-secondary); font-size: 11px;">None</span>';
-      return arr.map((id) => `<span class="badge ${badgeClass}">${id}</span>`).join(' ');
+      return arr.map((id) => {
+        const { block, turnIndex } = this.getBlockInfo(id, targetTurn);
+        const effectiveTurn = turnIndex !== null && turnIndex !== undefined ? turnIndex : targetTurn;
+        let previewText = '';
+        if (block) {
+          const snippet = this._extractBlockSnippet(block, 60);
+          const tok = block.token_count ?? block.tokenCount;
+          const tokStr = tok !== undefined ? ` • ${tok.toLocaleString()} tok` : '';
+          previewText = snippet ? ` — "${snippet}"${tokStr}` : tokStr;
+        }
+        const titleText = `[Turn #${effectiveTurn}] ${actionDesc} block "${id}"${previewText} — Click to trace in panel above`;
+
+        return `
+          <div class="diff-block-pill badge ${badgeClass}" data-block-id="${this._escapeHtml(id)}" data-turn="${effectiveTurn}" role="button" tabindex="0" title="${this._escapeHtml(titleText)}">
+            <span class="diff-block-link-text">${this._escapeHtml(id)}</span>
+            <button type="button" class="diff-block-inspect-btn" data-block-id="${this._escapeHtml(id)}" data-turn="${effectiveTurn}" title="Inspect full content for '${this._escapeHtml(id)}'">
+              <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                <path d="M8 2a7.5 7.5 0 0 0-7.46 6.88 1 1 0 0 0 .92 1.12.94.94 0 0 0 1.04-.84A5.5 5.5 0 1 1 8 13.5a5.45 5.45 0 0 1-3.66-1.42 1 1 0 1 0-1.34 1.48A7.5 7.5 0 1 0 8 2zm0 3.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5z"/>
+              </svg>
+            </button>
+          </div>
+        `;
+      }).join(' ');
     };
 
+    let breakpointHtml = '';
+    if (breakpoint) {
+      const { block: bpBlock, turnIndex: bpTurn } = this.getBlockInfo(breakpoint, t2Val);
+      const effectiveBpTurn = bpTurn !== null && bpTurn !== undefined ? bpTurn : t2Val;
+      let bpPreview = '';
+      if (bpBlock) {
+        const snippet = this._extractBlockSnippet(bpBlock, 60);
+        const tok = bpBlock.token_count ?? bpBlock.tokenCount;
+        const tokStr = tok !== undefined ? ` • ${tok.toLocaleString()} tok` : '';
+        bpPreview = snippet ? ` — "${snippet}"${tokStr}` : tokStr;
+      }
+      const bpTitle = `[Turn #${effectiveBpTurn}] Prefix cache breakpoint at "${breakpoint}"${bpPreview} — Click to trace in panel above`;
+
+      breakpointHtml = `
+        <div class="diff-card">
+          <div class="diff-card-title">Prefix Cache Breakpoint</div>
+          <div class="diff-badge-list">
+            <div class="diff-block-pill badge badge-breakpoint" data-block-id="${this._escapeHtml(breakpoint)}" data-turn="${effectiveBpTurn}" role="button" tabindex="0" title="${this._escapeHtml(bpTitle)}">
+              <span class="diff-block-link-text">⚡ ${this._escapeHtml(breakpoint)}</span>
+              <button type="button" class="diff-block-inspect-btn" data-block-id="${this._escapeHtml(breakpoint)}" data-turn="${effectiveBpTurn}" title="Inspect full content for breakpoint '${this._escapeHtml(breakpoint)}'">
+                <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                  <path d="M8 2a7.5 7.5 0 0 0-7.46 6.88 1 1 0 0 0 .92 1.12.94.94 0 0 0 1.04-.84A5.5 5.5 0 1 1 8 13.5a5.45 5.45 0 0 1-3.66-1.42 1 1 0 1 0-1.34 1.48A7.5 7.5 0 1 0 8 2zm0 3.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5z"/>
+                </svg>
+              </button>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
     this.diffResults.innerHTML = `
+      <div class="diff-results-hint">
+        <span>🔗 Traceability: Click any block badge to jump to and highlight its content in the context panel above, or click 👁 to open full content modal.</span>
+      </div>
       <div class="diff-card">
         <div class="diff-card-title">Token Growth</div>
         <div class="diff-card-value" style="color: ${growthColor};">${growthPrefix}${growth.toLocaleString()} tok</div>
       </div>
       <div class="diff-card">
         <div class="diff-card-title">Added Blocks (${added.length})</div>
-        <div class="diff-badge-list">${renderBadges(added, 'badge-added')}</div>
+        <div class="diff-badge-list">${renderBlockPills(added, 'badge-added', t2Val, 'Added')}</div>
       </div>
       <div class="diff-card">
         <div class="diff-card-title">Mutated Blocks (${mutated.length})</div>
-        <div class="diff-badge-list">${renderBadges(mutated, 'badge-mutated')}</div>
+        <div class="diff-badge-list">${renderBlockPills(mutated, 'badge-mutated', t2Val, 'Mutated')}</div>
       </div>
       <div class="diff-card">
         <div class="diff-card-title">Evicted Blocks (${removed.length})</div>
-        <div class="diff-badge-list">${renderBadges(removed, 'badge-evicted')}</div>
+        <div class="diff-badge-list">${renderBlockPills(removed, 'badge-evicted', t1Val, 'Evicted')}</div>
       </div>
       <div class="diff-card">
         <div class="diff-card-title">Persisted Blocks (${persisted.length})</div>
-        <div class="diff-badge-list">${renderBadges(persisted, 'badge-persisted')}</div>
+        <div class="diff-badge-list">${renderBlockPills(persisted, 'badge-persisted', t2Val, 'Persisted')}</div>
       </div>
-      ${breakpoint ? `
-      <div class="diff-card">
-        <div class="diff-card-title">Prefix Cache Breakpoint</div>
-        <div class="diff-card-value" style="font-size: 12px; color: var(--color-warning); font-family: var(--font-mono);">${breakpoint}</div>
-      </div>` : ''}
+      ${breakpointHtml}
     `;
   }
 

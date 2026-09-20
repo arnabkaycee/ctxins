@@ -292,6 +292,9 @@ def test_static_assets_serving(client: TestClient) -> None:
     assert ".auto-diff-ribbon" in res_css.text
     assert ".delta-pill" in res_css.text
     assert ".breakpoint-callout" in res_css.text
+    assert ".diff-block-pill" in res_css.text
+    assert ".highlight-diff-target" in res_css.text
+    assert ".diff-results-hint" in res_css.text
 
     res_js = client.get("/js/ws_client.js")
     assert res_js.status_code == 200
@@ -302,6 +305,8 @@ def test_static_assets_serving(client: TestClient) -> None:
     assert "renderAutoDiffRibbon" in res_app_js.text
     assert "fetchAutoDiff" in res_app_js.text
     assert "exportMarkdownReport" in res_app_js.text
+    assert "locateAndHighlightBlock" in res_app_js.text
+    assert "getBlockInfo" in res_app_js.text
 
 
 # ---------------------------------------------------------------------------
