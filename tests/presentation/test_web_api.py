@@ -411,3 +411,21 @@ def test_static_assets_proportion_bar_and_filter_chips(client: TestClient) -> No
     assert "renderProportionBar" in resp_js.text
     assert "currentBlockFilter" in resp_js.text
     assert "setBlockFilter" in resp_js.text
+
+
+def test_static_assets_cache_headers_and_busting(client: TestClient) -> None:
+    """Verify static assets are served with Cache-Control headers to prevent stale browser caching."""
+    resp_html = client.get("/")
+    assert resp_html.status_code == 200
+    assert "no-cache" in resp_html.headers.get("cache-control", "")
+    assert "/css/styles.css?v=" in resp_html.text
+    assert "/js/app.js?v=" in resp_html.text
+
+    resp_css = client.get("/css/styles.css")
+    assert resp_css.status_code == 200
+    assert "no-cache" in resp_css.headers.get("cache-control", "")
+
+    resp_js = client.get("/js/app.js")
+    assert resp_js.status_code == 200
+    assert "no-cache" in resp_js.headers.get("cache-control", "")
+

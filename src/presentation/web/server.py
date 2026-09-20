@@ -7,11 +7,22 @@ from typing import Optional
 
 from fastapi import FastAPI, WebSocket
 from fastapi.staticfiles import StaticFiles
+from starlette.responses import Response
+from starlette.types import Scope
 
 from src.core.store.session_store import SessionStore
 from src.presentation.broadcaster import PresentationBroadcaster
 from src.presentation.web.api import create_api_router
 from src.presentation.web.ws import WebSocketHub
+
+
+class NoCacheStaticFiles(StaticFiles):
+    """StaticFiles mount ensuring browsers always revalidate local dashboard assets."""
+
+    async def get_response(self, path: str, scope: Scope) -> Response:
+        response = await super().get_response(path, scope)
+        response.headers["Cache-Control"] = "no-cache, must-revalidate"
+        return response
 
 
 def create_app(
@@ -56,6 +67,6 @@ def create_app(
     # Mount static dashboard assets
     static_dir = Path(__file__).parent / "static"
     static_dir.mkdir(parents=True, exist_ok=True)
-    app.mount("/", StaticFiles(directory=str(static_dir), html=True), name="static")
+    app.mount("/", NoCacheStaticFiles(directory=str(static_dir), html=True), name="static")
 
     return app
