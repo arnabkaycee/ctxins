@@ -478,3 +478,45 @@ def test_get_grouped_session_recommendations(
     assert r["earlier_turn_indices"] == [0]
     assert len(r["earlier_violations"]) == 1
     assert r["suggested_fix"] == "Prune older tool payloads or truncate large responses."
+
+
+def test_export_dropdown_and_conversation_exchange_grouping(client: TestClient) -> None:
+    """Verify Web UI contains export dropdown (jsonc/markdown) and lower panel message exchange grouping."""
+    # 1. index.html markup
+    res_html = client.get("/")
+    assert res_html.status_code == 200
+    html_text = res_html.text
+    assert 'class="dropdown export-dropdown"' in html_text
+    assert 'id="export-dropdown"' in html_text
+    assert 'id="export-dropdown-btn"' in html_text
+    assert 'id="export-dropdown-menu"' in html_text
+    assert 'id="export-btn"' in html_text
+    assert "JSONC (.jsonc)" in html_text
+    assert 'id="export-md-btn"' in html_text
+    assert "Markdown Report (.md)" in html_text
+
+    # 2. styles.css rules
+    res_css = client.get("/css/styles.css")
+    assert res_css.status_code == 200
+    css_text = res_css.text
+    assert ".export-dropdown" in css_text
+    assert ".dropdown-menu" in css_text
+    assert ".exchange-group-header" in css_text
+    assert ".exchange-item-row" in css_text
+    assert ".user-msg-row" in css_text
+    assert ".assistant-msg-row" in css_text
+    assert ".msg-role-pill" in css_text
+    assert ".msg-snippet-box" in css_text
+
+    # 3. app.js logic
+    res_js = client.get("/js/app.js")
+    assert res_js.status_code == 200
+    js_text = res_js.text
+    assert "toggleExportDropdown" in js_text
+    assert "openExportDropdown" in js_text
+    assert "closeExportDropdown" in js_text
+    assert "_isMessageBlock" in js_text
+    assert "_getMessageRole" in js_text
+    assert "_extractBlockSnippet" in js_text
+    assert "exchange-group-header" in js_text
+    assert "Conversation Exchange" in js_text

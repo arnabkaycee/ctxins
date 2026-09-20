@@ -34,19 +34,37 @@
         <span id="status-text">Listening on 127.0.0.1:8080 - Waiting for agent traffic</span>
       </div>
 
-      <button id="export-btn" class="btn btn-primary">
-        <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-          <path d="M7.47 10.78a.75.75 0 001.06 0l3.75-3.75a.75.75 0 00-1.06-1.06L8.75 8.44V1.75a.75.75 0 00-1.5 0v6.69L4.78 5.97a.75.75 0 00-1.06 1.06l3.75 3.75zM3.75 13a.75.75 0 000 1.5h8.5a.75.75 0 000-1.5h-8.5z"></path>
-        </svg>
-        Export .jsonc
-      </button>
-
-      <button id="export-md-btn" class="btn" title="Download actionable Markdown optimization audit with prompt directives">
-        <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-          <path d="M14 4.5V14a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V2a2 2 0 0 1 2-2h5.5L14 4.5zm-3 0A1.5 1.5 0 0 1 9.5 3V1H4a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V4.5h-2z"/>
-        </svg>
-        Export Report (.md)
-      </button>
+      <div class="dropdown export-dropdown" id="export-dropdown">
+        <button id="export-dropdown-btn" class="btn btn-primary dropdown-toggle" type="button" aria-haspopup="true" aria-expanded="false" title="Export session data">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+            <path d="M7.47 10.78a.75.75 0 001.06 0l3.75-3.75a.75.75 0 00-1.06-1.06L8.75 8.44V1.75a.75.75 0 00-1.5 0v6.69L4.78 5.97a.75.75 0 00-1.06 1.06l3.75 3.75zM3.75 13a.75.75 0 000 1.5h8.5a.75.75 0 000-1.5h-8.5z"></path>
+          </svg>
+          <span>Export</span>
+          <svg class="dropdown-chevron" width="10" height="10" viewBox="0 0 16 16" fill="currentColor">
+            <path d="M4.427 6.427l3.396 3.396a.25.25 0 00.354 0l3.396-3.396A.25.25 0 0011.396 6H4.604a.25.25 0 00-.177.427z"/>
+          </svg>
+        </button>
+        <div id="export-dropdown-menu" class="dropdown-menu">
+          <button id="export-btn" class="dropdown-item" type="button" title="Export full session AST & context telemetry in .jsonc format">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+              <path d="M7.47 10.78a.75.75 0 001.06 0l3.75-3.75a.75.75 0 00-1.06-1.06L8.75 8.44V1.75a.75.75 0 00-1.5 0v6.69L4.78 5.97a.75.75 0 00-1.06 1.06l3.75 3.75zM3.75 13a.75.75 0 000 1.5h8.5a.75.75 0 000-1.5h-8.5z"></path>
+            </svg>
+            <div class="dropdown-item-content">
+              <div class="dropdown-item-title">JSONC (.jsonc)</div>
+              <div class="dropdown-item-subtitle">Full AST & context telemetry</div>
+            </div>
+          </button>
+          <button id="export-md-btn" class="dropdown-item" type="button" title="Download actionable Markdown optimization audit with prompt directives">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+              <path d="M14 4.5V14a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V2a2 2 0 0 1 2-2h5.5L14 4.5zm-3 0A1.5 1.5 0 0 1 9.5 3V1H4a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V4.5h-2z"/>
+            </svg>
+            <div class="dropdown-item-content">
+              <div class="dropdown-item-title">Markdown Report (.md)</div>
+              <div class="dropdown-item-subtitle">Executive report & prompt directives</div>
+            </div>
+          </button>
+        </div>
+      </div>
     </div>
   </header>
 

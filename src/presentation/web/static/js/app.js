@@ -17,9 +17,13 @@ class DashboardApp {
     this.sessionSelect = document.getElementById('session-select');
     this.statusPill = document.getElementById('connection-status');
     this.statusText = document.getElementById('status-text');
+    this.exportDropdown = document.getElementById('export-dropdown');
+    this.exportDropdownBtn = document.getElementById('export-dropdown-btn');
+    this.exportDropdownMenu = document.getElementById('export-dropdown-menu');
     this.exportBtn = document.getElementById('export-btn');
     this.exportMdBtn = document.getElementById('export-md-btn');
     this.navDemoBtn = document.getElementById('nav-demo-btn');
+    this.collapsedExchanges = new Set();
 
     // KPI Elements
     this.kpiTokens = document.getElementById('kpi-tokens');
@@ -115,13 +119,38 @@ class DashboardApp {
       });
     }
 
+    if (this.exportDropdownBtn) {
+      this.exportDropdownBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.toggleExportDropdown();
+      });
+    }
+
     if (this.exportBtn) {
-      this.exportBtn.addEventListener('click', () => this.exportSession());
+      this.exportBtn.addEventListener('click', () => {
+        this.closeExportDropdown();
+        this.exportSession();
+      });
     }
 
     if (this.exportMdBtn) {
-      this.exportMdBtn.addEventListener('click', () => this.exportMarkdownReport());
+      this.exportMdBtn.addEventListener('click', () => {
+        this.closeExportDropdown();
+        this.exportMarkdownReport();
+      });
     }
+
+    document.addEventListener('click', (e) => {
+      if (
+        this.exportDropdown &&
+        (this.exportDropdown.classList.contains('open') ||
+          (this.exportDropdownMenu && this.exportDropdownMenu.classList.contains('active')))
+      ) {
+        if (!e.target.closest('#export-dropdown')) {
+          this.closeExportDropdown();
+        }
+      }
+    });
 
     if (this.navDemoBtn) {
       this.navDemoBtn.addEventListener('click', (e) => {
@@ -158,10 +187,39 @@ class DashboardApp {
     }
 
     window.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape' && this.modalOverlay && this.modalOverlay.classList.contains('active')) {
-        this.closeModal();
+      if (e.key === 'Escape') {
+        if (
+          this.exportDropdown &&
+          (this.exportDropdown.classList.contains('open') ||
+            (this.exportDropdownMenu && this.exportDropdownMenu.classList.contains('active')))
+        ) {
+          this.closeExportDropdown();
+        }
+        if (this.modalOverlay && this.modalOverlay.classList.contains('active')) {
+          this.closeModal();
+        }
       }
     });
+  }
+
+  toggleExportDropdown() {
+    if (this.exportDropdown && this.exportDropdown.classList.contains('open')) {
+      this.closeExportDropdown();
+    } else {
+      this.openExportDropdown();
+    }
+  }
+
+  openExportDropdown() {
+    if (this.exportDropdown) this.exportDropdown.classList.add('open');
+    if (this.exportDropdownMenu) this.exportDropdownMenu.classList.add('active');
+    if (this.exportDropdownBtn) this.exportDropdownBtn.setAttribute('aria-expanded', 'true');
+  }
+
+  closeExportDropdown() {
+    if (this.exportDropdown) this.exportDropdown.classList.remove('open');
+    if (this.exportDropdownMenu) this.exportDropdownMenu.classList.remove('active');
+    if (this.exportDropdownBtn) this.exportDropdownBtn.setAttribute('aria-expanded', 'false');
   }
 
   async refreshSessions() {
@@ -985,6 +1043,141 @@ class DashboardApp {
     `;
   }
 
+  _escapeHtml(text) {
+    if (text === null || text === undefined) return '';
+    return String(text)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  _isMessageBlock(block) {
+    const bType = (block.block_type || block.blockType || '').toLowerCase();
+    const role = (block.metadata && block.metadata.role ? block.metadata.role : '').toLowerCase();
+    const bId = (block.block_id || block.blockId || '').toLowerCase();
+    return (
+      bType === 'user_msg' ||
+      bType === 'assistant_msg' ||
+      bType === 'conversation_history' ||
+      bType === 'thought' ||
+      bType === 'user' ||
+      bType === 'assistant' ||
+      role === 'user' ||
+      role === 'assistant' ||
+      bId.startsWith('hist_') ||
+      bId.startsWith('blk-user-') ||
+      bId.startsWith('blk-assistant-') ||
+      bId.startsWith('blk-tht-')
+    );
+  }
+
+  _getMessageRole(block) {
+    const bType = (block.block_type || block.blockType || '').toLowerCase();
+    const role = (block.metadata && block.metadata.role ? block.metadata.role : '').toLowerCase();
+    const bId = (block.block_id || block.blockId || '').toLowerCase();
+
+    if (role === 'user' || bType.includes('user') || bId.startsWith('blk-user-')) {
+      return 'user';
+    }
+    if (
+      bType === 'thought' ||
+      role === 'thought' ||
+      role === 'reasoning' ||
+      bId.includes('_thought') ||
+      bId.startsWith('blk-tht-')
+    ) {
+      return 'thought';
+    }
+    if (
+      role === 'assistant' ||
+      bType.includes('assistant') ||
+      bId.startsWith('blk-assistant-') ||
+      bId.includes('_call_')
+    ) {
+      return 'assistant';
+    }
+    // Check hist_X where X is even (user) or odd (assistant)
+    const m = bId.match(/^hist_(\d+)/);
+    if (m) {
+      const idx = parseInt(m[1], 10);
+      return idx % 2 === 0 ? 'user' : 'assistant';
+    }
+    return 'user';
+  }
+
+  _extractBlockSnippet(block, maxLength = 100) {
+    if (!block) return '';
+    const content = block.content;
+    let rawText = '';
+    if (typeof content === 'string') {
+      const trimmed = content.trim();
+      if (
+        (trimmed.startsWith('{') && trimmed.endsWith('}')) ||
+        (trimmed.startsWith('[') && trimmed.endsWith(']'))
+      ) {
+        try {
+          const parsed = JSON.parse(trimmed);
+          rawText = this._extractTextFromObject(parsed);
+        } catch (_) {
+          rawText = trimmed;
+        }
+      } else {
+        rawText = trimmed;
+      }
+    } else if (typeof content === 'object' && content !== null) {
+      rawText = this._extractTextFromObject(content);
+    }
+
+    if (!rawText && block.metadata) {
+      rawText = this._extractTextFromObject(block.metadata);
+    }
+
+    const cleaned = String(rawText || '')
+      .replace(/[\r\n\t]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    if (cleaned.length > maxLength) {
+      return cleaned.slice(0, maxLength) + '...';
+    }
+    return cleaned || '—';
+  }
+
+  _extractTextFromObject(obj) {
+    if (!obj) return '';
+    if (typeof obj === 'string') return obj;
+    if (Array.isArray(obj)) {
+      return obj
+        .map((item) => this._extractTextFromObject(item))
+        .filter(Boolean)
+        .join(' ');
+    }
+    if (typeof obj === 'object') {
+      if (typeof obj.content === 'string') return obj.content;
+      if (Array.isArray(obj.content)) return this._extractTextFromObject(obj.content);
+      if (typeof obj.text === 'string') return obj.text;
+      if (typeof obj.instructions === 'string') return obj.instructions;
+      if (typeof obj.description === 'string') return obj.description;
+      if (obj.arguments) {
+        const argsStr = typeof obj.arguments === 'string' ? obj.arguments : JSON.stringify(obj.arguments);
+        return obj.tool ? `${obj.tool}: ${argsStr}` : argsStr;
+      }
+      if (obj.action && obj.tool) {
+        return `${obj.tool} (${obj.action})`;
+      }
+      if (obj.command) return String(obj.command);
+      if (obj.name) return String(obj.name);
+      try {
+        return JSON.stringify(obj);
+      } catch (_) {
+        return String(obj);
+      }
+    }
+    return String(obj);
+  }
+
   renderBlocksTable(turn) {
     if (!this.blocksTableBody) return;
     this.blocksTableBody.innerHTML = '';
@@ -1017,24 +1210,26 @@ class DashboardApp {
     }
 
     // Calculate total turn tokens across all blocks for relative share
-    const totalTurnTokens = blocks.reduce(
-      (acc, b) => acc + (b.token_count ?? b.tokenCount ?? 0),
-      0
-    ) || (turn.input_tokens ?? turn.inputTokens ?? 0);
+    const totalTurnTokens =
+      blocks.reduce(
+        (acc, b) => acc + (b.token_count ?? b.tokenCount ?? 0),
+        0
+      ) || (turn.input_tokens ?? turn.inputTokens ?? 0);
 
     // Filter rows based on this.currentBlockFilter
     const filter = this.currentBlockFilter || 'ALL';
     const filteredBlocks = blocks.filter((b) => {
       const bType = (b.block_type || b.blockType || '').toLowerCase();
       const status = (b.lifecycle_status || b.status || '').toLowerCase();
+      const isMsg = this._isMessageBlock(b);
 
       switch (filter) {
         case 'SYSTEM':
           return bType.includes('system');
         case 'TOOLS':
-          return bType.includes('tool_def') || bType.includes('tool_declaration');
+          return bType.includes('tool_def') || bType.includes('tool_declaration') || bType.includes('tool_defs');
         case 'MESSAGES':
-          return bType.includes('user') || bType.includes('assistant') || bType.includes('conversation');
+          return isMsg;
         case 'TOOL_RESULTS':
           return bType.includes('tool_result');
         case 'ADDED':
@@ -1058,7 +1253,116 @@ class DashboardApp {
       return;
     }
 
-    filteredBlocks.forEach((b) => {
+    // Helper to format token display
+    const formatTokenDisplay = (tokCount) => {
+      const pctNum = totalTurnTokens > 0 ? (tokCount / totalTurnTokens) * 100 : 0;
+      let pctStr = '0%';
+      if (pctNum >= 1) {
+        pctStr = `${Math.round(pctNum)}%`;
+      } else if (pctNum > 0) {
+        pctStr = '<1%';
+      }
+      return `${tokCount.toLocaleString()} tok (${pctStr})`;
+    };
+
+    // Helper to build lifecycle status badge
+    const getStatusBadge = (status) => {
+      if (status === 'added') {
+        return '<span class="badge badge-added" style="margin-left: 6px;">[+] Added</span>';
+      } else if (status === 'mutated') {
+        return '<span class="badge badge-mutated" style="margin-left: 6px;">[~] Mutated</span>';
+      } else if (status === 'evicted') {
+        return '<span class="badge badge-evicted" style="margin-left: 6px;">[-] Evicted</span>';
+      } else if (status === 'persisted') {
+        return '<span class="badge badge-persisted" style="margin-left: 6px;">[=] Persisted</span>';
+      }
+      return '';
+    };
+
+    // Helper to render a message item row within an exchange
+    const createMessageRow = (b, exIdx, isCollapsed) => {
+      const row = document.createElement('tr');
+      const bId = b.block_id || b.blockId || '—';
+      row.dataset.blockId = bId;
+      row.dataset.exchange = String(exIdx);
+      const role = this._getMessageRole(b);
+
+      let rowClass = 'exchange-item-row';
+      let rolePillClass = 'role-user';
+      let roleLabel = '👤 User Prompt';
+      let badgeLabel = 'User Message';
+      let badgeClass = 'badge-role-user';
+
+      if (role === 'thought') {
+        rowClass += ' thought-msg-row';
+        rolePillClass = 'role-thought';
+        roleLabel = '💭 Reasoning';
+        badgeLabel = 'Reasoning';
+        badgeClass = 'badge-role-thought';
+      } else if (role === 'assistant') {
+        rowClass += ' assistant-msg-row';
+        rolePillClass = 'role-assistant';
+        const isToolCall = bId.includes('_call_') || (b.metadata && b.metadata.tool_use_id);
+        if (isToolCall) {
+          const toolName = b.metadata && b.metadata.name ? b.metadata.name : '';
+          roleLabel = toolName ? `🤖 Tool Call: ${toolName}` : '🤖 Assistant Tool Call';
+          badgeLabel = 'Tool Call';
+        } else {
+          roleLabel = '🤖 Assistant Response';
+          badgeLabel = 'Assistant Message';
+        }
+        badgeClass = 'badge-role-assistant';
+      } else {
+        rowClass += ' user-msg-row';
+      }
+
+      if (isCollapsed) {
+        rowClass += ' exchange-hidden';
+      }
+      row.className = rowClass;
+
+      const identityKey = b.identity_key || b.identityKey || '';
+      const status = b.lifecycle_status || b.status || '';
+      const tokCount = b.token_count ?? b.tokenCount ?? 0;
+      const hash = b.content_hash || b.contentHash || '';
+      const hashShort = hash ? `${hash.slice(0, 8)}...` : '—';
+      const survived = b.turns_survived ?? b.turnsSurvived;
+      const survivedText = survived !== undefined ? `${survived} turns` : '—';
+      const snippet = this._extractBlockSnippet(b, 100);
+      const fullSnippet = this._extractBlockSnippet(b, 600);
+
+      row.innerHTML = `
+        <td class="code-cell">
+          <div class="msg-block-identity">
+            <span class="msg-role-pill ${rolePillClass}">${roleLabel}</span>
+            <span class="msg-block-subid">${this._escapeHtml(bId)}</span>
+          </div>
+          <div class="msg-snippet-box" title="${this._escapeHtml(fullSnippet)}">&ldquo;${this._escapeHtml(snippet)}&rdquo;</div>
+          ${identityKey ? `<div class="msg-identity-sub">${this._escapeHtml(identityKey)}</div>` : ''}
+        </td>
+        <td>
+          <span class="badge ${badgeClass}">${badgeLabel}</span>
+          ${getStatusBadge(status)}
+        </td>
+        <td style="font-family: var(--font-mono); white-space: nowrap;">${formatTokenDisplay(tokCount)}</td>
+        <td>${survivedText}</td>
+        <td class="hash-cell">${hashShort}</td>
+        <td>
+          <button class="btn" style="padding: 2px 8px; font-size: 11px;">View Content</button>
+        </td>
+      `;
+
+      const viewBtn = row.querySelector('button');
+      if (viewBtn) {
+        viewBtn.addEventListener('click', () => {
+          this.openModal(`Block: ${bId} (${badgeLabel})`, b.content || JSON.stringify(b, null, 2));
+        });
+      }
+      return row;
+    };
+
+    // Helper to render non-message block row (System, Tool Defs, Tool Results)
+    const createNonMessageRow = (b) => {
       const row = document.createElement('tr');
       const bId = b.block_id || b.blockId || '—';
       row.dataset.blockId = bId;
@@ -1070,37 +1374,32 @@ class DashboardApp {
       const hashShort = hash ? `${hash.slice(0, 8)}...` : '—';
       const survived = b.turns_survived ?? b.turnsSurvived;
       const survivedText = survived !== undefined ? `${survived} turns` : '—';
+      const snippet = this._extractBlockSnippet(b, 100);
+      const fullSnippet = this._extractBlockSnippet(b, 600);
 
-      const pctNum = totalTurnTokens > 0 ? (tokCount / totalTurnTokens) * 100 : 0;
-      let pctStr = '0%';
-      if (pctNum >= 1) {
-        pctStr = `${Math.round(pctNum)}%`;
-      } else if (pctNum > 0) {
-        pctStr = '<1%';
-      }
-      const tokenDisplay = `${tokCount.toLocaleString()} tok (${pctStr})`;
-
-      let statusBadge = '';
-      if (status === 'added') {
-        statusBadge = '<span class="badge badge-added" style="margin-left: 6px;">[+] Added</span>';
-      } else if (status === 'mutated') {
-        statusBadge = '<span class="badge badge-mutated" style="margin-left: 6px;">[~] Mutated</span>';
-      } else if (status === 'evicted') {
-        statusBadge = '<span class="badge badge-evicted" style="margin-left: 6px;">[-] Evicted</span>';
-      } else if (status === 'persisted') {
-        statusBadge = '<span class="badge badge-persisted" style="margin-left: 6px;">[=] Persisted</span>';
+      let cleanBadge = bType;
+      let badgeClass = 'badge-info';
+      if (bType.includes('system')) {
+        cleanBadge = 'System Prompt';
+      } else if (bType.includes('tool_def') || bType.includes('tool_declaration') || bType.includes('tool_defs')) {
+        cleanBadge = 'Tool Definition';
+      } else if (bType.includes('tool_result')) {
+        cleanBadge = 'Tool Result';
+      } else if (bType.includes('skill')) {
+        cleanBadge = 'Skill Block';
       }
 
       row.innerHTML = `
         <td class="code-cell">
-          <div style="font-weight: 600;">${bId}</div>
-          ${identityKey ? `<div style="font-size: 11px; color: var(--text-secondary); font-family: var(--font-mono);">${identityKey}</div>` : ''}
+          <div style="font-weight: 600; color: var(--text-heading);">${this._escapeHtml(bId)}</div>
+          <div class="msg-snippet-box" title="${this._escapeHtml(fullSnippet)}">&ldquo;${this._escapeHtml(snippet)}&rdquo;</div>
+          ${identityKey ? `<div class="msg-identity-sub">${this._escapeHtml(identityKey)}</div>` : ''}
         </td>
         <td>
-          <span class="badge badge-info">${bType}</span>
-          ${statusBadge}
+          <span class="badge ${badgeClass}">${cleanBadge}</span>
+          ${getStatusBadge(status)}
         </td>
-        <td style="font-family: var(--font-mono); white-space: nowrap;">${tokenDisplay}</td>
+        <td style="font-family: var(--font-mono); white-space: nowrap;">${formatTokenDisplay(tokCount)}</td>
         <td>${survivedText}</td>
         <td class="hash-cell">${hashShort}</td>
         <td>
@@ -1111,12 +1410,148 @@ class DashboardApp {
       const viewBtn = row.querySelector('button');
       if (viewBtn) {
         viewBtn.addEventListener('click', () => {
-          this.openModal(`Block: ${bId} (${bType})`, b.content || JSON.stringify(b, null, 2));
+          this.openModal(`Block: ${bId} (${cleanBadge})`, b.content || JSON.stringify(b, null, 2));
         });
       }
+      return row;
+    };
 
-      this.blocksTableBody.appendChild(row);
+    // Helper to render an entire Exchange (header + items)
+    const renderExchange = (exchange) => {
+      const exIdx = exchange.exchangeIndex;
+      const isCollapsed = this.collapsedExchanges.has(String(exIdx));
+      const exPctNum = totalTurnTokens > 0 ? (exchange.totalTokens / totalTurnTokens) * 100 : 0;
+      const exPctStr = exPctNum >= 1 ? `${Math.round(exPctNum)}%` : exPctNum > 0 ? '<1%' : '0%';
+
+      const headerRow = document.createElement('tr');
+      headerRow.className = `exchange-group-header ${isCollapsed ? 'collapsed' : ''}`;
+      headerRow.dataset.exchange = String(exIdx);
+
+      headerRow.innerHTML = `
+        <td colspan="6">
+          <div class="exchange-header-content">
+            <div class="exchange-header-title">
+              <span class="exchange-collapse-icon">▼</span>
+              <span class="exchange-badge">${this._escapeHtml(exchange.title)}</span>
+              <span class="exchange-turn-label">${this._escapeHtml(exchange.subLabel)}</span>
+            </div>
+            <div class="exchange-header-metrics">
+              <span class="badge badge-info">${exchange.blocks.length} msg${exchange.blocks.length === 1 ? '' : 's'}</span>
+              <span class="exchange-tokens">${exchange.totalTokens.toLocaleString()} tok (${exPctStr})</span>
+              ${exchange.maxSurvived > 0 ? `<span class="exchange-survived">${exchange.maxSurvived} turns survived</span>` : ''}
+            </div>
+          </div>
+        </td>
+      `;
+
+      headerRow.addEventListener('click', () => {
+        const key = String(exIdx);
+        const willCollapse = !this.collapsedExchanges.has(key);
+        if (willCollapse) {
+          this.collapsedExchanges.add(key);
+          headerRow.classList.add('collapsed');
+        } else {
+          this.collapsedExchanges.delete(key);
+          headerRow.classList.remove('collapsed');
+        }
+        const itemRows = this.blocksTableBody.querySelectorAll(`.exchange-item-row[data-exchange="${key}"]`);
+        itemRows.forEach((r) => {
+          if (willCollapse) {
+            r.classList.add('exchange-hidden');
+          } else {
+            r.classList.remove('exchange-hidden');
+          }
+        });
+      });
+
+      this.blocksTableBody.appendChild(headerRow);
+
+      exchange.blocks.forEach((b) => {
+        const row = createMessageRow(b, exIdx, isCollapsed);
+        this.blocksTableBody.appendChild(row);
+      });
+    };
+
+    // Partition filteredBlocks into non-message blocks and grouped conversation exchanges
+    let currentMessageGroup = [];
+    let exchangeCounter = 0;
+
+    const flushMessageGroup = () => {
+      if (currentMessageGroup.length === 0) return;
+      const exchanges = [];
+      let currentEx = null;
+
+      currentMessageGroup.forEach((b) => {
+        const role = this._getMessageRole(b);
+        const bId = b.block_id || b.blockId || '';
+        const m = bId.match(/^hist_(\d+)/);
+        const msgIdx = m ? parseInt(m[1], 10) : null;
+
+        let startNew = false;
+        if (!currentEx) {
+          startNew = true;
+        } else if (role === 'user') {
+          if (msgIdx !== null && currentEx.lastMsgIdx === msgIdx) {
+            startNew = false;
+          } else {
+            startNew = true;
+          }
+        }
+
+        if (startNew) {
+          exchangeCounter += 1;
+          currentEx = {
+            exchangeIndex: exchangeCounter,
+            blocks: [],
+            totalTokens: 0,
+            maxSurvived: 0,
+            hasUser: false,
+            hasAssistant: false,
+            lastMsgIdx: msgIdx,
+          };
+          exchanges.push(currentEx);
+        }
+
+        currentEx.blocks.push(b);
+        currentEx.lastMsgIdx = msgIdx;
+        const tok = b.token_count ?? b.tokenCount ?? 0;
+        currentEx.totalTokens += tok;
+        const surv = b.turns_survived ?? b.turnsSurvived ?? 0;
+        if (surv > currentEx.maxSurvived) {
+          currentEx.maxSurvived = surv;
+        }
+        if (role === 'user') currentEx.hasUser = true;
+        if (role === 'assistant' || role === 'thought') currentEx.hasAssistant = true;
+      });
+
+      exchanges.forEach((ex, i) => {
+        const isLast = i === exchanges.length - 1;
+        if (isLast && ex.hasUser && !ex.hasAssistant) {
+          const tIdx = turn.turn_index !== undefined ? turn.turn_index : turn.turnIndex;
+          ex.title = `💬 Current Turn (${tIdx !== undefined ? `#${tIdx}` : 'Active'}) Prompt`;
+          ex.subLabel = 'Active User Input';
+        } else {
+          ex.title = `💬 Conversation Exchange #${ex.exchangeIndex}`;
+          ex.subLabel = `Turn ${ex.exchangeIndex - 1}`;
+        }
+        renderExchange(ex);
+      });
+
+      currentMessageGroup = [];
+    };
+
+    filteredBlocks.forEach((b) => {
+      const isMsg = this._isMessageBlock(b);
+      if (isMsg) {
+        currentMessageGroup.push(b);
+      } else {
+        flushMessageGroup();
+        const row = createNonMessageRow(b);
+        this.blocksTableBody.appendChild(row);
+      }
     });
+
+    flushMessageGroup();
   }
 
   renderEmptyTurnInspector() {
