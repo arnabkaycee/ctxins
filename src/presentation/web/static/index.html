@@ -70,6 +70,48 @@
 
   <!-- Main Dashboard Container -->
   <main class="container">
+    <!-- Model Context Window Capacity Overview -->
+    <section id="context-capacity-section" class="context-capacity-section">
+      <div class="capacity-header-row">
+        <div class="capacity-title-wrapper">
+          <div class="capacity-title-badge-group">
+            <h2 class="capacity-section-title">Context Window Capacity</h2>
+            <span id="capacity-model-badge" class="badge badge-info capacity-model-badge">—</span>
+          </div>
+          <div class="capacity-subtitle">
+            <span id="capacity-turn-tag">Active Context Window</span>: total tokens loaded vs model ceiling
+          </div>
+        </div>
+        <div class="capacity-usage-badge-wrapper">
+          <span id="capacity-usage-badge" class="badge context-usage-badge">0.0% Usage</span>
+        </div>
+      </div>
+
+      <div class="capacity-progress-wrapper">
+        <div class="capacity-progress-track">
+          <div id="capacity-progress-bar" class="capacity-progress-bar" style="width: 0%;"></div>
+        </div>
+      </div>
+
+      <div class="capacity-details-grid">
+        <div class="capacity-metric-chip">
+          <span class="capacity-metric-label">Used Context:</span>
+          <span id="capacity-used-k" class="capacity-metric-value">0.0K</span>
+          <span id="capacity-used-exact" class="capacity-metric-sub">(0 tokens)</span>
+        </div>
+        <div class="capacity-metric-chip">
+          <span class="capacity-metric-label">Model Capacity:</span>
+          <span id="capacity-available-k" class="capacity-metric-value">200.0K</span>
+          <span id="capacity-available-exact" class="capacity-metric-sub">(200,000 max)</span>
+        </div>
+        <div class="capacity-metric-chip">
+          <span class="capacity-metric-label">Available Headroom:</span>
+          <span id="capacity-remaining-k" class="capacity-metric-value">200.0K</span>
+          <span id="capacity-remaining-pct" class="capacity-metric-sub">(100.0% free)</span>
+        </div>
+      </div>
+    </section>
+
     <!-- KPI Ribbon Banner -->
     <section class="kpi-banner">
       <div class="kpi-card">

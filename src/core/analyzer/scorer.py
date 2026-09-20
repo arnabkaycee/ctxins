@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List
 
+from src.core.analyzer.cost.pricing_table import get_model_capacity
 from src.schema.ast import CanonicalTurn, RuleViolation, ViolationSeverity
 
 
@@ -72,6 +73,12 @@ class PollutionScorer:
                 "potentialSavingsUSD": 0.0,
                 "activeViolationsCount": 0,
                 "violationsBySeverity": {"INFO": 0, "WARN": 0, "CRITICAL": 0},
+                "contextCapacityTokens": 200000,
+                "contextCapacityTokensK": 200.0,
+                "latestContextTokens": 0,
+                "latestContextTokensK": 0.0,
+                "contextUsageRatio": 0.0,
+                "contextUsagePercent": 0.0,
             }
 
         total_input = sum(t.input_tokens for t in turns)
@@ -89,6 +96,19 @@ class PollutionScorer:
 
         hit_ratio = round(cached_input / total_input, 4) if total_input > 0 else 0.0
 
+        last_turn = turns[-1] if turns else None
+        model = last_turn.model if last_turn else None
+        provider = (
+            last_turn.provider.value
+            if last_turn and hasattr(last_turn.provider, "value")
+            else (last_turn.provider if last_turn else None)
+        )
+        context_capacity = get_model_capacity(model, provider)
+        latest_context_tokens = last_turn.input_tokens if last_turn else 0
+        context_usage_ratio = (
+            round(latest_context_tokens / context_capacity, 4) if context_capacity > 0 else 0.0
+        )
+
         return {
             "totalTurns": len(turns),
             "totalInputTokens": total_input,
@@ -101,4 +121,10 @@ class PollutionScorer:
             "potentialSavingsUSD": round(wasted_cost, 6),
             "activeViolationsCount": len(all_violations),
             "violationsBySeverity": severity_counts,
+            "contextCapacityTokens": context_capacity,
+            "contextCapacityTokensK": round(context_capacity / 1000.0, 1),
+            "latestContextTokens": latest_context_tokens,
+            "latestContextTokensK": round(latest_context_tokens / 1000.0, 1),
+            "contextUsageRatio": context_usage_ratio,
+            "contextUsagePercent": round(context_usage_ratio * 100.0, 1),
         }

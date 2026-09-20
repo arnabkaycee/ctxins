@@ -562,3 +562,65 @@ def test_manual_turn_diff_and_recurring_results_optimization(client: TestClient)
     assert "CTX004" in js_text
     assert "/compact" in js_text
     assert "/clear" in js_text
+
+
+def test_inspect_culprit_uncollapses_sections(client: TestClient) -> None:
+    """Verify Inspect Culprit uncollapses and reveals hidden rows in collapsed sections."""
+    res_js = client.get("/js/app.js")
+    assert res_js.status_code == 200
+    js_text = res_js.text
+
+    # Inspect culprit button delegates to locateAndHighlightBlock
+    assert "locateAndHighlightBlock(targetBlockId, targetTurn)" in js_text
+    # Section uncollapsing logic
+    assert "this.collapsedSections.delete(sec)" in js_text
+    assert "this.collapsedExchanges.delete(ex)" in js_text
+    assert "matchingRow.classList.remove('exchange-hidden')" in js_text
+    assert "secHeader.classList.remove('collapsed')" in js_text
+    assert "exHeader.classList.remove('collapsed')" in js_text
+    assert "highlight-culprit-row" in js_text
+
+
+def test_context_capacity_section_and_usage_badge(client: TestClient) -> None:
+    """Verify top context capacity section, usage % badge, and K-formatted stats."""
+    # 1. HTML structure
+    res_html = client.get("/")
+    assert res_html.status_code == 200
+    html_text = res_html.text
+    assert 'id="context-capacity-section"' in html_text
+    assert 'id="capacity-usage-badge"' in html_text
+    assert 'id="capacity-progress-bar"' in html_text
+    assert 'id="capacity-used-k"' in html_text
+    assert 'id="capacity-available-k"' in html_text
+    assert 'id="capacity-remaining-k"' in html_text
+    assert "Context Window Capacity" in html_text
+
+    # 2. CSS styles
+    res_css = client.get("/css/styles.css")
+    assert res_css.status_code == 200
+    css_text = res_css.text
+    assert ".context-capacity-section" in css_text
+    assert ".context-usage-badge" in css_text
+    assert ".capacity-progress-bar" in css_text
+    assert ".capacity-metric-chip" in css_text
+
+    # 3. JavaScript logic
+    res_js = client.get("/js/app.js")
+    assert res_js.status_code == 200
+    js_text = res_js.text
+    assert "renderContextCapacity()" in js_text
+    assert "getModelCapacity(" in js_text
+    assert "capacityUsageBadge" in js_text
+    assert "capacityUsedK" in js_text
+    assert "capacityAvailableK" in js_text
+    assert "% Usage" in js_text
+
+    # 4. REST API summary metrics
+    res_api = client.get("/api/v1/sessions/sess_test_1")
+    assert res_api.status_code == 200
+    session_data = res_api.json()
+    summary = session_data["summary"]
+    assert "contextCapacityTokens" in summary
+    assert "contextCapacityTokensK" in summary
+    assert "contextUsagePercent" in summary
+    assert summary["contextCapacityTokens"] >= 128000

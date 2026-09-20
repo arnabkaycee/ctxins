@@ -35,6 +35,10 @@ class SessionStore:
     def alias_session(self, alias_id: str, target_session_id: str) -> None:
         """Alias a placeholder or scanner session ID to an active session ID."""
         with self.lock:
+            # Prevent overwriting or hijacking a session that already has recorded turns
+            existing = self.sessions.get(alias_id)
+            if existing and len(existing) > 0:
+                return
             self._session_aliases[alias_id] = target_session_id
 
     def _resolve_session_id(self, session_id: str) -> str:

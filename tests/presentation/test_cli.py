@@ -427,3 +427,121 @@ def test_spawn_mitmproxy_forwards_log_env(tmp_path: Any) -> None:
         env = call_kwargs["env"]
         assert env.get("CTXINS_LOG_LEVEL") == "DEBUG"
         assert env.get("CTXINS_LOG_FILE") == log_file
+
+
+def test_print_exit_proxy_warning_colored() -> None:
+    """Verify print_exit_proxy_warning produces ANSI colored output and all required instructions."""
+    import io
+
+    from src.cli import print_exit_proxy_warning, reset_exit_warning_state
+
+    buf = io.StringIO()
+    reset_exit_warning_state()
+    print_exit_proxy_warning(stream=buf, force=True, force_color=True)
+    out = buf.getvalue()
+
+    # Verify colored ANSI sequences
+    assert "\033[1;33m" in out  # bold yellow
+    assert "\033[1;36m" in out  # bold cyan
+    assert "\033[0m" in out  # reset
+
+    # Verify content requirements
+    assert "WARNING" in out
+    assert "Proxy environment variables may still be active" in out
+    assert "unset the env of ctxins" in out
+    assert "export it across terminals" in out
+    assert "run the agents without ctxins next time" in out
+    assert "agent terminals may fail to run as the tool sets env proxy variables" in out
+    assert "eval $(uv run ctxins env --unset)" in out
+    assert "eval $(ctxins env --unset)" in out
+    assert "unset HTTP_PROXY" in out
+    assert "NODE_EXTRA_CA_CERTS" in out
+
+
+def test_print_exit_proxy_warning_non_colored() -> None:
+    """Verify print_exit_proxy_warning produces clean text when colors are disabled."""
+    import io
+
+    from src.cli import print_exit_proxy_warning, reset_exit_warning_state
+
+    buf = io.StringIO()
+    reset_exit_warning_state()
+    print_exit_proxy_warning(stream=buf, force=True, force_color=False)
+    out = buf.getvalue()
+
+    # Verify NO ANSI escape codes
+    assert "\033[" not in out
+
+    # Verify content requirements
+    assert "WARNING:" in out
+    assert "unset the env of ctxins, and export it across terminals" in out
+    assert "eval $(uv run ctxins env --unset)" in out
+    assert "unset HTTP_PROXY" in out
+
+
+def test_print_exit_proxy_warning_only_prints_once() -> None:
+    """Verify print_exit_proxy_warning deduplicates and prints at most once unless forced."""
+    import io
+
+    from src.cli import print_exit_proxy_warning, reset_exit_warning_state
+
+    buf = io.StringIO()
+    reset_exit_warning_state()
+
+    print_exit_proxy_warning(stream=buf)
+    first_len = len(buf.getvalue())
+    assert first_len > 0
+
+    # Second call without force should be a no-op
+    print_exit_proxy_warning(stream=buf)
+    assert len(buf.getvalue()) == first_len
+
+    # Force call prints again
+    print_exit_proxy_warning(stream=buf, force=True)
+    assert len(buf.getvalue()) > first_len
+
+
+def test_main_subcommands_trigger_warning(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Verify main() invokes exit warning on process exit for daemon subcommands but not for env commands."""
+    from src.cli import reset_exit_warning_state
+
+    warning_calls = []
+
+    def mock_warning(*args: Any, **kwargs: Any) -> None:
+        warning_calls.append((args, kwargs))
+
+    monkeypatch.setattr("src.cli.print_exit_proxy_warning", mock_warning)
+    monkeypatch.setattr("src.cli.run_tui", lambda **kw: None)
+    monkeypatch.setattr("src.cli.run_web", lambda **kw: None)
+    monkeypatch.setattr("src.cli.run_with_harness", lambda **kw: None)
+
+    # 1. tui triggers warning on exit
+    warning_calls.clear()
+    reset_exit_warning_state()
+    main(["tui"])
+    assert len(warning_calls) >= 1
+
+    # 2. web triggers warning on exit
+    warning_calls.clear()
+    reset_exit_warning_state()
+    main(["web"])
+    assert len(warning_calls) >= 1
+
+    # 3. run triggers warning on exit
+    warning_calls.clear()
+    reset_exit_warning_state()
+    main(["run", "--", "echo", "1"])
+    assert len(warning_calls) >= 1
+
+    # 4. env does NOT trigger exit warning
+    warning_calls.clear()
+    reset_exit_warning_state()
+    main(["env"])
+    assert len(warning_calls) == 0
+
+    # 5. unset-env does NOT trigger exit warning
+    warning_calls.clear()
+    reset_exit_warning_state()
+    main(["unset-env"])
+    assert len(warning_calls) == 0
+

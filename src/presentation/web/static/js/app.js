@@ -37,6 +37,19 @@ class DashboardApp {
     this.pollutionMeterFill = document.getElementById('pollution-meter-fill');
     this.pollutionLevelText = document.getElementById('pollution-level-text');
 
+    // Context Window Capacity Elements
+    this.capacitySection = document.getElementById('context-capacity-section');
+    this.capacityModelBadge = document.getElementById('capacity-model-badge');
+    this.capacityTurnTag = document.getElementById('capacity-turn-tag');
+    this.capacityUsageBadge = document.getElementById('capacity-usage-badge');
+    this.capacityProgressBar = document.getElementById('capacity-progress-bar');
+    this.capacityUsedK = document.getElementById('capacity-used-k');
+    this.capacityUsedExact = document.getElementById('capacity-used-exact');
+    this.capacityAvailableK = document.getElementById('capacity-available-k');
+    this.capacityAvailableExact = document.getElementById('capacity-available-exact');
+    this.capacityRemainingK = document.getElementById('capacity-remaining-k');
+    this.capacityRemainingPct = document.getElementById('capacity-remaining-pct');
+
     // Feeds & Tables
     this.recommendationsFeed = document.getElementById('recommendations-feed');
     this.recommendationsCount = document.getElementById('recommendations-count');
@@ -521,6 +534,7 @@ class DashboardApp {
 
   renderAll() {
     this.renderKPIs();
+    this.renderContextCapacity();
     if (this.charts) {
       this.charts.updateData(this.turns);
     }
@@ -578,6 +592,115 @@ class DashboardApp {
         this.pollutionMeterFill.style.backgroundColor = 'var(--color-critical)';
         if (this.pollutionLevelText) this.pollutionLevelText.textContent = 'Critical Pollution';
       }
+    }
+  }
+
+  getModelCapacity(modelName, provider = null) {
+    if (!modelName) return 200000;
+    const m = String(modelName).toLowerCase();
+    if (m.includes('gemini-1.5-pro') || m.includes('gemini-2.5-pro')) return 2000000;
+    if (m.includes('gemini-1.5-flash') || m.includes('gemini-2.0-flash')) return 1000000;
+    if (m.includes('gpt-4o-mini') || m.includes('o1-mini') || m.includes('gpt-4o')) return 128000;
+    if (m.includes('claude') || m.includes('sonnet') || m.includes('haiku') || m.includes('opus')) return 200000;
+    if (provider) {
+      const p = String(provider).toLowerCase();
+      if (p.includes('gemini') || p.includes('google')) return 2000000;
+      if (p.includes('openai')) return 128000;
+      if (p.includes('anthropic')) return 200000;
+    }
+    return 200000;
+  }
+
+  renderContextCapacity() {
+    if (!this.capacitySection) return;
+
+    const s = this.summary || {};
+    const selectedTurn = this.getSelectedTurn();
+    const lastTurn = this.turns.length > 0 ? this.turns[this.turns.length - 1] : null;
+    const activeTurn = selectedTurn || lastTurn;
+
+    const currentSession = this.sessions.find((sess) => sess.sessionId === this.activeSessionId);
+    const model =
+      activeTurn?.model ||
+      currentSession?.model ||
+      s.model ||
+      'claude-3-5-sonnet';
+    const provider =
+      activeTurn?.provider ||
+      currentSession?.provider ||
+      s.provider ||
+      'anthropic';
+
+    const capacityTokens =
+      s.contextCapacityTokens ||
+      this.getModelCapacity(model, provider);
+
+    // Used tokens is active turn's input tokens (or total tokens in turn context)
+    const usedTokens = activeTurn
+      ? (activeTurn.input_tokens ?? activeTurn.inputTokens ?? activeTurn.total_tokens ?? 0)
+      : (s.latestContextTokens ?? 0);
+
+    const usageRatio = capacityTokens > 0 ? usedTokens / capacityTokens : 0;
+    const usagePct = Math.min(100, Math.max(0, usageRatio * 100));
+
+    const usedK = (usedTokens / 1000).toFixed(1) + 'K';
+    const capacityK = (capacityTokens / 1000).toFixed(1) + 'K';
+    const remainingTokens = Math.max(0, capacityTokens - usedTokens);
+    const remainingK = (remainingTokens / 1000).toFixed(1) + 'K';
+    const remainingPct = Math.max(0, 100 - usagePct).toFixed(1);
+
+    if (this.capacityModelBadge) {
+      this.capacityModelBadge.textContent = model;
+    }
+
+    if (this.capacityTurnTag) {
+      if (selectedTurn) {
+        const tIdx = selectedTurn.turn_index ?? selectedTurn.turnIndex ?? 0;
+        this.capacityTurnTag.textContent = `Turn #${Number(tIdx) + 1} Context`;
+      } else {
+        this.capacityTurnTag.textContent = 'Active Context Window';
+      }
+    }
+
+    if (this.capacityUsageBadge) {
+      this.capacityUsageBadge.textContent = `${usagePct.toFixed(1)}% Usage`;
+      this.capacityUsageBadge.classList.remove('usage-warn', 'usage-critical');
+      if (usagePct >= 80) {
+        this.capacityUsageBadge.classList.add('usage-critical');
+      } else if (usagePct >= 50) {
+        this.capacityUsageBadge.classList.add('usage-warn');
+      }
+    }
+
+    if (this.capacityProgressBar) {
+      this.capacityProgressBar.style.width = `${usagePct}%`;
+      this.capacityProgressBar.classList.remove('usage-warn', 'usage-critical');
+      if (usagePct >= 80) {
+        this.capacityProgressBar.classList.add('usage-critical');
+      } else if (usagePct >= 50) {
+        this.capacityProgressBar.classList.add('usage-warn');
+      }
+    }
+
+    if (this.capacityUsedK) {
+      this.capacityUsedK.textContent = usedK;
+    }
+    if (this.capacityUsedExact) {
+      this.capacityUsedExact.textContent = `(${usedTokens.toLocaleString()} tokens)`;
+    }
+
+    if (this.capacityAvailableK) {
+      this.capacityAvailableK.textContent = capacityK;
+    }
+    if (this.capacityAvailableExact) {
+      this.capacityAvailableExact.textContent = `(${capacityTokens.toLocaleString()} max)`;
+    }
+
+    if (this.capacityRemainingK) {
+      this.capacityRemainingK.textContent = remainingK;
+    }
+    if (this.capacityRemainingPct) {
+      this.capacityRemainingPct.textContent = `(${remainingPct}% free)`;
     }
   }
 
@@ -847,32 +970,14 @@ class DashboardApp {
             }
           }
 
-          if (targetTurn !== null && targetTurn !== undefined) {
-            this.selectTurn(targetTurn);
-          }
-
-          document.getElementById('blocks-table-body')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-
-          if (targetBlockId && this.blocksTableBody) {
-            const rows = Array.from(this.blocksTableBody.querySelectorAll('tr'));
-            const matchingRow = rows.find(
-              (tr) =>
-                tr.dataset.blockId === targetBlockId ||
-                tr.querySelector('.code-cell')?.textContent.includes(targetBlockId)
-            );
-
-            if (matchingRow) {
-              matchingRow.classList.remove('highlight-culprit-row');
-              void matchingRow.offsetWidth;
-              matchingRow.classList.add('highlight-culprit-row');
-              setTimeout(() => {
-                matchingRow.classList.remove('highlight-culprit-row');
-              }, 2500);
-            } else {
-              this.showToast(`Turn #${targetTurn ?? '?'}: Culprit block ${targetBlockId} not found in active blocks`);
-            }
+          if (targetBlockId) {
+            this.locateAndHighlightBlock(targetBlockId, targetTurn);
           } else {
-            const turnLabel = targetTurn !== null && targetTurn !== undefined ? `Turn #${targetTurn}` : 'Current turn';
+            if (targetTurn !== null && targetTurn !== undefined) {
+              this.selectTurn(targetTurn);
+            }
+            document.getElementById('blocks-table-body')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            const turnLabel = targetTurn !== null && targetTurn !== undefined ? `Turn #${Number(targetTurn) + 1}` : 'Current turn';
             this.showToast(`⚠️ Turn-level alert: Violation applies across ${turnLabel}`);
             const subtitle = document.querySelector('.inspector-panel .panel-subtitle');
             if (subtitle) {
@@ -1087,8 +1192,10 @@ class DashboardApp {
 
     const tIdx = turn.turn_index !== undefined ? turn.turn_index : turn.turnIndex;
     if (this.turnTitle) {
-      this.turnTitle.textContent = `Turn #${tIdx} Inspector`;
+      this.turnTitle.textContent = `Turn #${Number(tIdx) + 1} Inspector`;
     }
+
+    this.renderContextCapacity();
 
     if (this.turnMetaRibbon) {
       const inp = (turn.input_tokens ?? turn.inputTokens ?? 0).toLocaleString();
@@ -2539,6 +2646,25 @@ class DashboardApp {
             tr.querySelector('.code-cell')?.textContent.includes(blockId)
         );
       }
+
+      // Ensure matchingRow and all its containing section/exchange items are unhidden in DOM
+      if (matchingRow) {
+        matchingRow.classList.remove('exchange-hidden');
+        if (sec) {
+          this.collapsedSections.delete(sec);
+          const secHeader = this.blocksTableBody?.querySelector(`.section-group-header[data-section="${sec}"]`);
+          if (secHeader) secHeader.classList.remove('collapsed');
+          const secItems = this.blocksTableBody?.querySelectorAll(`.exchange-item-row[data-section="${sec}"]`);
+          secItems?.forEach((r) => r.classList.remove('exchange-hidden'));
+        }
+        if (ex) {
+          this.collapsedExchanges.delete(ex);
+          const exHeader = this.blocksTableBody?.querySelector(`.exchange-group-header[data-exchange="${ex}"]`);
+          if (exHeader) exHeader.classList.remove('collapsed');
+          const exItems = this.blocksTableBody?.querySelectorAll(`.exchange-item-row[data-exchange="${ex}"]`);
+          exItems?.forEach((r) => r.classList.remove('exchange-hidden'));
+        }
+      }
     }
 
     // 5. Scroll and highlight
@@ -2548,8 +2674,10 @@ class DashboardApp {
       matchingRow.classList.remove('highlight-culprit-row');
       void matchingRow.offsetWidth; // Force CSS reflow to restart animation
       matchingRow.classList.add('highlight-diff-target');
+      matchingRow.classList.add('highlight-culprit-row');
       setTimeout(() => {
         matchingRow.classList.remove('highlight-diff-target');
+        matchingRow.classList.remove('highlight-culprit-row');
       }, 3500);
 
       const turnLabel = targetTurn !== null && targetTurn !== undefined ? `Turn #${Number(targetTurn) + 1}` : 'current turn';
@@ -3421,6 +3549,12 @@ class DashboardApp {
       estimatedCostUSD: 0.0485,
       potentialSavingsUSD: 0.0127,
       pollutionScore: 34.2,
+      contextCapacityTokens: 200000,
+      contextCapacityTokensK: 200.0,
+      latestContextTokens: 26500,
+      latestContextTokensK: 26.5,
+      contextUsageRatio: 0.1325,
+      contextUsagePercent: 13.3,
     };
 
     return { turns, violations, summary };

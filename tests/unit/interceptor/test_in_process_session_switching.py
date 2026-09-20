@@ -231,6 +231,120 @@ def test_in_process_session_switching_conversation_reset_auto_detection():
     assert env4.session_id == "sess_claude_9003_2"
 
 
+def test_agy_wrapped_payload_in_process_session_switching():
+    """Verify agy wrapped request payload with contents creates new distinct sessions without overwriting."""
+    buffer = BoundedRingBuffer(100)
+    detector = MagicMock(spec=ProcessDetector)
+    agent = AgentIdentity(
+        name="agy",
+        display_name="Antigravity (agy)",
+        is_known=True,
+        pid=7788,
+        command="/usr/local/bin/agy",
+        confidence=1.0,
+        detection_source="process",
+        process_info=ProcessInfo(pid=7788, name="agy", cmdline="/usr/local/bin/agy"),
+    )
+    detector.identify_client.return_value = agent
+    addon = CtxinsAddon(ring_buffer=buffer, process_detector=detector)
+
+    # Turn 1: First session in agy window
+    payload1 = {
+        "model": "gemini-1.5-pro",
+        "request": {
+            "systemInstruction": {"parts": [{"text": "You are agy."}]},
+            "contents": [{"role": "user", "parts": [{"text": "First session question"}]}],
+        },
+    }
+    req1 = MockRequest(
+        host="daily-cloudcode-pa.googleapis.com",
+        path="/v1internal:streamGenerateContent?alt=sse",
+        content=json.dumps(payload1).encode("utf-8"),
+    )
+    flow1 = MockFlow(request=req1, flow_id="flow-agy-1")
+    addon.requestheaders(flow1)
+    addon.request(flow1)
+
+    assert len(buffer) == 1
+    env1 = WireEnvelope.from_bytes(buffer.pop())
+    assert env1.session_id == "sess_agy_7788"
+
+    # Turn 2: Follow-up in same agy session
+    payload2 = {
+        "model": "gemini-1.5-pro",
+        "request": {
+            "systemInstruction": {"parts": [{"text": "You are agy."}]},
+            "contents": [
+                {"role": "user", "parts": [{"text": "First session question"}]},
+                {"role": "model", "parts": [{"text": "First answer"}]},
+                {"role": "user", "parts": [{"text": "First session continuation"}]},
+            ],
+        },
+    }
+    req2 = MockRequest(
+        host="daily-cloudcode-pa.googleapis.com",
+        path="/v1internal:streamGenerateContent?alt=sse",
+        content=json.dumps(payload2).encode("utf-8"),
+    )
+    flow2 = MockFlow(request=req2, flow_id="flow-agy-2")
+    addon.requestheaders(flow2)
+    addon.request(flow2)
+
+    assert len(buffer) == 1
+    env2 = WireEnvelope.from_bytes(buffer.pop())
+    assert env2.session_id == "sess_agy_7788"
+
+    # Turn 3: User creates new session in same agy window (/clear or new conversation)
+    payload3 = {
+        "model": "gemini-1.5-pro",
+        "request": {
+            "systemInstruction": {"parts": [{"text": "You are agy."}]},
+            "contents": [{"role": "user", "parts": [{"text": "New session brand new question"}]}],
+        },
+    }
+    req3 = MockRequest(
+        host="daily-cloudcode-pa.googleapis.com",
+        path="/v1internal:streamGenerateContent?alt=sse",
+        content=json.dumps(payload3).encode("utf-8"),
+    )
+    flow3 = MockFlow(request=req3, flow_id="flow-agy-3")
+    addon.requestheaders(flow3)
+    addon.request(flow3)
+
+    assert len(buffer) == 1
+    env3 = WireEnvelope.from_bytes(buffer.pop())
+    # Crucial: Must be a new session ID sess_agy_7788_2, NOT overwriting sess_agy_7788!
+    assert env3.session_id == "sess_agy_7788_2"
+
+
+def test_session_store_does_not_alias_populated_session():
+    """Verify SessionStore.alias_session refuses to alias an existing session with turns."""
+    store = SessionStore()
+    sid_old = "sess_agy_1000"
+    sid_new = "sess_agy_1000_2"
+
+    turn = CanonicalTurn(
+        turn_id="t1",
+        session_id=sid_old,
+        correlation_id="c1",
+        turn_index=0,
+        timestamp=1700000000.0,
+        provider="gemini",
+        model="gemini-1.5-pro",
+    )
+    store.register_session(sid_old)
+    store.append_turn(turn)
+
+    # Attempt to alias sid_old to sid_new (e.g. from scanner or late discovery)
+    store.alias_session(sid_old, sid_new)
+
+    # Old session must NOT be aliased or overwritten!
+    assert store._resolve_session_id(sid_old) == sid_old
+    turns = store.get_session(sid_old)
+    assert turns is not None and len(turns) == 1
+    assert turns[0].turn_id == "t1"
+
+
 @pytest.mark.asyncio
 async def test_core_pipeline_bridge_captures_all_switched_sessions():
     import time

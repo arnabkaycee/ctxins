@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import atexit
 import errno
 import logging
 import os
@@ -127,6 +128,78 @@ def run_env(
                 "# Or run your agent directly without altering shell variables:\n"
                 "#   uv run ctxins run -- <agent-command>\n"
             )
+
+
+def _supports_color(stream: Any) -> bool:
+    """Check if stream supports ANSI color formatting."""
+    if os.environ.get("NO_COLOR"):
+        return False
+    if os.environ.get("FORCE_COLOR") == "1":
+        return True
+    return bool(hasattr(stream, "isatty") and stream.isatty())
+
+
+_EXIT_WARNING_PRINTED = False
+
+
+def reset_exit_warning_state() -> None:
+    """Reset the exit warning printed flag (useful for testing)."""
+    global _EXIT_WARNING_PRINTED
+    _EXIT_WARNING_PRINTED = False
+
+
+def print_exit_proxy_warning(
+    stream: Optional[Any] = None,
+    force: bool = False,
+    force_color: Optional[bool] = None,
+) -> None:
+    """Print a colored warning message on exiting the process.
+
+    Reminds the user to unset ctxins proxy environment variables and export
+    the changes across terminals if running agents without ctxins next time.
+    """
+    global _EXIT_WARNING_PRINTED
+    if _EXIT_WARNING_PRINTED and not force:
+        return
+    _EXIT_WARNING_PRINTED = True
+
+    target_stream = stream if stream is not None else sys.stderr
+    if force_color is not None:
+        use_color = force_color
+    else:
+        use_color = _supports_color(target_stream)
+
+    if use_color:
+        bold_yellow = "\033[1;33m"
+        yellow = "\033[33m"
+        bold_white = "\033[1;37m"
+        bold_cyan = "\033[1;36m"
+        dim = "\033[90m"
+        reset = "\033[0m"
+    else:
+        bold_yellow = ""
+        yellow = ""
+        bold_white = ""
+        bold_cyan = ""
+        dim = ""
+        reset = ""
+
+    unset_vars = " ".join(get_unset_env_exports())
+    msg = (
+        f"\n{bold_yellow}⚠️  [ctxins] WARNING:{reset} {bold_white}Proxy environment variables may still be active in your terminal!{reset}\n"
+        f"{yellow}Please unset the env of ctxins, and export it across terminals if you want to run the agents without ctxins next time,{reset}\n"
+        f"{yellow}otherwise agent terminals may fail to run as the tool sets env proxy variables.{reset}\n\n"
+        f"{bold_white}To unset in your current shell session, run:{reset}\n"
+        f"  {bold_cyan}eval $(uv run ctxins env --unset){reset}  {dim}# or: eval $(ctxins env --unset){reset}\n\n"
+        f"{bold_white}Or export unset across terminals:{reset}\n"
+        f"  {bold_cyan}unset {unset_vars}{reset}\n\n"
+    )
+
+    try:
+        target_stream.write(msg)
+        target_stream.flush()
+    except Exception:
+        pass
 
 
 async def _shutdown_uvicorn(server: Optional[Any], task: Optional[asyncio.Task[Any]]) -> None:
@@ -301,7 +374,9 @@ class CorePipelineBridge:
             if pid and harness != "unknown":
                 scan_sid = f"sess_{harness}_{pid}"
                 if scan_sid in self.store.list_sessions() and scan_sid != session_id:
-                    self.store.alias_session(scan_sid, session_id)
+                    existing_scan_turns = self.store.get_session(scan_sid) or []
+                    if len(existing_scan_turns) == 0:
+                        self.store.alias_session(scan_sid, session_id)
 
             existing_turns = self.store.get_session(session_id) or []
             if len(existing_turns) == 0:
@@ -629,7 +704,10 @@ def run_tui(
                     mitm_proc.kill()
             await server.stop()
 
-    asyncio.run(_start_and_run())
+    try:
+        asyncio.run(_start_and_run())
+    finally:
+        print_exit_proxy_warning()
 
 
 def run_web(
@@ -675,7 +753,10 @@ def run_web(
                     mitm_proc.kill()
             await server.stop()
 
-    asyncio.run(_run_web_pipeline())
+    try:
+        asyncio.run(_run_web_pipeline())
+    finally:
+        print_exit_proxy_warning()
 
 
 def run_live(
@@ -831,7 +912,10 @@ def run_with_harness(
                     mitm_proc.kill()
             await server.stop()
 
-    asyncio.run(_run_pipeline())
+    try:
+        asyncio.run(_run_pipeline())
+    finally:
+        print_exit_proxy_warning()
 
 
 def _build_log_parser() -> argparse.ArgumentParser:
@@ -1040,54 +1124,61 @@ def main(args: Optional[List[str]] = None) -> int:
             unset=bool(getattr(parsed, "unset", False) or parsed.subcommand == "unset-env"),
         )
         return 0
-    elif parsed.subcommand == "tui":
-        run_tui(
-            socket_path=parsed.socket,
-            proxy_port=parsed.proxy_port,
-            target=getattr(parsed, "target", None),
-            target_port=getattr(parsed, "target_port", None),
-            no_web=getattr(parsed, "no_web", False),
-            web_port=getattr(parsed, "web_port", DEFAULT_WEB_PORT),
-        )
-    elif parsed.subcommand == "web":
-        run_web(
-            port=parsed.port,
-            host=parsed.host,
-            socket_path=parsed.socket,
-            proxy_port=parsed.proxy_port,
-            target=getattr(parsed, "target", None),
-            target_port=getattr(parsed, "target_port", None),
-        )
-    elif parsed.subcommand == "live":
-        run_live(
-            ui_mode=parsed.ui_mode,
-            port=parsed.port,
-            host=parsed.host,
-            socket_path=parsed.socket,
-            proxy_port=parsed.proxy_port,
-            target=getattr(parsed, "target", None),
-            target_port=getattr(parsed, "target_port", None),
-            no_web=getattr(parsed, "no_web", False),
-            web_port=getattr(parsed, "web_port", DEFAULT_WEB_PORT),
-        )
-    elif parsed.subcommand == "run":
-        cmd = parsed.command
-        if cmd and cmd[0] == "--":
-            cmd = cmd[1:]
-        run_with_harness(
-            command=cmd,
-            ui_mode=parsed.ui_mode,
-            port=parsed.port,
-            host=parsed.host,
-            socket_path=parsed.socket,
-            proxy_port=parsed.proxy_port,
-            target=getattr(parsed, "target", None),
-            target_port=getattr(parsed, "target_port", None),
-            no_web=getattr(parsed, "no_web", False),
-            web_port=getattr(parsed, "web_port", DEFAULT_WEB_PORT),
-        )
 
-    return 0
+    atexit.register(print_exit_proxy_warning)
+
+    try:
+        if parsed.subcommand == "tui":
+            run_tui(
+                socket_path=parsed.socket,
+                proxy_port=parsed.proxy_port,
+                target=getattr(parsed, "target", None),
+                target_port=getattr(parsed, "target_port", None),
+                no_web=getattr(parsed, "no_web", False),
+                web_port=getattr(parsed, "web_port", DEFAULT_WEB_PORT),
+            )
+        elif parsed.subcommand == "web":
+            run_web(
+                port=parsed.port,
+                host=parsed.host,
+                socket_path=parsed.socket,
+                proxy_port=parsed.proxy_port,
+                target=getattr(parsed, "target", None),
+                target_port=getattr(parsed, "target_port", None),
+            )
+        elif parsed.subcommand == "live":
+            run_live(
+                ui_mode=parsed.ui_mode,
+                port=parsed.port,
+                host=parsed.host,
+                socket_path=parsed.socket,
+                proxy_port=parsed.proxy_port,
+                target=getattr(parsed, "target", None),
+                target_port=getattr(parsed, "target_port", None),
+                no_web=getattr(parsed, "no_web", False),
+                web_port=getattr(parsed, "web_port", DEFAULT_WEB_PORT),
+            )
+        elif parsed.subcommand == "run":
+            cmd = parsed.command
+            if cmd and cmd[0] == "--":
+                cmd = cmd[1:]
+            run_with_harness(
+                command=cmd,
+                ui_mode=parsed.ui_mode,
+                port=parsed.port,
+                host=parsed.host,
+                socket_path=parsed.socket,
+                proxy_port=parsed.proxy_port,
+                target=getattr(parsed, "target", None),
+                target_port=getattr(parsed, "target_port", None),
+                no_web=getattr(parsed, "no_web", False),
+                web_port=getattr(parsed, "web_port", DEFAULT_WEB_PORT),
+            )
+        return 0
+    except KeyboardInterrupt:
+        return 130
+    finally:
+        print_exit_proxy_warning()
 
 
 if __name__ == "__main__":

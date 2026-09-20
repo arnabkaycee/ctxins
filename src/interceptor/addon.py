@@ -240,6 +240,12 @@ class CtxinsAddon:
             "claude-session-id",
             "x-agy-session",
             "x-agy-session-id",
+            "x-trajectory-id",
+            "trajectory-id",
+            "trajectory_id",
+            "x-cascade-id",
+            "cascade-id",
+            "cascade_id",
         ):
             val = lower_headers.get(key)
             if val and val.strip():
@@ -247,44 +253,33 @@ class CtxinsAddon:
                 break
 
         if not session_id and isinstance(body, dict):
-            for key in (
-                "sessionId",
-                "session_id",
-                "conversationId",
-                "conversation_id",
-                "chatId",
-                "chat_id",
-            ):
-                val = body.get(key)
-                if val and isinstance(val, (str, int)) and str(val).strip():
-                    session_id = str(val).strip()
+            req_wrapper = body.get("request") if isinstance(body.get("request"), dict) else None
+            req_meta = req_wrapper.get("metadata") if req_wrapper and isinstance(req_wrapper.get("metadata"), dict) else None
+            body_meta = body.get("metadata") if isinstance(body.get("metadata"), dict) else None
+
+            candidate_containers = [body, req_wrapper, body_meta, req_meta]
+            for container in candidate_containers:
+                if not container or not isinstance(container, dict):
+                    continue
+                lower_keys = {str(k).lower(): v for k, v in container.items()}
+                for k in (
+                    "sessionid",
+                    "session_id",
+                    "conversationid",
+                    "conversation_id",
+                    "trajectoryid",
+                    "trajectory_id",
+                    "cascadeid",
+                    "cascade_id",
+                    "chatid",
+                    "chat_id",
+                ):
+                    val = lower_keys.get(k)
+                    if val and isinstance(val, (str, int)) and str(val).strip():
+                        session_id = str(val).strip()
+                        break
+                if session_id:
                     break
-
-            if not session_id:
-                meta = body.get("metadata")
-                if isinstance(meta, dict):
-                    for key in (
-                        "sessionId",
-                        "session_id",
-                        "conversationId",
-                        "conversation_id",
-                        "chatId",
-                        "chat_id",
-                        "user_id",
-                    ):
-                        val = meta.get(key)
-                        if val and isinstance(val, (str, int)) and str(val).strip():
-                            session_id = str(val).strip()
-                            break
-
-            if not session_id:
-                req_wrapper = body.get("request")
-                if isinstance(req_wrapper, dict):
-                    for key in ("sessionId", "session_id", "conversationId", "conversation_id"):
-                        val = req_wrapper.get(key)
-                        if val and isinstance(val, (str, int)) and str(val).strip():
-                            session_id = str(val).strip()
-                            break
 
         metadata = getattr(flow, "metadata", {})
         agent_identity = metadata.get("ctxins_agent")
@@ -807,7 +802,17 @@ class CtxinsAddon:
                 first_content = ""
                 if messages:
                     first_msg = messages[0]
-                    first_content = str(first_msg.get("content", first_msg.get("parts", "")))[:200]
+                    content_val = first_msg.get("content") or first_msg.get("parts") or ""
+                    if isinstance(content_val, list):
+                        parts_text = []
+                        for p in content_val:
+                            if isinstance(p, dict):
+                                parts_text.append(str(p.get("text") or p.get("content") or p))
+                            else:
+                                parts_text.append(str(p))
+                        first_content = "".join(parts_text)[:500]
+                    else:
+                        first_content = str(content_val)[:500]
                 first_hash = (
                     hashlib.sha256(first_content.encode("utf-8")).hexdigest()[:8]
                     if first_content

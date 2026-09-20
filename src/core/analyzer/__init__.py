@@ -5,6 +5,7 @@ from src.core.analyzer.cost.pricing_table import (
     DEFAULT_PRICING,
     PRICING_CATALOG,
     ModelPricing,
+    get_model_capacity,
     get_pricing,
 )
 from src.core.analyzer.engine import PollutionAnalyzer
@@ -33,5 +34,6 @@ __all__ = [
     "SchemaBloatHeuristic",
     "StaleToolHeuristic",
     "ZombieContextRule",
+    "get_model_capacity",
     "get_pricing",
 ]
