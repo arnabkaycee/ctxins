@@ -9,6 +9,7 @@ from fastapi import APIRouter, HTTPException, Response
 from src.core.analyzer.scorer import PollutionScorer
 from src.core.graph.diff import TurnDiffEngine
 from src.core.store.jsonc_exporter import JsoncExporter
+from src.core.store.markdown_exporter import MarkdownExporter
 from src.core.store.session_store import SessionStore
 from src.presentation.web.turn_serializer import (
     annotate_blocks_lifecycle,
@@ -195,11 +196,23 @@ def create_api_router(store: SessionStore, ws_hub: WebSocketHub) -> APIRouter:
 
     @router.get("/sessions/{id}/export")
     def export_session(id: str, format: str = "jsonc") -> Response:
-        """Export session adhering to canonical .jsonc or plain .json schema."""
+        """Export session adhering to canonical .jsonc, plain .json, or actionable .md format."""
         turns = store.get_session(id)
         if turns is None:
             raise HTTPException(status_code=404, detail=f"Session '{id}' not found")
-        is_jsonc = format.lower() == "jsonc"
+        fmt = format.lower()
+        if fmt in ("md", "markdown"):
+            try:
+                content = MarkdownExporter.export_from_store(store, id)
+            except Exception as exc:
+                raise HTTPException(status_code=500, detail=f"Export failed: {exc}") from exc
+            return Response(
+                content=content,
+                media_type="text/markdown",
+                headers={"Content-Disposition": f'attachment; filename="{id}_optimization_report.md"'},
+            )
+
+        is_jsonc = fmt == "jsonc"
         try:
             content = JsoncExporter.export_from_store(store, id, include_comments=is_jsonc)
         except Exception as exc:

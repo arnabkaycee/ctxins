@@ -262,6 +262,19 @@ def test_export_session_plain_json(client: TestClient) -> None:
     assert data["summary"]["totalTurns"] == 2
 
 
+def test_export_session_markdown(client: TestClient) -> None:
+    """Verify /api/v1/sessions/{id}/export?format=markdown returns actionable Markdown audit."""
+    response = client.get("/api/v1/sessions/sess_test_1/export?format=markdown")
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/markdown")
+    assert 'attachment; filename="sess_test_1_optimization_report.md"' in response.headers["content-disposition"]
+    text = response.text
+    assert "# 🔍 ctxins Context Optimization Report: `sess_test_1`" in text
+    assert "## 📊 Executive Summary & Financial Audit" in text
+    assert "## 🚨 Triggered Context Health Violations" in text
+    assert "## 🛠️ Recommended Directives for AGENTS.md / .cursorrules" in text
+
+
 def test_static_assets_serving(client: TestClient) -> None:
     """Verify static html, css, and js files are served properly."""
     res_html = client.get("/")
@@ -285,6 +298,7 @@ def test_static_assets_serving(client: TestClient) -> None:
     assert res_app_js.status_code == 200
     assert "renderAutoDiffRibbon" in res_app_js.text
     assert "fetchAutoDiff" in res_app_js.text
+    assert "exportMarkdownReport" in res_app_js.text
 
 
 # ---------------------------------------------------------------------------
