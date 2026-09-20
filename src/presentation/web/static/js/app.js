@@ -757,6 +757,11 @@ class DashboardApp {
         `;
       }
 
+      const isRecurring =
+        (group.ruleId || '').toUpperCase().includes('CTX004') ||
+        (group.ruleId || '').toUpperCase().includes('CTX-004') ||
+        (group.title || '').toLowerCase().includes('recurring');
+
       card.innerHTML = `
         <div class="violation-header">
           <div class="violation-title-group">
@@ -785,6 +790,25 @@ class DashboardApp {
             </svg>
             Copy Directive
           </button>
+          ${
+            isRecurring
+              ? `
+          <button class="violation-action-btn shrink-context-btn" type="button" title="Copy context compaction directive to prune repetitive results">
+            <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor" style="vertical-align: -2px; margin-right: 4px;">
+              <path d="M9.5 0a.75.75 0 0 1 .75.75v2.5a.75.75 0 0 1-1.5 0V1.5H6.75a.75.75 0 0 1 0-1.5h2.75zM0 6.5a.75.75 0 0 1 .75-.75h2.5a.75.75 0 0 1 0 1.5H1.5v2h1.75a.75.75 0 0 1 0 1.5H.75A.75.75 0 0 1 0 10V6.5zm14.5 0a.75.75 0 0 1 .75.75V10a.75.75 0 0 1-.75.75h-2.5a.75.75 0 0 1 0-1.5h1.75v-2h-1.75a.75.75 0 0 1 0-1.5h2.75zM6.5 16a.75.75 0 0 1-.75-.75v-2.5a.75.75 0 0 1 1.5 0v1.75h2a.75.75 0 0 1 0 1.5H6.5z"/>
+            </svg>
+            Shrink Context
+          </button>
+          <button class="violation-action-btn new-session-btn" type="button" title="Copy new session reset directive with preserved state">
+            <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor" style="vertical-align: -2px; margin-right: 4px;">
+              <path d="M8 3a5 5 0 1 0 4.546 2.914.5.5 0 0 1 .908-.417A6 6 0 1 1 8 2v1z"/>
+              <path d="M8 4.466V.534a.25.25 0 0 1 .41-.192l2.36 1.966c.12.1.12.284 0 .384L8.41 4.658A.25.25 0 0 1 8 4.466z"/>
+            </svg>
+            New Session
+          </button>
+          `
+              : ''
+          }
         </div>
       `;
 
@@ -887,6 +911,58 @@ class DashboardApp {
           setTimeout(() => {
             copyBtn.innerHTML = originalHTML;
             copyBtn.classList.remove('copied');
+          }, 2000);
+        });
+      }
+
+      const shrinkBtn = card.querySelector('.shrink-context-btn');
+      if (shrinkBtn) {
+        shrinkBtn.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          const compactDirective =
+            '/compact Recurring execution results exceed context threshold. Summarize earlier command outputs into concise findings and purge raw stdout payloads from prompt context.';
+          const originalHTML = shrinkBtn.innerHTML;
+          try {
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+              await navigator.clipboard.writeText(compactDirective);
+            } else {
+              this.fallbackCopyText(compactDirective);
+            }
+          } catch (_) {
+            this.fallbackCopyText(compactDirective);
+          }
+          shrinkBtn.textContent = '✓ Copied /compact';
+          shrinkBtn.classList.add('copied');
+          this.showToast('Copied context compaction directive (/compact) to clipboard');
+          setTimeout(() => {
+            shrinkBtn.innerHTML = originalHTML;
+            shrinkBtn.classList.remove('copied');
+          }, 2000);
+        });
+      }
+
+      const newSessionBtn = card.querySelector('.new-session-btn');
+      if (newSessionBtn) {
+        newSessionBtn.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          const clearDirective =
+            '/clear Reset session context to eliminate recurring results. Active carryover: Preserving current task goal, key modified files, and latest test status.';
+          const originalHTML = newSessionBtn.innerHTML;
+          try {
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+              await navigator.clipboard.writeText(clearDirective);
+            } else {
+              this.fallbackCopyText(clearDirective);
+            }
+          } catch (_) {
+            this.fallbackCopyText(clearDirective);
+          }
+          newSessionBtn.textContent = '✓ Copied /clear';
+          newSessionBtn.classList.add('copied');
+          this.showToast('Copied new session reset directive (/clear) to clipboard');
+          setTimeout(() => {
+            newSessionBtn.innerHTML = originalHTML;
+            newSessionBtn.classList.remove('copied');
           }, 2000);
         });
       }
@@ -2323,12 +2399,12 @@ class DashboardApp {
         t.turn_index !== undefined ? t.turn_index : t.turnIndex !== undefined ? t.turnIndex : i;
       const opt1 = document.createElement('option');
       opt1.value = idx;
-      opt1.textContent = `Turn #${idx}`;
+      opt1.textContent = `Turn #${idx + 1}`;
       this.diffT1.appendChild(opt1);
 
       const opt2 = document.createElement('option');
       opt2.value = idx;
-      opt2.textContent = `Turn #${idx}`;
+      opt2.textContent = `Turn #${idx + 1}`;
       this.diffT2.appendChild(opt2);
     });
 
@@ -2339,6 +2415,11 @@ class DashboardApp {
       const lastIdx = lastTurn.turn_index ?? lastTurn.turnIndex ?? 1;
       this.diffT1.value = currentT1 || prevIdx;
       this.diffT2.value = currentT2 || lastIdx;
+    } else if (this.turns.length === 1) {
+      const onlyTurn = this.turns[0];
+      const onlyIdx = onlyTurn.turn_index ?? onlyTurn.turnIndex ?? 0;
+      this.diffT1.value = currentT1 || onlyIdx;
+      this.diffT2.value = currentT2 || onlyIdx;
     }
   }
 
@@ -2471,11 +2552,11 @@ class DashboardApp {
         matchingRow.classList.remove('highlight-diff-target');
       }, 3500);
 
-      const turnLabel = targetTurn !== null && targetTurn !== undefined ? `Turn #${targetTurn}` : 'current turn';
+      const turnLabel = targetTurn !== null && targetTurn !== undefined ? `Turn #${Number(targetTurn) + 1}` : 'current turn';
       this.showToast(`Traced block ${blockId} to ${turnLabel} context panel`);
     } else {
       document.getElementById('blocks-table-body')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      const turnLabel = targetTurn !== null && targetTurn !== undefined ? `Turn #${targetTurn}` : 'current turn';
+      const turnLabel = targetTurn !== null && targetTurn !== undefined ? `Turn #${Number(targetTurn) + 1}` : 'current turn';
       this.showToast(`Block ${blockId} in ${turnLabel}`);
     }
 
@@ -2483,7 +2564,10 @@ class DashboardApp {
     if (openModal) {
       const modalBlock = block || { block_id: blockId };
       const roleLabel = block ? (block.block_type || block.blockType || 'Block') : 'Block';
-      this.openModal(`Block: ${blockId} (${roleLabel})`, modalBlock.content || JSON.stringify(modalBlock, null, 2));
+      this.openModal(
+        `Inspect Block: ${blockId} (${roleLabel})`,
+        modalBlock.content || JSON.stringify(modalBlock, null, 2)
+      );
     }
   }
 
@@ -2561,6 +2645,7 @@ class DashboardApp {
       return arr.map((id) => {
         const { block, turnIndex } = this.getBlockInfo(id, targetTurn);
         const effectiveTurn = turnIndex !== null && turnIndex !== undefined ? turnIndex : targetTurn;
+        const effectiveTurnNum = effectiveTurn !== null && effectiveTurn !== undefined ? Number(effectiveTurn) + 1 : '?';
         let previewText = '';
         if (block) {
           const snippet = this._extractBlockSnippet(block, 60);
@@ -2568,7 +2653,7 @@ class DashboardApp {
           const tokStr = tok !== undefined ? ` • ${tok.toLocaleString()} tok` : '';
           previewText = snippet ? ` — "${snippet}"${tokStr}` : tokStr;
         }
-        const titleText = `[Turn #${effectiveTurn}] ${actionDesc} block "${id}"${previewText} — Click to trace in panel above`;
+        const titleText = `[Turn #${effectiveTurnNum}] ${actionDesc} block "${id}"${previewText} — Click to trace in panel above`;
 
         return `
           <div class="diff-block-pill badge ${badgeClass}" data-block-id="${this._escapeHtml(id)}" data-turn="${effectiveTurn}" role="button" tabindex="0" title="${this._escapeHtml(titleText)}">
@@ -2587,6 +2672,7 @@ class DashboardApp {
     if (breakpoint) {
       const { block: bpBlock, turnIndex: bpTurn } = this.getBlockInfo(breakpoint, t2Val);
       const effectiveBpTurn = bpTurn !== null && bpTurn !== undefined ? bpTurn : t2Val;
+      const effectiveBpTurnNum = effectiveBpTurn !== null && effectiveBpTurn !== undefined ? Number(effectiveBpTurn) + 1 : '?';
       let bpPreview = '';
       if (bpBlock) {
         const snippet = this._extractBlockSnippet(bpBlock, 60);
@@ -2594,7 +2680,7 @@ class DashboardApp {
         const tokStr = tok !== undefined ? ` • ${tok.toLocaleString()} tok` : '';
         bpPreview = snippet ? ` — "${snippet}"${tokStr}` : tokStr;
       }
-      const bpTitle = `[Turn #${effectiveBpTurn}] Prefix cache breakpoint at "${breakpoint}"${bpPreview} — Click to trace in panel above`;
+      const bpTitle = `[Turn #${effectiveBpTurnNum}] Prefix cache breakpoint at "${breakpoint}"${bpPreview} — Click to trace in panel above`;
 
       breakpointHtml = `
         <div class="diff-card">
@@ -2765,6 +2851,11 @@ class DashboardApp {
     } else if (ruleId.includes('CACHE001')) {
       return `# Context Directive: Cache Stability
 - Keep system prompts and tool declarations deterministic and static at the start of context.`;
+    } else if (ruleId.includes('CTX004') || ruleId.includes('CTX-004') || ruleId.includes('RECURRING')) {
+      return `# Context Directive: Shrink Context & Eliminate Recurring Results
+- Compact repetitive tool execution results older than 2 turns (/compact).
+- When recurring results exceed context threshold, start a fresh session (/clear) preserving only milestone summary.
+- Transmit incremental diffs rather than repetitive raw dumps.`;
     } else {
       const title = v.title || v.rule_id || v.ruleId || 'Context Directive';
       const fix = v.suggested_fix || v.suggestedFix || v.message || 'Optimize context efficiency.';
@@ -3307,6 +3398,18 @@ class DashboardApp {
         estimated_waste_usd: 0.0085,
         estimatedWasteUSD: 0.0085,
         affected_turns: [0, 1, 2, 3],
+      },
+      {
+        rule_id: 'CTX-004',
+        ruleId: 'CTX-004',
+        title: 'Recurring Execution Results Exceeded',
+        severity: 'WARN',
+        message: 'Tool result (pytest 250 test lines, 1,400 tokens) recurred across Turns 2 & 3 without compression, consuming redundant context bandwidth.',
+        suggested_fix: 'Recurring results exceed threshold (1,400 tokens). Optimization: 1) Shrink context by compacting repetitive tool outputs (/compact); 2) Start a fresh session (/clear) preserving only milestone summary; 3) Use targeted flags (e.g. pytest -q --tb=short).',
+        estimated_waste_usd: 0.0070,
+        estimatedWasteUSD: 0.0070,
+        affected_turns: [1, 2],
+        block_ids: ['blk-result-pytest-250'],
       },
     ];
 

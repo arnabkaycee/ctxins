@@ -307,6 +307,8 @@ def test_static_assets_serving(client: TestClient) -> None:
     assert "exportMarkdownReport" in res_app_js.text
     assert "locateAndHighlightBlock" in res_app_js.text
     assert "getBlockInfo" in res_app_js.text
+    assert "_populateDiffSelects" in res_app_js.text
+    assert "Turn #${idx + 1}" in res_app_js.text
 
 
 # ---------------------------------------------------------------------------
@@ -537,3 +539,26 @@ def test_export_dropdown_and_conversation_exchange_grouping(client: TestClient) 
     assert "_extractBlockSnippet" in js_text
     assert "exchange-group-header" in js_text
     assert "Conversation Exchange" in js_text
+
+
+def test_manual_turn_diff_and_recurring_results_optimization(client: TestClient) -> None:
+    """Verify manual turn diff labels are 1-indexed and CTX-004 optimization mechanisms are present."""
+    res_js = client.get("/js/app.js")
+    assert res_js.status_code == 200
+    js_text = res_js.text
+
+    # 1. Manual turn diff parity: 1-indexed option labels with 0-indexed values
+    assert "_populateDiffSelects()" in js_text
+    assert "opt1.textContent = `Turn #${idx + 1}`;" in js_text
+    assert "opt1.value = idx;" in js_text
+    assert "opt2.textContent = `Turn #${idx + 1}`;" in js_text
+    assert "opt2.value = idx;" in js_text
+
+    # 2. CTX-004 recurring results optimization actions
+    assert "shrink-context-btn" in js_text
+    assert "new-session-btn" in js_text
+    assert "Shrink Context" in js_text
+    assert "New Session" in js_text
+    assert "CTX004" in js_text
+    assert "/compact" in js_text
+    assert "/clear" in js_text

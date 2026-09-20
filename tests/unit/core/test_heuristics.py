@@ -6,6 +6,7 @@ from src.core.analyzer.heuristics.cache_invalidation import CacheBustingPrefixRu
 from src.core.analyzer.heuristics.ctx001_stale_tool import StaleToolHeuristic
 from src.core.analyzer.heuristics.ctx002_schema_bloat import SchemaBloatHeuristic
 from src.core.analyzer.heuristics.ctx003_error_loop import ErrorLoopHeuristic
+from src.core.analyzer.heuristics.ctx004_recurring_results import RecurringResultsHeuristic
 from src.core.analyzer.heuristics.zombie_context import ZombieContextRule
 from src.core.graph.hasher import compute_block_hash
 from src.core.graph.turn_tree import ContextGraph
@@ -651,3 +652,128 @@ def test_ctx007_with_context_graph():
     assert len(violations) == 1
     assert violations[0].rule_id == "CTX-007"
     assert violations[0].block_ids == ["sys_2"]
+
+
+# ===========================================================================
+# CTX-004: Recurring Execution Results Exceeded Tests
+# ===========================================================================
+
+
+def test_ctx004_below_threshold_no_violation():
+    """Tool result in single turn below occurrence threshold does not trigger."""
+    heuristic = RecurringResultsHeuristic(token_threshold=2000, occurrence_threshold=2)
+
+    tool_res = _make_block(
+        "res_1",
+        BlockType.TOOL_RESULT,
+        "pytest collected 10 items ... passed",
+        token_count=1500,
+        metadata={"tool_use_id": "call_1"},
+    )
+    turn = _make_turn(0, [tool_res], input_tokens=4000)
+
+    violations = heuristic.analyze(turn, previous_turns=[])
+    assert violations == []
+
+
+def test_ctx004_recurring_results_exceeds_token_threshold():
+    """Recurring identical tool result across 2 turns exceeding 2,000 tokens triggers CTX-004."""
+    heuristic = RecurringResultsHeuristic(token_threshold=2000, occurrence_threshold=2)
+
+    res_content = "================ 250 items passed in test suite ================"
+    tool_res_1 = _make_block(
+        "res_1",
+        BlockType.TOOL_RESULT,
+        res_content,
+        token_count=2200,
+        metadata={"tool_use_id": "call_pytest_1"},
+    )
+    tool_res_2 = _make_block(
+        "res_2",
+        BlockType.TOOL_RESULT,
+        res_content,
+        token_count=2200,
+        metadata={"tool_use_id": "call_pytest_2"},
+    )
+
+    turn_1 = _make_turn(1, [tool_res_1], input_tokens=5000)
+    turn_2 = _make_turn(2, [tool_res_2], input_tokens=5000)
+
+    violations = heuristic.analyze(turn_2, previous_turns=[turn_1])
+    assert len(violations) == 1
+    v = violations[0]
+    assert v.rule_id == "CTX-004"
+    assert v.severity == ViolationSeverity.WARN
+    assert "2,200 tokens" in v.message
+    assert "exceeded threshold" in v.message
+    assert "Shrink context" in v.suggested_fix
+    assert "/compact" in v.suggested_fix
+    assert "Start a fresh session" in v.suggested_fix
+    assert "/clear" in v.suggested_fix
+    assert "res_2" in v.block_ids
+
+
+def test_ctx004_critical_severity_on_large_recurring_volume():
+    """Recurring tool results exceeding 5,000 tokens trigger CRITICAL severity."""
+    heuristic = RecurringResultsHeuristic(token_threshold=2000, occurrence_threshold=2)
+
+    res_content = "DUMP OF LARGE DATASET WITH REPEATED LINES " * 100
+    res_1 = _make_block(
+        "res_large_1",
+        BlockType.TOOL_RESULT,
+        res_content,
+        token_count=5500,
+        metadata={"tool_use_id": "call_dump_1"},
+    )
+    res_2 = _make_block(
+        "res_large_2",
+        BlockType.TOOL_RESULT,
+        res_content,
+        token_count=5500,
+        metadata={"tool_use_id": "call_dump_2"},
+    )
+
+    turn_1 = _make_turn(1, [res_1], input_tokens=10000)
+    turn_2 = _make_turn(2, [res_2], input_tokens=10000)
+
+    violations = heuristic.analyze(turn_2, previous_turns=[turn_1])
+    assert len(violations) == 1
+    assert violations[0].severity == ViolationSeverity.CRITICAL
+
+
+def test_ctx004_multiple_identical_results_in_same_turn():
+    """Duplicate tool results injected in the same turn exceeding threshold triggers CTX-004."""
+    heuristic = RecurringResultsHeuristic(token_threshold=2000, occurrence_threshold=2)
+
+    content = "FINDINGS TRACE REPORT"
+    res_a = _make_block("res_a", BlockType.TOOL_RESULT, content, token_count=1200)
+    res_b = _make_block("res_b", BlockType.TOOL_RESULT, content, token_count=1200)
+
+    turn = _make_turn(1, [res_a, res_b], input_tokens=5000)
+    violations = heuristic.analyze(turn, previous_turns=[])
+
+    assert len(violations) == 1
+    assert violations[0].rule_id == "CTX-004"
+    assert "2,400 tokens" in violations[0].message
+
+
+def test_ctx004_integrated_in_pollution_analyzer():
+    """PollutionAnalyzer includes RecurringResultsHeuristic by default."""
+    analyzer = PollutionAnalyzer()
+    has_ctx004 = any(isinstance(h, RecurringResultsHeuristic) for h in analyzer.heuristics)
+    assert has_ctx004
+
+    res_content = "REPEATED TEST RESULT CONTENT"
+    res_1 = _make_block("res_1", BlockType.TOOL_RESULT, res_content, token_count=2500)
+    res_2 = _make_block("res_2", BlockType.TOOL_RESULT, res_content, token_count=2500)
+
+    turn_1 = _make_turn(1, [res_1], input_tokens=6000)
+    turn_2 = _make_turn(2, [res_2], input_tokens=6000)
+
+    detected = analyzer.analyze_turn(turn_2, previous_turns=[turn_1])
+    ctx004_viols = [v for v in detected if v.rule_id == "CTX-004"]
+    assert len(ctx004_viols) == 1
+    assert turn_2.violations == detected
+    assert "Shrink context" in ctx004_viols[0].suggested_fix
+    assert "/clear" in ctx004_viols[0].suggested_fix
+

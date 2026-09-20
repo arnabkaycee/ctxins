@@ -11,7 +11,7 @@
 | **`CTX-001`** | **Stale Tool Output Bloat** | `WARN` | Unreferenced for $\ge 3$ turns | Input Tokens / Cost |
 | **`CTX-002`** | **Tool Schema Overweight** | `WARN` | $> 35\%$ context, $< 15\%$ invocation | Tool Def Tokens |
 | **`CTX-003`** | **Error Loop Thrashing** | `CRITICAL` | $\ge 3$ consecutive turn errors | Cost / Latency / Runaway |
-| **`CTX-004`** | **Redundant File Ingestion** | `INFO` | Repeated identical file contents | Input Tokens |
+| **`CTX-004`** | **Recurring Execution Results Exceeded** | `WARN` | Recurring across $\ge 2$ turns, $\ge 2,000$ tok or $> 20\%$ | Input Tokens / Cost |
 | **`CACHE-001`** | **Dynamic Prefix Invalidation** | `WARN` | Prefix mutation in System Prompt | Prompt Cache Hit Ratio |
 
 ---
@@ -42,7 +42,18 @@
 * **Suggested Fix**:
   Interrupt the autonomous loop, trigger a human-in-the-loop prompt, or enforce exponential backoff/fallback strategies.
 
-### 4. `CACHE-001`: Dynamic Prefix Invalidation
+### 4. `CTX-004`: Recurring Execution Results Exceeded
+
+* **Problem**: An agent repeatedly invokes tools returning identical or near-identical output payloads (e.g. repetitive build outputs, directory listings, or repeated test failure tracebacks). These duplicate results accumulate across turns, bloating prompt size and billing redundant input tokens without adding new information.
+* **Trigger Condition**:
+  Tool execution results recurring across $\ge 2$ turns or occurrences consume $\ge 2,000$ tokens or $> 20\%$ of total context window tokens.
+* **Suggested Fix**:
+  Optimization mechanisms:
+  1. **Shrink Context**: Compact or prune repetitive tool execution outputs from history (`/compact`).
+  2. **Start New Session**: Reset the session (`/clear`) when recurring outputs dominate the context window, preserving only milestone summary and key modified files.
+  3. **Targeted Execution**: Transmit incremental line diffs or restrict query scope (e.g. pass concise flags).
+
+### 5. `CACHE-001`: Dynamic Prefix Invalidation
 
 * **Problem**: Providers like Anthropic and OpenAI offer prompt caching (up to 90% discount on cached input tokens) for matching static prefixes (minimum 1,024 or 2,048 tokens). If a dynamic value (current timestamp, ephemeral session UUID, or variable turn counter) is injected near the beginning of the system prompt, the entire downstream prompt cache is busted.
 * **Trigger Condition**:
