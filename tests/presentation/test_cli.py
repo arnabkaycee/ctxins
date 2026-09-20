@@ -545,3 +545,29 @@ def test_main_subcommands_trigger_warning(monkeypatch: pytest.MonkeyPatch) -> No
     main(["unset-env"])
     assert len(warning_calls) == 0
 
+
+def test_top_level_granularity_help(capsys: pytest.CaptureFixture[str]) -> None:
+    """Verify --granularity appears in root ctxins --help output."""
+    parser = build_parser()
+    with pytest.raises(SystemExit):
+        parser.parse_args(["--help"])
+    captured = capsys.readouterr()
+    assert "--granularity" in captured.out
+    assert "--turn-granularity" in captured.out
+    assert "{step,human}" in captured.out
+
+
+def test_top_level_granularity_routes_to_tui(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Verify running `ctxins --granularity human` auto-routes to tui with granularity='human'."""
+    captured_kwargs: dict[str, Any] = {}
+
+    def mock_run_tui(**kwargs: Any) -> None:
+        captured_kwargs.update(kwargs)
+
+    monkeypatch.setattr("src.cli.run_tui", mock_run_tui)
+    monkeypatch.setattr("src.cli.print_exit_proxy_warning", lambda *a, **kw: None)
+
+    main(["--granularity", "human"])
+    assert captured_kwargs.get("granularity") == "human"
+
+

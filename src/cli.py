@@ -1242,7 +1242,7 @@ def build_parser() -> argparse.ArgumentParser:
         "Turn counting granularity on startup: 'step' (every LLM/tool cycle) or 'human' "
         "(actual human interaction boundary). Default: 'step'."
     )
-    for p in (tui_p, web_p, live_p, run_p):
+    for p in (parser, tui_p, web_p, live_p, run_p):
         p.add_argument(
             "--granularity",
             "--turn-granularity",
@@ -1266,6 +1266,12 @@ def main(args: Optional[List[str]] = None) -> int:
     # If no subcommand specified, default to "tui"
     if not raw_args:
         raw_args = ["tui"]
+    elif not any(arg in ("-h", "--help") for arg in raw_args):
+        # If user passed options without an explicit subcommand (e.g. `ctxins --granularity human` or `ctxins --target-port 8000`),
+        # default to launching "tui" with those options
+        known_subcmds = {"tui", "web", "live", "run", "env", "unset-env", "diff"}
+        if not any(arg in known_subcmds for arg in raw_args):
+            raw_args = ["tui"] + raw_args
 
     # Extract any top-level logging options that might precede subcommands
     log_p = _build_log_parser()
