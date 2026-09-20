@@ -8,7 +8,7 @@ permissions:
   contents: read
 
 jobs:
-  pip-audit:
+  vulnerability-audit:
     name: Dependency Vulnerability Audit
     runs-on: ubuntu-latest
     steps:
@@ -21,13 +21,5 @@ jobs:
           enable-cache: true
           version: "latest"
 
-      - name: Set up Python 3.11
-        run: uv python install 3.11
-
-      - name: Install dependencies
-        run: uv sync --extra dev
-
-      - name: Run pip-audit
-        uses: pypa/gh-action-pip-audit@v1.1.0
-        with:
-          virtual-environment: .venv/
+      - name: Audit Dependencies with pip-audit
+        run: uvx pip-audit
