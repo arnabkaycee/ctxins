@@ -43,6 +43,7 @@ class CtxinsTUIApp(App[None]):
         ("q", "quit", "Quit"),
         ("tab", "focus_next", "Next Pane"),
         ("shift+tab", "focus_previous", "Prev Pane"),
+        ("d", "toggle_diff", "Toggle Diff"),
         ("r", "toggle_rule_filter", "Filter Violations"),
         ("e", "export_jsonc", "Export .jsonc"),
         ("s", "switch_session", "Switch Session"),
@@ -236,6 +237,14 @@ class CtxinsTUIApp(App[None]):
             self.notify(f"Active Session: {next_sid} ({harness})")
         else:
             self.notify("No other detected sessions available")
+
+    def action_toggle_diff(self) -> None:
+        """Toggle Context Breakdown between Composition and Diff Ledger."""
+        try:
+            breakdown = self.query_one(ContextBreakdownWidget)
+            breakdown.action_toggle_diff()
+        except Exception:
+            pass
 
     def _refresh_inspectors(self) -> None:
         """Refresh context breakdown, recommendations, and footer widgets."""

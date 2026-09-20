@@ -515,15 +515,34 @@ class DashboardApp {
       const row = document.createElement('tr');
       const bId = b.block_id || b.blockId || '—';
       const bType = b.block_type || b.blockType || 'block';
+      const identityKey = b.identity_key || b.identityKey || '';
+      const status = b.lifecycle_status || b.status || '';
       const tokCount = b.token_count ?? b.tokenCount ?? 0;
       const hash = b.content_hash || b.contentHash || '';
       const hashShort = hash ? `${hash.slice(0, 8)}...` : '—';
       const survived = b.turns_survived ?? b.turnsSurvived;
       const survivedText = survived !== undefined ? `${survived} turns` : '—';
 
+      let statusBadge = '';
+      if (status === 'added') {
+        statusBadge = '<span class="badge badge-added" style="margin-left: 6px;">[+] Added</span>';
+      } else if (status === 'mutated') {
+        statusBadge = '<span class="badge badge-mutated" style="margin-left: 6px;">[~] Mutated</span>';
+      } else if (status === 'evicted') {
+        statusBadge = '<span class="badge badge-evicted" style="margin-left: 6px;">[-] Evicted</span>';
+      } else if (status === 'persisted') {
+        statusBadge = '<span class="badge badge-persisted" style="margin-left: 6px;">[=] Persisted</span>';
+      }
+
       row.innerHTML = `
-        <td class="code-cell">${bId}</td>
-        <td><span class="badge badge-info">${bType}</span></td>
+        <td class="code-cell">
+          <div style="font-weight: 600;">${bId}</div>
+          ${identityKey ? `<div style="font-size: 11px; color: var(--text-secondary); font-family: var(--font-mono);">${identityKey}</div>` : ''}
+        </td>
+        <td>
+          <span class="badge badge-info">${bType}</span>
+          ${statusBadge}
+        </td>
         <td style="font-family: var(--font-mono);">${tokCount.toLocaleString()}</td>
         <td>${survivedText}</td>
         <td class="hash-cell">${hashShort}</td>
@@ -632,8 +651,10 @@ class DashboardApp {
     const growthPrefix = growth > 0 ? '+' : '';
 
     const added = data.addedBlockIds || data.added_block_ids || [];
+    const mutated = data.mutatedBlockIds || data.mutated_block_ids || [];
     const removed = data.removedBlockIds || data.removed_block_ids || [];
     const persisted = data.persistedBlockIds || data.persisted_block_ids || [];
+    const breakpoint = data.cacheBreakpointBlockId || data.cache_breakpoint_block_id || null;
 
     const renderBadges = (arr, badgeClass) => {
       if (arr.length === 0) return '<span style="color: var(--text-secondary); font-size: 11px;">None</span>';
@@ -647,16 +668,25 @@ class DashboardApp {
       </div>
       <div class="diff-card">
         <div class="diff-card-title">Added Blocks (${added.length})</div>
-        <div class="diff-badge-list">${renderBadges(added, 'badge-critical')}</div>
+        <div class="diff-badge-list">${renderBadges(added, 'badge-added')}</div>
       </div>
       <div class="diff-card">
-        <div class="diff-card-title">Removed Blocks (${removed.length})</div>
-        <div class="diff-badge-list">${renderBadges(removed, 'badge-warn')}</div>
+        <div class="diff-card-title">Mutated Blocks (${mutated.length})</div>
+        <div class="diff-badge-list">${renderBadges(mutated, 'badge-mutated')}</div>
+      </div>
+      <div class="diff-card">
+        <div class="diff-card-title">Evicted Blocks (${removed.length})</div>
+        <div class="diff-badge-list">${renderBadges(removed, 'badge-evicted')}</div>
       </div>
       <div class="diff-card">
         <div class="diff-card-title">Persisted Blocks (${persisted.length})</div>
-        <div class="diff-badge-list">${renderBadges(persisted, 'badge-info')}</div>
+        <div class="diff-badge-list">${renderBadges(persisted, 'badge-persisted')}</div>
       </div>
+      ${breakpoint ? `
+      <div class="diff-card">
+        <div class="diff-card-title">Prefix Cache Breakpoint</div>
+        <div class="diff-card-value" style="font-size: 12px; color: var(--color-warning); font-family: var(--font-mono);">${breakpoint}</div>
+      </div>` : ''}
     `;
   }
 

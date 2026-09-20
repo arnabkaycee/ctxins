@@ -45,6 +45,8 @@ class FooterBarWidget(Widget):
         text.append("Turn │ ", style=COLOR_MUTED)
         text.append("[n/p] ", style=f"bold {COLOR_ACCENT}")
         text.append("Block │ ", style=COLOR_MUTED)
+        text.append("[d] ", style=f"bold {COLOR_ACCENT}")
+        text.append("Diff │ ", style=COLOR_MUTED)
         text.append("[r] ", style=f"bold {COLOR_ACCENT}")
         text.append(
             f"Filter({filter_mode}) │ ",

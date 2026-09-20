@@ -186,8 +186,10 @@ def create_api_router(store: SessionStore, ws_hub: WebSocketHub) -> APIRouter:
             "toTurnIndex": t2,
             "delta": delta.to_dict(),
             "addedBlockIds": delta.added_block_ids,
+            "mutatedBlockIds": delta.mutated_block_ids,
             "removedBlockIds": delta.removed_block_ids,
             "persistedBlockIds": delta.persisted_block_ids,
+            "cacheBreakpointBlockId": delta.cache_breakpoint_block_id,
             "tokenGrowth": delta.token_growth,
         }
 

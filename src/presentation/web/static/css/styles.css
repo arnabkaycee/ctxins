@@ -395,6 +395,30 @@ body {
   border: 1px solid rgba(88, 166, 255, 0.3);
 }
 
+.badge-success, .badge-added {
+  background-color: var(--color-success-bg);
+  color: var(--color-success);
+  border: 1px solid rgba(63, 185, 80, 0.3);
+}
+
+.badge-mutated {
+  background-color: var(--color-warning-bg);
+  color: var(--color-warning);
+  border: 1px solid rgba(210, 153, 34, 0.3);
+}
+
+.badge-evicted {
+  background-color: var(--color-critical-bg);
+  color: var(--color-critical);
+  border: 1px solid rgba(248, 81, 73, 0.3);
+}
+
+.badge-persisted {
+  background-color: rgba(110, 118, 129, 0.15);
+  color: var(--text-secondary);
+  border: 1px solid rgba(110, 118, 129, 0.3);
+}
+
 .violation-title {
   font-weight: 600;
   color: var(--text-heading);
