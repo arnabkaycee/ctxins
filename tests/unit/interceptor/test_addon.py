@@ -440,7 +440,7 @@ class TestCtxinsAddon:
         assert len(buffer) == 1
         init_env = WireEnvelope.from_bytes(buffer.pop())
         assert init_env.event_type == WireEventType.REQUEST_INITIATED
-        assert init_env.session_id == "-4090532296711904797"
+        assert init_env.session_id == "sess_4090532296711904797"
         assert init_env.payload["model"] == "gemini-3.1-flash-lite"
 
         flow.response = MockResponse(
@@ -461,7 +461,7 @@ class TestCtxinsAddon:
         assert len(buffer) == 1
         turn_env = WireEnvelope.from_bytes(buffer.pop())
         assert turn_env.event_type == WireEventType.TURN_COMPLETED
-        assert turn_env.session_id == "-4090532296711904797"
+        assert turn_env.session_id == "sess_4090532296711904797"
         assert turn_env.payload["usage"]["input_tokens"] == 100
         assert turn_env.payload["usage"]["output_tokens"] == 5
         assert turn_env.payload["usage"]["reasoning_tokens"] == 10

@@ -7,7 +7,7 @@ from abc import ABC, abstractmethod
 from typing import Any, Callable, Dict, Optional
 
 from src.core.ast.sub_blocks import SubBlockDecomposer
-from src.schema.ast import CanonicalTurn
+from src.schema.ast import CanonicalTurn, normalize_session_id
 from src.schema.wire import TimingMetrics, UsageMetrics, WireEnvelope
 
 
@@ -99,13 +99,14 @@ class BaseNormalizer(ABC):
             or payload.get("correlationId")
             or f"turn_{resolved_index}"
         )
-        sess_id = (
+        raw_sid = (
             raw.get("session_id")
             or raw.get("sessionId")
             or payload.get("session_id")
             or payload.get("sessionId")
             or "sess_default"
         )
+        sess_id = normalize_session_id(raw_sid, harness=default_provider)
         turn_id = (
             raw.get("turn_id")
             or raw.get("turnId")

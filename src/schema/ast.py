@@ -217,3 +217,39 @@ class TurnDelta:
             cache_breakpoint_block_id=data.get("cache_breakpoint_block_id"),
             token_growth=data.get("token_growth", 0),
         )
+
+
+def normalize_session_id(val: Any, harness: Optional[str] = None) -> str:
+    """Normalize session identifiers to ensure canonical formatting without leading minus signs.
+
+    Google Cloud Code / Gemini and other protobuf backends serialize 64-bit random session
+    hashes as signed int64s (e.g. -3750763034362895579), resulting in negative decimal values.
+    This helper strips leading hyphens, converts negative ints to absolute value, and ensures
+    canonical 'sess_' prefixing so identifiers are clean and never parsed as CLI flags.
+    """
+    if val is None:
+        return "sess_default"
+
+    if isinstance(val, int):
+        clean = str(abs(val))
+        prefix = f"sess_{harness}_" if harness and harness != "unknown" else "sess_"
+        return f"{prefix}{clean}"
+
+    s = str(val).strip()
+    if not s:
+        return "sess_default"
+
+    # If starts with a minus sign (e.g. stringified signed int64 "-3750...")
+    if s.startswith("-"):
+        clean = s.lstrip("-")
+        if clean.isdigit():
+            prefix = f"sess_{harness}_" if harness and harness != "unknown" else "sess_"
+            return f"{prefix}{clean}"
+        return f"sess_{clean}"
+
+    # If purely numeric without prefix (e.g. "123456")
+    if s.isdigit():
+        prefix = f"sess_{harness}_" if harness and harness != "unknown" else "sess_"
+        return f"{prefix}{s}"
+
+    return s

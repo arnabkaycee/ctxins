@@ -220,3 +220,27 @@ def test_new_block_types_and_identity_key():
     recovered = ContextBlock.from_dict(d)
     assert recovered.identity_key == "skill:git-workflow"
     assert recovered.block_type == BlockType.SKILL
+
+
+def test_normalize_session_id():
+    from src.schema.ast import normalize_session_id
+
+    # Negative signed 64-bit integer from Protobuf / Gemini
+    assert normalize_session_id(-3750763034362895579, harness="agy") == "sess_agy_3750763034362895579"
+    assert normalize_session_id(-4090532296711904797) == "sess_4090532296711904797"
+    assert normalize_session_id("-3750763034362895579", harness="agy") == "sess_agy_3750763034362895579"
+    assert normalize_session_id("-12345") == "sess_12345"
+
+    # Positive numbers
+    assert normalize_session_id(12345, harness="claude") == "sess_claude_12345"
+    assert normalize_session_id("98765") == "sess_98765"
+
+    # Canonical sessions already formatted
+    assert normalize_session_id("sess_default") == "sess_default"
+    assert normalize_session_id("sess-anthropic-1") == "sess-anthropic-1"
+    assert normalize_session_id("demo-claude-session") == "demo-claude-session"
+    assert normalize_session_id("custom_session") == "custom_session"
+
+    # None and empty
+    assert normalize_session_id(None) == "sess_default"
+    assert normalize_session_id("") == "sess_default"

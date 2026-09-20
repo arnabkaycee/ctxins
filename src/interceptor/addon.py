@@ -29,6 +29,7 @@ from src.interceptor.stream.accumulators.base import BaseAccumulator
 from src.interceptor.stream.accumulators.gemini import GeminiAccumulator
 from src.interceptor.stream.accumulators.openai import OpenAIAccumulator
 from src.interceptor.stream.passthrough import StreamPassthrough
+from src.schema.ast import normalize_session_id
 from src.schema.wire import (
     ActiveTurnContext,
     ContentBlock,
@@ -285,10 +286,14 @@ class CtxinsAddon:
                             session_id = str(val).strip()
                             break
 
-        if not session_id:
-            session_id = self.default_session_id
-
         metadata = getattr(flow, "metadata", {})
+        agent_identity = metadata.get("ctxins_agent")
+        harness = agent_identity.name if (agent_identity and agent_identity.is_known) else None
+
+        if session_id:
+            session_id = normalize_session_id(session_id, harness=harness)
+        else:
+            session_id = self.default_session_id
         correlation_id = (
             metadata.get("ctxins_correlation_id")
             or lower_headers.get("x-correlation-id")
@@ -841,7 +846,7 @@ class CtxinsAddon:
             else:
                 computed_sid = turn.session_id or self.default_session_id
 
-            turn.session_id = computed_sid
+            turn.session_id = normalize_session_id(computed_sid, harness=harness_name)
 
             # Update client and agent connection mappings for this session
             client_conn = getattr(flow, "client_conn", None)
