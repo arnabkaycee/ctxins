@@ -160,15 +160,22 @@
       <!-- Visual Context Proportion Bar -->
       <div id="context-proportion-bar" class="context-proportion-bar"></div>
 
-      <!-- AST Category Filter Chips -->
-      <div id="blocks-filter-chips" class="filter-chips">
-        <button type="button" class="filter-chip active" data-filter="ALL">All</button>
-        <button type="button" class="filter-chip" data-filter="SYSTEM">System</button>
-        <button type="button" class="filter-chip" data-filter="TOOLS">Tools</button>
-        <button type="button" class="filter-chip" data-filter="MESSAGES">Messages</button>
-        <button type="button" class="filter-chip" data-filter="TOOL_RESULTS">Tool Results</button>
-        <button type="button" class="filter-chip" data-filter="ADDED">Added (+)</button>
-        <button type="button" class="filter-chip" data-filter="MUTATED">Mutated (~)</button>
+      <!-- AST Category Filter Chips & View Controls -->
+      <div class="blocks-toolbar">
+        <div id="blocks-filter-chips" class="filter-chips">
+          <button type="button" class="filter-chip active" data-filter="ALL">All</button>
+          <button type="button" class="filter-chip" data-filter="SYSTEM">System</button>
+          <button type="button" class="filter-chip" data-filter="SKILLS">Skills</button>
+          <button type="button" class="filter-chip" data-filter="TOOLS">Tools</button>
+          <button type="button" class="filter-chip" data-filter="MESSAGES">Messages</button>
+          <button type="button" class="filter-chip" data-filter="TOOL_RESULTS">Tool Executions</button>
+          <button type="button" class="filter-chip" data-filter="ADDED">Added (+)</button>
+          <button type="button" class="filter-chip" data-filter="MUTATED">Mutated (~)</button>
+        </div>
+        <div class="blocks-view-controls">
+          <button id="blocks-expand-all-btn" class="btn btn-sm" type="button" title="Expand all context sections">Expand All</button>
+          <button id="blocks-collapse-all-btn" class="btn btn-sm" type="button" title="Collapse all context sections">Collapse All</button>
+        </div>
       </div>
 
       <!-- Context Blocks Table -->

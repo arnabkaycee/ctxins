@@ -396,11 +396,14 @@ def test_static_assets_proportion_bar_and_filter_chips(client: TestClient) -> No
     assert "blocks-filter-chips" in resp.text
     assert 'data-filter="ALL"' in resp.text
     assert 'data-filter="SYSTEM"' in resp.text
+    assert 'data-filter="SKILLS"' in resp.text
     assert 'data-filter="TOOLS"' in resp.text
     assert 'data-filter="MESSAGES"' in resp.text
     assert 'data-filter="TOOL_RESULTS"' in resp.text
     assert 'data-filter="ADDED"' in resp.text
     assert 'data-filter="MUTATED"' in resp.text
+    assert "blocks-expand-all-btn" in resp.text
+    assert "blocks-collapse-all-btn" in resp.text
 
     resp_css = client.get("/css/styles.css")
     assert resp_css.status_code == 200
@@ -408,12 +411,21 @@ def test_static_assets_proportion_bar_and_filter_chips(client: TestClient) -> No
     assert ".proportion-segment" in resp_css.text
     assert ".filter-chips" in resp_css.text
     assert ".filter-chip" in resp_css.text
+    assert ".section-system-header" in resp_css.text
+    assert ".section-skills-header" in resp_css.text
+    assert ".section-tools-header" in resp_css.text
+    assert ".section-executions-header" in resp_css.text
 
     resp_js = client.get("/js/app.js")
     assert resp_js.status_code == 200
     assert "renderProportionBar" in resp_js.text
     assert "currentBlockFilter" in resp_js.text
     assert "setBlockFilter" in resp_js.text
+    assert "_isSkillBlock" in resp_js.text
+    assert "_isToolCallBlock" in resp_js.text
+    assert "_isToolResultBlock" in resp_js.text
+    assert "expandAllSections" in resp_js.text
+    assert "collapseAllSections" in resp_js.text
 
 
 def test_static_assets_cache_headers_and_busting(client: TestClient) -> None:

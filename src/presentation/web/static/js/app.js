@@ -23,7 +23,10 @@ class DashboardApp {
     this.exportBtn = document.getElementById('export-btn');
     this.exportMdBtn = document.getElementById('export-md-btn');
     this.navDemoBtn = document.getElementById('nav-demo-btn');
+    this.blocksExpandAllBtn = document.getElementById('blocks-expand-all-btn');
+    this.blocksCollapseAllBtn = document.getElementById('blocks-collapse-all-btn');
     this.collapsedExchanges = new Set();
+    this.collapsedSections = new Set();
 
     // KPI Elements
     this.kpiTokens = document.getElementById('kpi-tokens');
@@ -174,6 +177,18 @@ class DashboardApp {
       });
     }
 
+    if (this.blocksExpandAllBtn) {
+      this.blocksExpandAllBtn.addEventListener('click', () => {
+        this.expandAllSections();
+      });
+    }
+
+    if (this.blocksCollapseAllBtn) {
+      this.blocksCollapseAllBtn.addEventListener('click', () => {
+        this.collapseAllSections();
+      });
+    }
+
     if (this.modalCloseBtn) {
       this.modalCloseBtn.addEventListener('click', () => this.closeModal());
     }
@@ -220,6 +235,30 @@ class DashboardApp {
     if (this.exportDropdown) this.exportDropdown.classList.remove('open');
     if (this.exportDropdownMenu) this.exportDropdownMenu.classList.remove('active');
     if (this.exportDropdownBtn) this.exportDropdownBtn.setAttribute('aria-expanded', 'false');
+  }
+
+  expandAllSections() {
+    this.collapsedSections.clear();
+    this.collapsedExchanges.clear();
+    if (!this.blocksTableBody) return;
+    const headers = this.blocksTableBody.querySelectorAll('.exchange-group-header, .section-group-header');
+    headers.forEach((h) => h.classList.remove('collapsed'));
+    const rows = this.blocksTableBody.querySelectorAll('.exchange-item-row');
+    rows.forEach((r) => r.classList.remove('exchange-hidden'));
+  }
+
+  collapseAllSections() {
+    if (!this.blocksTableBody) return;
+    const headers = this.blocksTableBody.querySelectorAll('.exchange-group-header, .section-group-header');
+    headers.forEach((h) => {
+      h.classList.add('collapsed');
+      const exKey = h.dataset.exchange;
+      const secKey = h.dataset.section;
+      if (exKey) this.collapsedExchanges.add(exKey);
+      if (secKey) this.collapsedSections.add(secKey);
+    });
+    const rows = this.blocksTableBody.querySelectorAll('.exchange-item-row');
+    rows.forEach((r) => r.classList.add('exchange-hidden'));
   }
 
   async refreshSessions() {
@@ -821,37 +860,31 @@ class DashboardApp {
     if (!this.contextProportionBar) return;
     this.contextProportionBar.innerHTML = '';
 
-    // Calculate category token aggregates (system_blocks, tool_defs, conversation_history, tool_results)
+    // Calculate category token aggregates (system, skills, tools, messages, results)
     let sysTokens = 0;
+    let skillTokens = 0;
     let toolTokens = 0;
     let histTokens = 0;
     let resTokens = 0;
 
-    const sysBlocks = turn.system_blocks || turn.systemBlocks;
-    const toolBlocks = turn.tool_defs || turn.toolDefs;
-    const histBlocks = turn.conversation_history || turn.conversationHistory;
-    const resBlocks = turn.tool_results || turn.toolResults;
-    const asstBlocks = turn.assistant_blocks || turn.assistantBlocks;
+    const allBlocks = turn.all_blocks || turn.blocks || [
+      ...(turn.system_blocks || turn.systemBlocks || []),
+      ...(turn.tool_defs || turn.toolDefs || []),
+      ...(turn.conversation_history || turn.conversationHistory || []),
+      ...(turn.tool_results || turn.toolResults || []),
+      ...(turn.assistant_blocks || turn.assistantBlocks || []),
+    ];
 
-    if (sysBlocks || toolBlocks || histBlocks || resBlocks || asstBlocks) {
-      if (sysBlocks) sysTokens = sysBlocks.reduce((acc, b) => acc + (b.token_count ?? b.tokenCount ?? 0), 0);
-      if (toolBlocks) toolTokens = toolBlocks.reduce((acc, b) => acc + (b.token_count ?? b.tokenCount ?? 0), 0);
-      if (histBlocks) histTokens += histBlocks.reduce((acc, b) => acc + (b.token_count ?? b.tokenCount ?? 0), 0);
-      if (asstBlocks) histTokens += asstBlocks.reduce((acc, b) => acc + (b.token_count ?? b.tokenCount ?? 0), 0);
-      if (resBlocks) resTokens = resBlocks.reduce((acc, b) => acc + (b.token_count ?? b.tokenCount ?? 0), 0);
-    }
-
-    // If all are 0, check all_blocks or blocks
-    if (sysTokens === 0 && toolTokens === 0 && histTokens === 0 && resTokens === 0) {
-      const allBlocks = turn.all_blocks || turn.blocks || [];
+    if (allBlocks.length > 0) {
       allBlocks.forEach((b) => {
-        const type = (b.block_type || b.blockType || '').toLowerCase();
         const count = b.token_count ?? b.tokenCount ?? 0;
-        if (type.includes('system')) {
+        if (this._isSkillBlock(b)) {
+          skillTokens += count;
+        } else if (this._isSystemBlock(b)) {
           sysTokens += count;
-        } else if (type.includes('tool_def') || type.includes('tool_declaration')) {
+        } else if (this._isToolDefBlock(b)) {
           toolTokens += count;
-        } else if (type.includes('tool_result')) {
+        } else if (this._isToolResultBlock(b) || this._isToolCallBlock(b)) {
           resTokens += count;
         } else {
           histTokens += count;
@@ -860,17 +893,18 @@ class DashboardApp {
     }
 
     // Fallback to category_breakdown if still 0
-    if (sysTokens === 0 && toolTokens === 0 && histTokens === 0 && resTokens === 0) {
+    if (sysTokens === 0 && skillTokens === 0 && toolTokens === 0 && histTokens === 0 && resTokens === 0) {
       const cb = turn.category_breakdown || turn.categoryBreakdown || turn.token_breakdown || turn.tokenBreakdown;
       if (cb) {
         sysTokens = cb.system || 0;
+        skillTokens = cb.skills || 0;
         toolTokens = cb.tools || cb.tool_defs || 0;
         histTokens = cb.history || cb.conversation_history || cb.conversation || 0;
         resTokens = cb.tool_results || cb.toolResults || cb.results || 0;
       }
     }
 
-    const totalTokens = sysTokens + toolTokens + histTokens + resTokens;
+    const totalTokens = sysTokens + skillTokens + toolTokens + histTokens + resTokens;
 
     if (totalTokens === 0) {
       this.contextProportionBar.innerHTML = `
@@ -883,9 +917,10 @@ class DashboardApp {
 
     const categories = [
       { key: 'system', name: 'System', tokens: sysTokens, class: 'segment-system', filter: 'SYSTEM' },
+      { key: 'skills', name: 'Skills', tokens: skillTokens, class: 'segment-skills', filter: 'SKILLS' },
       { key: 'tools', name: 'Tool Defs', tokens: toolTokens, class: 'segment-tools', filter: 'TOOLS' },
-      { key: 'messages', name: 'Messages / History', tokens: histTokens, class: 'segment-messages', filter: 'MESSAGES' },
-      { key: 'results', name: 'Tool Results', tokens: resTokens, class: 'segment-results', filter: 'TOOL_RESULTS' },
+      { key: 'messages', name: 'Messages', tokens: histTokens, class: 'segment-messages', filter: 'MESSAGES' },
+      { key: 'results', name: 'Tool Executions', tokens: resTokens, class: 'segment-results', filter: 'TOOL_RESULTS' },
     ];
 
     categories.forEach((cat) => {
@@ -1053,7 +1088,117 @@ class DashboardApp {
       .replace(/'/g, '&#39;');
   }
 
+  _isSkillBlock(block) {
+    if (!block) return false;
+    const bType = (block.block_type || block.blockType || '').toLowerCase();
+    const meta = block.metadata || {};
+    const bId = (block.block_id || block.blockId || '').toLowerCase();
+    const idKey = (block.identity_key || block.identityKey || '').toLowerCase();
+    return (
+      bType === 'skill' ||
+      bType === 'skills' ||
+      meta.type === 'skill' ||
+      meta.category === 'skill' ||
+      bId.startsWith('blk-skill-') ||
+      bId.includes('skill') ||
+      idKey.startsWith('skill:')
+    );
+  }
+
+  _isSystemBlock(block) {
+    if (!block) return false;
+    if (this._isSkillBlock(block)) return false;
+    const bType = (block.block_type || block.blockType || '').toLowerCase();
+    const meta = block.metadata || {};
+    const bId = (block.block_id || block.blockId || '').toLowerCase();
+    const idKey = (block.identity_key || block.identityKey || '').toLowerCase();
+    return (
+      bType === 'system' ||
+      meta.role === 'system' ||
+      bId.startsWith('blk-sys-') ||
+      bId.includes('system') ||
+      idKey.startsWith('system:')
+    );
+  }
+
+  _isToolDefBlock(block) {
+    if (!block) return false;
+    const bType = (block.block_type || block.blockType || '').toLowerCase();
+    const bId = (block.block_id || block.blockId || '').toLowerCase();
+    const idKey = (block.identity_key || block.identityKey || '').toLowerCase();
+    return (
+      bType === 'tool_def' ||
+      bType === 'tool_defs' ||
+      bType === 'tool_declaration' ||
+      bType === 'tool_declarations' ||
+      bId.startsWith('blk-tool-') ||
+      bId.includes('tool_def') ||
+      bId.includes('tool-schema') ||
+      idKey.startsWith('tools:') ||
+      idKey.startsWith('tool_def:')
+    );
+  }
+
+  _isToolResultBlock(block) {
+    if (!block) return false;
+    const bType = (block.block_type || block.blockType || '').toLowerCase();
+    const bId = (block.block_id || block.blockId || '').toLowerCase();
+    const idKey = (block.identity_key || block.identityKey || '').toLowerCase();
+    const meta = block.metadata || {};
+    return (
+      bType === 'tool_result' ||
+      bType === 'tool_results' ||
+      meta.type === 'tool_result' ||
+      meta.category === 'tool_result' ||
+      bId.startsWith('blk-result-') ||
+      bId.startsWith('tool_res_') ||
+      bId.includes('tool_result') ||
+      idKey.startsWith('tool_result:')
+    );
+  }
+
+  _isToolCallBlock(block) {
+    if (!block) return false;
+    if (
+      this._isToolResultBlock(block) ||
+      this._isToolDefBlock(block) ||
+      this._isSystemBlock(block) ||
+      this._isSkillBlock(block)
+    ) {
+      return false;
+    }
+    const bType = (block.block_type || block.blockType || '').toLowerCase();
+    const bId = (block.block_id || block.blockId || '').toLowerCase();
+    const idKey = (block.identity_key || block.identityKey || '').toLowerCase();
+    const meta = block.metadata || {};
+    const content = block.content;
+    const hasCallAction =
+      typeof content === 'object' &&
+      content !== null &&
+      (content.action === 'call' || (content.tool && !content.output && content.arguments !== undefined));
+    return (
+      bType === 'tool_use' ||
+      meta.type === 'tool_use' ||
+      meta.tool_use_id !== undefined ||
+      meta.tool_call_id !== undefined ||
+      bId.includes('_call_') ||
+      bId.startsWith('blk-call-') ||
+      idKey.includes('tool_call:') ||
+      hasCallAction
+    );
+  }
+
   _isMessageBlock(block) {
+    if (!block) return false;
+    if (
+      this._isSystemBlock(block) ||
+      this._isSkillBlock(block) ||
+      this._isToolDefBlock(block) ||
+      this._isToolResultBlock(block) ||
+      this._isToolCallBlock(block)
+    ) {
+      return false;
+    }
     const bType = (block.block_type || block.blockType || '').toLowerCase();
     const role = (block.metadata && block.metadata.role ? block.metadata.role : '').toLowerCase();
     const bId = (block.block_id || block.blockId || '').toLowerCase();
@@ -1069,7 +1214,9 @@ class DashboardApp {
       bId.startsWith('hist_') ||
       bId.startsWith('blk-user-') ||
       bId.startsWith('blk-assistant-') ||
-      bId.startsWith('blk-tht-')
+      bId.startsWith('blk-hist-') ||
+      bId.startsWith('blk-tht-') ||
+      bId.startsWith('blk-asst-')
     );
   }
 
@@ -1094,17 +1241,95 @@ class DashboardApp {
       role === 'assistant' ||
       bType.includes('assistant') ||
       bId.startsWith('blk-assistant-') ||
-      bId.includes('_call_')
+      bId.startsWith('blk-hist-asst-') ||
+      bId.startsWith('blk-asst-')
     ) {
       return 'assistant';
     }
-    // Check hist_X where X is even (user) or odd (assistant)
     const m = bId.match(/^hist_(\d+)/);
     if (m) {
       const idx = parseInt(m[1], 10);
       return idx % 2 === 0 ? 'user' : 'assistant';
     }
     return 'user';
+  }
+
+  _getToolName(block) {
+    if (!block) return 'Tool';
+    const meta = block.metadata || {};
+    if (meta.tool_name) return meta.tool_name;
+    if (meta.name) return meta.name;
+    if (meta.tool) return meta.tool;
+    const content = block.content;
+    if (typeof content === 'object' && content !== null) {
+      if (content.tool) return content.tool;
+      if (content.name) return content.name;
+    }
+    const idKey = block.identity_key || block.identityKey || '';
+    const mKey = idKey.match(/tool(?:_call|_result)?:([a-zA-Z0-9_\-]+)/);
+    if (mKey) {
+      return mKey[1].replace(/_\d+.*$/, '');
+    }
+    const bId = block.block_id || block.blockId || '';
+    const mId = bId.match(/blk-(?:call|result)-([a-zA-Z0-9_]+)/);
+    if (mId) {
+      const raw = mId[1];
+      if (raw === 'bash') return 'execute_bash';
+      if (raw === 'edit') return 'edit_file';
+      return raw;
+    }
+    return 'Tool';
+  }
+
+  _getToolCallId(block) {
+    if (!block) return '';
+    const meta = block.metadata || {};
+    if (meta.tool_use_id) return String(meta.tool_use_id);
+    if (meta.tool_call_id) return String(meta.tool_call_id);
+    if (meta.call_id) return String(meta.call_id);
+    const bId = block.block_id || block.blockId || '';
+    const mCall = bId.match(/_call_([a-zA-Z0-9_\-]+)/);
+    if (mCall) return mCall[1];
+    const mRes = bId.match(/tool_res_([a-zA-Z0-9_\-]+)/);
+    if (mRes) return mRes[1];
+    return '';
+  }
+
+  _getSkillName(block) {
+    if (!block) return 'Skill';
+    const meta = block.metadata || {};
+    if (meta.skill_name) return meta.skill_name;
+    if (meta.name) return meta.name;
+    const idKey = block.identity_key || block.identityKey || '';
+    if (idKey.startsWith('skill:')) {
+      const parts = idKey.split(':');
+      if (parts[1]) {
+        return parts[1].replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+      }
+    }
+    const bId = block.block_id || block.blockId || '';
+    const m = bId.match(/blk-skill-([a-zA-Z0-9_\-]+)/);
+    if (m) {
+      return m[1].replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+    }
+    if (typeof block.content === 'string') {
+      const firstLine = block.content.trim().split('\n')[0];
+      const headingMatch = firstLine.match(/^#+\s*(?:Skill:)?\s*(.+)$/i);
+      if (headingMatch) return headingMatch[1].trim();
+    }
+    return 'Skill';
+  }
+
+  _isToolError(block) {
+    if (!block) return false;
+    const meta = block.metadata || {};
+    if (meta.is_error === true || meta.error === true) return true;
+    const content = block.content;
+    if (typeof content === 'object' && content !== null) {
+      if (content.is_error === true) return true;
+    }
+    const raw = typeof content === 'string' ? content : JSON.stringify(content || '');
+    return /\b(FAILED|Traceback|Error:|Exception:)\b/.test(raw);
   }
 
   _extractBlockSnippet(block, maxLength = 100) {
@@ -1149,6 +1374,10 @@ class DashboardApp {
     if (!obj) return '';
     if (typeof obj === 'string') return obj;
     if (Array.isArray(obj)) {
+      const toolNames = obj.map((x) => x && x.name).filter(Boolean);
+      if (toolNames.length > 0 && toolNames.length === obj.length) {
+        return `Tools: ${toolNames.join(', ')}`;
+      }
       return obj
         .map((item) => this._extractTextFromObject(item))
         .filter(Boolean)
@@ -1218,20 +1447,19 @@ class DashboardApp {
 
     // Filter rows based on this.currentBlockFilter
     const filter = this.currentBlockFilter || 'ALL';
-    const filteredBlocks = blocks.filter((b) => {
-      const bType = (b.block_type || b.blockType || '').toLowerCase();
+    const matchesFilter = (b) => {
       const status = (b.lifecycle_status || b.status || '').toLowerCase();
-      const isMsg = this._isMessageBlock(b);
-
       switch (filter) {
         case 'SYSTEM':
-          return bType.includes('system');
+          return this._isSystemBlock(b);
+        case 'SKILLS':
+          return this._isSkillBlock(b);
         case 'TOOLS':
-          return bType.includes('tool_def') || bType.includes('tool_declaration') || bType.includes('tool_defs');
+          return this._isToolDefBlock(b);
         case 'MESSAGES':
-          return isMsg;
+          return this._isMessageBlock(b);
         case 'TOOL_RESULTS':
-          return bType.includes('tool_result');
+          return this._isToolResultBlock(b) || this._isToolCallBlock(b);
         case 'ADDED':
           return status === 'added';
         case 'MUTATED':
@@ -1240,7 +1468,9 @@ class DashboardApp {
         default:
           return true;
       }
-    });
+    };
+
+    const filteredBlocks = blocks.filter(matchesFilter);
 
     if (filteredBlocks.length === 0) {
       this.blocksTableBody.innerHTML = `
@@ -1279,12 +1509,114 @@ class DashboardApp {
       return '';
     };
 
-    // Helper to render a message item row within an exchange
+    // Helper to render section group header
+    const renderSectionHeader = (sectionKey, title, subLabel, badgeText, tokens, maxSurvived = 0, sectionClass = '') => {
+      const isCollapsed = this.collapsedSections.has(sectionKey);
+      const pctNum = totalTurnTokens > 0 ? (tokens / totalTurnTokens) * 100 : 0;
+      const pctStr = pctNum >= 1 ? `${Math.round(pctNum)}%` : pctNum > 0 ? '<1%' : '0%';
+
+      const headerRow = document.createElement('tr');
+      headerRow.className = `section-group-header ${isCollapsed ? 'collapsed' : ''} ${sectionClass}`;
+      headerRow.dataset.section = sectionKey;
+
+      headerRow.innerHTML = `
+        <td colspan="6">
+          <div class="exchange-header-content">
+            <div class="exchange-header-title">
+              <span class="exchange-collapse-icon">▼</span>
+              <span class="exchange-badge">${this._escapeHtml(title)}</span>
+              ${subLabel ? `<span class="exchange-turn-label">${this._escapeHtml(subLabel)}</span>` : ''}
+            </div>
+            <div class="exchange-header-metrics">
+              <span class="badge badge-info">${this._escapeHtml(badgeText)}</span>
+              <span class="exchange-tokens">${tokens.toLocaleString()} tok (${pctStr})</span>
+              ${maxSurvived > 0 ? `<span class="exchange-survived">${maxSurvived} turns survived</span>` : ''}
+            </div>
+          </div>
+        </td>
+      `;
+
+      headerRow.addEventListener('click', () => {
+        const willCollapse = !this.collapsedSections.has(sectionKey);
+        if (willCollapse) {
+          this.collapsedSections.add(sectionKey);
+          headerRow.classList.add('collapsed');
+        } else {
+          this.collapsedSections.delete(sectionKey);
+          headerRow.classList.remove('collapsed');
+        }
+        const itemRows = this.blocksTableBody.querySelectorAll(`.exchange-item-row[data-section="${sectionKey}"]`);
+        itemRows.forEach((r) => {
+          if (willCollapse) {
+            r.classList.add('exchange-hidden');
+          } else {
+            r.classList.remove('exchange-hidden');
+          }
+        });
+      });
+
+      this.blocksTableBody.appendChild(headerRow);
+    };
+
+    // Helper to render standard context row (System, Skill, Tool Defs)
+    const createStandardRow = (b, opts) => {
+      const row = document.createElement('tr');
+      const bId = b.block_id || b.blockId || '—';
+      row.dataset.blockId = bId;
+      row.dataset.section = opts.sectionKey;
+      let rowClass = `exchange-item-row ${opts.rowClass}`;
+      if (opts.isCollapsed) {
+        rowClass += ' exchange-hidden';
+      }
+      row.className = rowClass;
+
+      const identityKey = b.identity_key || b.identityKey || '';
+      const status = b.lifecycle_status || b.status || '';
+      const tokCount = b.token_count ?? b.tokenCount ?? 0;
+      const hash = b.content_hash || b.contentHash || '';
+      const hashShort = hash ? `${hash.slice(0, 8)}...` : '—';
+      const survived = b.turns_survived ?? b.turnsSurvived;
+      const survivedText = survived !== undefined ? `${survived} turns` : '—';
+      const snippet = this._extractBlockSnippet(b, 100);
+      const fullSnippet = this._extractBlockSnippet(b, 600);
+
+      row.innerHTML = `
+        <td class="code-cell">
+          <div class="msg-block-identity">
+            <span class="msg-role-pill ${opts.rolePillClass}">${this._escapeHtml(opts.roleLabel)}</span>
+            <span class="msg-block-subid">${this._escapeHtml(bId)}</span>
+          </div>
+          <div class="msg-snippet-box" title="${this._escapeHtml(fullSnippet)}">&ldquo;${this._escapeHtml(snippet)}&rdquo;</div>
+          ${identityKey ? `<div class="msg-identity-sub">${this._escapeHtml(identityKey)}</div>` : ''}
+        </td>
+        <td>
+          <span class="badge ${opts.badgeClass}">${this._escapeHtml(opts.badgeLabel)}</span>
+          ${getStatusBadge(status)}
+        </td>
+        <td style="font-family: var(--font-mono); white-space: nowrap;">${formatTokenDisplay(tokCount)}</td>
+        <td>${survivedText}</td>
+        <td class="hash-cell">${hashShort}</td>
+        <td>
+          <button class="btn" style="padding: 2px 8px; font-size: 11px;">View Content</button>
+        </td>
+      `;
+
+      const viewBtn = row.querySelector('button');
+      if (viewBtn) {
+        viewBtn.addEventListener('click', () => {
+          this.openModal(`Block: ${bId} (${opts.badgeLabel})`, b.content || JSON.stringify(b, null, 2));
+        });
+      }
+      return row;
+    };
+
+    // Helper to render conversation message item row within an exchange
     const createMessageRow = (b, exIdx, isCollapsed) => {
       const row = document.createElement('tr');
       const bId = b.block_id || b.blockId || '—';
       row.dataset.blockId = bId;
       row.dataset.exchange = String(exIdx);
+      row.dataset.section = 'messages';
       const role = this._getMessageRole(b);
 
       let rowClass = 'exchange-item-row';
@@ -1302,21 +1634,14 @@ class DashboardApp {
       } else if (role === 'assistant') {
         rowClass += ' assistant-msg-row';
         rolePillClass = 'role-assistant';
-        const isToolCall = bId.includes('_call_') || (b.metadata && b.metadata.tool_use_id);
-        if (isToolCall) {
-          const toolName = b.metadata && b.metadata.name ? b.metadata.name : '';
-          roleLabel = toolName ? `🤖 Tool Call: ${toolName}` : '🤖 Assistant Tool Call';
-          badgeLabel = 'Tool Call';
-        } else {
-          roleLabel = '🤖 Assistant Response';
-          badgeLabel = 'Assistant Message';
-        }
+        roleLabel = '🤖 Assistant Response';
+        badgeLabel = 'Assistant Message';
         badgeClass = 'badge-role-assistant';
       } else {
         rowClass += ' user-msg-row';
       }
 
-      if (isCollapsed) {
+      if (isCollapsed || this.collapsedSections.has('messages')) {
         rowClass += ' exchange-hidden';
       }
       row.className = rowClass;
@@ -1361,71 +1686,17 @@ class DashboardApp {
       return row;
     };
 
-    // Helper to render non-message block row (System, Tool Defs, Tool Results)
-    const createNonMessageRow = (b) => {
-      const row = document.createElement('tr');
-      const bId = b.block_id || b.blockId || '—';
-      row.dataset.blockId = bId;
-      const bType = b.block_type || b.blockType || 'block';
-      const identityKey = b.identity_key || b.identityKey || '';
-      const status = b.lifecycle_status || b.status || '';
-      const tokCount = b.token_count ?? b.tokenCount ?? 0;
-      const hash = b.content_hash || b.contentHash || '';
-      const hashShort = hash ? `${hash.slice(0, 8)}...` : '—';
-      const survived = b.turns_survived ?? b.turnsSurvived;
-      const survivedText = survived !== undefined ? `${survived} turns` : '—';
-      const snippet = this._extractBlockSnippet(b, 100);
-      const fullSnippet = this._extractBlockSnippet(b, 600);
-
-      let cleanBadge = bType;
-      let badgeClass = 'badge-info';
-      if (bType.includes('system')) {
-        cleanBadge = 'System Prompt';
-      } else if (bType.includes('tool_def') || bType.includes('tool_declaration') || bType.includes('tool_defs')) {
-        cleanBadge = 'Tool Definition';
-      } else if (bType.includes('tool_result')) {
-        cleanBadge = 'Tool Result';
-      } else if (bType.includes('skill')) {
-        cleanBadge = 'Skill Block';
-      }
-
-      row.innerHTML = `
-        <td class="code-cell">
-          <div style="font-weight: 600; color: var(--text-heading);">${this._escapeHtml(bId)}</div>
-          <div class="msg-snippet-box" title="${this._escapeHtml(fullSnippet)}">&ldquo;${this._escapeHtml(snippet)}&rdquo;</div>
-          ${identityKey ? `<div class="msg-identity-sub">${this._escapeHtml(identityKey)}</div>` : ''}
-        </td>
-        <td>
-          <span class="badge ${badgeClass}">${cleanBadge}</span>
-          ${getStatusBadge(status)}
-        </td>
-        <td style="font-family: var(--font-mono); white-space: nowrap;">${formatTokenDisplay(tokCount)}</td>
-        <td>${survivedText}</td>
-        <td class="hash-cell">${hashShort}</td>
-        <td>
-          <button class="btn" style="padding: 2px 8px; font-size: 11px;">View Content</button>
-        </td>
-      `;
-
-      const viewBtn = row.querySelector('button');
-      if (viewBtn) {
-        viewBtn.addEventListener('click', () => {
-          this.openModal(`Block: ${bId} (${cleanBadge})`, b.content || JSON.stringify(b, null, 2));
-        });
-      }
-      return row;
-    };
-
-    // Helper to render an entire Exchange (header + items)
+    // Helper to render entire conversation exchange
     const renderExchange = (exchange) => {
       const exIdx = exchange.exchangeIndex;
-      const isCollapsed = this.collapsedExchanges.has(String(exIdx));
+      const isCollapsed = this.collapsedExchanges.has(String(exIdx)) || this.collapsedSections.has('messages');
       const exPctNum = totalTurnTokens > 0 ? (exchange.totalTokens / totalTurnTokens) * 100 : 0;
       const exPctStr = exPctNum >= 1 ? `${Math.round(exPctNum)}%` : exPctNum > 0 ? '<1%' : '0%';
 
       const headerRow = document.createElement('tr');
       headerRow.className = `exchange-group-header ${isCollapsed ? 'collapsed' : ''}`;
       headerRow.dataset.exchange = String(exIdx);
+      headerRow.dataset.section = 'messages';
 
       headerRow.innerHTML = `
         <td colspan="6">
@@ -1472,16 +1743,115 @@ class DashboardApp {
       });
     };
 
-    // Partition filteredBlocks into non-message blocks and grouped conversation exchanges
-    let currentMessageGroup = [];
-    let exchangeCounter = 0;
+    // Partition filtered blocks into structured sections
+    const sysBlocks = filteredBlocks.filter((b) => this._isSystemBlock(b));
+    const skillBlocks = filteredBlocks.filter((b) => this._isSkillBlock(b));
+    const toolDefBlocks = filteredBlocks.filter((b) => this._isToolDefBlock(b));
+    const toolCallBlocks = filteredBlocks.filter((b) => this._isToolCallBlock(b));
+    const toolResultBlocks = filteredBlocks.filter((b) => this._isToolResultBlock(b));
+    const messageBlocks = filteredBlocks.filter((b) => this._isMessageBlock(b));
 
-    const flushMessageGroup = () => {
-      if (currentMessageGroup.length === 0) return;
+    // SECTION 1: System Instructions
+    if (sysBlocks.length > 0) {
+      const sysTokens = sysBlocks.reduce((acc, b) => acc + (b.token_count ?? b.tokenCount ?? 0), 0);
+      const maxSurv = Math.max(0, ...sysBlocks.map((b) => b.turns_survived ?? b.turnsSurvived ?? 0));
+      renderSectionHeader(
+        'system',
+        '⚙️ System Instructions',
+        'Core Agent Prompts & Context Rules',
+        `${sysBlocks.length} block${sysBlocks.length === 1 ? '' : 's'}`,
+        sysTokens,
+        maxSurv,
+        'section-system-header'
+      );
+      const isSecCollapsed = this.collapsedSections.has('system');
+      sysBlocks.forEach((b) => {
+        const row = createStandardRow(b, {
+          sectionKey: 'system',
+          rowClass: 'system-row',
+          rolePillClass: 'role-system',
+          roleLabel: '⚙️ System Prompt',
+          badgeClass: 'badge-role-system',
+          badgeLabel: 'System Prompt',
+          isCollapsed: isSecCollapsed,
+        });
+        this.blocksTableBody.appendChild(row);
+      });
+    }
+
+    // SECTION 2: Agent Skills & Standards
+    if (skillBlocks.length > 0) {
+      const skillTokens = skillBlocks.reduce((acc, b) => acc + (b.token_count ?? b.tokenCount ?? 0), 0);
+      const maxSurv = Math.max(0, ...skillBlocks.map((b) => b.turns_survived ?? b.turnsSurvived ?? 0));
+      renderSectionHeader(
+        'skills',
+        '🎯 Agent Skills & Standards',
+        'Injected Skills & Coding Guidelines',
+        `${skillBlocks.length} skill${skillBlocks.length === 1 ? '' : 's'}`,
+        skillTokens,
+        maxSurv,
+        'section-skills-header'
+      );
+      const isSecCollapsed = this.collapsedSections.has('skills');
+      skillBlocks.forEach((b) => {
+        const skillName = this._getSkillName(b);
+        const row = createStandardRow(b, {
+          sectionKey: 'skills',
+          rowClass: 'skill-row',
+          rolePillClass: 'role-skill',
+          roleLabel: `🎯 Skill: ${skillName}`,
+          badgeClass: 'badge-role-skill',
+          badgeLabel: 'Agent Skill',
+          isCollapsed: isSecCollapsed,
+        });
+        this.blocksTableBody.appendChild(row);
+      });
+    }
+
+    // SECTION 3: Tool Definitions & Schemas
+    if (toolDefBlocks.length > 0) {
+      const toolDefTokens = toolDefBlocks.reduce((acc, b) => acc + (b.token_count ?? b.tokenCount ?? 0), 0);
+      const maxSurv = Math.max(0, ...toolDefBlocks.map((b) => b.turns_survived ?? b.turnsSurvived ?? 0));
+      let toolNamesCount = 0;
+      toolDefBlocks.forEach((b) => {
+        if (Array.isArray(b.content)) toolNamesCount += b.content.length;
+        else if (b.content && typeof b.content === 'object' && b.content.tools && Array.isArray(b.content.tools)) {
+          toolNamesCount += b.content.tools.length;
+        } else {
+          toolNamesCount += 1;
+        }
+      });
+      renderSectionHeader(
+        'tools',
+        '🔧 Tool Definitions & Schemas',
+        'Registered Tool APIs & Specs',
+        `${toolDefBlocks.length} schema block${toolDefBlocks.length === 1 ? '' : 's'}${toolNamesCount > 0 ? ` (${toolNamesCount} tools)` : ''}`,
+        toolDefTokens,
+        maxSurv,
+        'section-tools-header'
+      );
+      const isSecCollapsed = this.collapsedSections.has('tools');
+      toolDefBlocks.forEach((b) => {
+        const row = createStandardRow(b, {
+          sectionKey: 'tools',
+          rowClass: 'tool-def-row',
+          rolePillClass: 'role-tool',
+          roleLabel: '🔧 Tool Schemas',
+          badgeClass: 'badge-role-tool',
+          badgeLabel: 'Tool Definition',
+          isCollapsed: isSecCollapsed,
+        });
+        this.blocksTableBody.appendChild(row);
+      });
+    }
+
+    // SECTION 4: Conversation Exchanges
+    if (messageBlocks.length > 0) {
+      let exchangeCounter = 0;
       const exchanges = [];
       let currentEx = null;
 
-      currentMessageGroup.forEach((b) => {
+      messageBlocks.forEach((b) => {
         const role = this._getMessageRole(b);
         const bId = b.block_id || b.blockId || '';
         const m = bId.match(/^hist_(\d+)/);
@@ -1536,22 +1906,221 @@ class DashboardApp {
         }
         renderExchange(ex);
       });
+    }
 
-      currentMessageGroup = [];
-    };
+    // SECTION 5: Tool Executions & Output Payloads (Call ➔ Result linking)
+    if (toolCallBlocks.length > 0 || toolResultBlocks.length > 0) {
+      const execItems = [];
+      const usedCallIds = new Set();
+      const usedResultIds = new Set();
 
-    filteredBlocks.forEach((b) => {
-      const isMsg = this._isMessageBlock(b);
-      if (isMsg) {
-        currentMessageGroup.push(b);
-      } else {
-        flushMessageGroup();
-        const row = createNonMessageRow(b);
-        this.blocksTableBody.appendChild(row);
-      }
-    });
+      // 1. Exact ID matching (tool_use_id / tool_call_id / call_id)
+      toolCallBlocks.forEach((call) => {
+        const callId = this._getToolCallId(call);
+        if (!callId) return;
+        const matchRes = toolResultBlocks.find((res) => {
+          const resId = this._getToolCallId(res);
+          return resId && resId === callId && !usedResultIds.has(res.block_id || res.blockId);
+        });
+        if (matchRes) {
+          usedCallIds.add(call.block_id || call.blockId);
+          usedResultIds.add(matchRes.block_id || matchRes.blockId);
+          execItems.push({
+            callBlock: call,
+            resultBlock: matchRes,
+            toolName: this._getToolName(call) || this._getToolName(matchRes),
+            callId: callId,
+            totalTokens:
+              (call.token_count ?? call.tokenCount ?? 0) + (matchRes.token_count ?? matchRes.tokenCount ?? 0),
+            isError: this._isToolError(matchRes),
+          });
+        }
+      });
 
-    flushMessageGroup();
+      // 2. Tool name-based matching for remaining unmatched in turn sequence
+      toolCallBlocks.forEach((call) => {
+        const cId = call.block_id || call.blockId;
+        if (usedCallIds.has(cId)) return;
+        const callToolName = this._getToolName(call);
+        const matchRes = toolResultBlocks.find((res) => {
+          const rId = res.block_id || res.blockId;
+          if (usedResultIds.has(rId)) return false;
+          return this._getToolName(res) === callToolName;
+        });
+        if (matchRes) {
+          usedCallIds.add(cId);
+          usedResultIds.add(matchRes.block_id || matchRes.blockId);
+          execItems.push({
+            callBlock: call,
+            resultBlock: matchRes,
+            toolName: callToolName,
+            callId: this._getToolCallId(call) || this._getToolCallId(matchRes),
+            totalTokens:
+              (call.token_count ?? call.tokenCount ?? 0) + (matchRes.token_count ?? matchRes.tokenCount ?? 0),
+            isError: this._isToolError(matchRes),
+          });
+        }
+      });
+
+      // 3. Unmatched Tool Results (e.g. executed from prior turn's call)
+      toolResultBlocks.forEach((res) => {
+        const rId = res.block_id || res.blockId;
+        if (usedResultIds.has(rId)) return;
+        execItems.push({
+          callBlock: null,
+          resultBlock: res,
+          toolName: this._getToolName(res),
+          callId: this._getToolCallId(res),
+          totalTokens: res.token_count ?? res.tokenCount ?? 0,
+          isError: this._isToolError(res),
+        });
+      });
+
+      // 4. Unmatched Tool Calls (e.g. pending assistant call in current turn)
+      toolCallBlocks.forEach((call) => {
+        const cId = call.block_id || call.blockId;
+        if (usedCallIds.has(cId)) return;
+        execItems.push({
+          callBlock: call,
+          resultBlock: null,
+          toolName: this._getToolName(call),
+          callId: this._getToolCallId(call),
+          totalTokens: call.token_count ?? call.tokenCount ?? 0,
+          isError: false,
+        });
+      });
+
+      const execTokens = [...toolCallBlocks, ...toolResultBlocks].reduce(
+        (acc, b) => acc + (b.token_count ?? b.tokenCount ?? 0),
+        0
+      );
+      const maxSurv = Math.max(
+        0,
+        ...[...toolCallBlocks, ...toolResultBlocks].map((b) => b.turns_survived ?? b.turnsSurvived ?? 0)
+      );
+
+      renderSectionHeader(
+        'executions',
+        '⚡ Tool Executions & Output Payloads',
+        'Linked Tool Invocations & Execution Payloads',
+        `${execItems.length} execution${execItems.length === 1 ? '' : 's'}`,
+        execTokens,
+        maxSurv,
+        'section-executions-header'
+      );
+
+      const isSecCollapsed = this.collapsedSections.has('executions');
+
+      execItems.forEach((item) => {
+        // Render call row
+        if (item.callBlock) {
+          const callRow = document.createElement('tr');
+          const b = item.callBlock;
+          const bId = b.block_id || b.blockId || '—';
+          callRow.dataset.blockId = bId;
+          callRow.dataset.section = 'executions';
+          let rowClass = 'exchange-item-row tool-call-row';
+          if (isSecCollapsed) rowClass += ' exchange-hidden';
+          callRow.className = rowClass;
+
+          const identityKey = b.identity_key || b.identityKey || '';
+          const status = b.lifecycle_status || b.status || '';
+          const tokCount = b.token_count ?? b.tokenCount ?? 0;
+          const hash = b.content_hash || b.contentHash || '';
+          const hashShort = hash ? `${hash.slice(0, 8)}...` : '—';
+          const survived = b.turns_survived ?? b.turnsSurvived;
+          const survivedText = survived !== undefined ? `${survived} turns` : '—';
+          const snippet = this._extractBlockSnippet(b, 100);
+          const fullSnippet = this._extractBlockSnippet(b, 600);
+
+          callRow.innerHTML = `
+            <td class="code-cell">
+              <div class="msg-block-identity">
+                <span class="msg-role-pill role-tool-call">🤖 Tool Call: ${this._escapeHtml(item.toolName)}</span>
+                <span class="msg-block-subid">${this._escapeHtml(bId)}${item.callId ? ` [id: ${this._escapeHtml(item.callId)}]` : ''}</span>
+              </div>
+              <div class="msg-snippet-box" title="${this._escapeHtml(fullSnippet)}">&ldquo;${this._escapeHtml(snippet)}&rdquo;</div>
+              ${identityKey ? `<div class="msg-identity-sub">${this._escapeHtml(identityKey)}</div>` : ''}
+            </td>
+            <td>
+              <span class="badge badge-role-tool-call">Tool Call</span>
+              ${getStatusBadge(status)}
+            </td>
+            <td style="font-family: var(--font-mono); white-space: nowrap;">${formatTokenDisplay(tokCount)}</td>
+            <td>${survivedText}</td>
+            <td class="hash-cell">${hashShort}</td>
+            <td>
+              <button class="btn" style="padding: 2px 8px; font-size: 11px;">View Content</button>
+            </td>
+          `;
+
+          const viewBtn = callRow.querySelector('button');
+          if (viewBtn) {
+            viewBtn.addEventListener('click', () => {
+              this.openModal(`Tool Call: ${item.toolName} (${bId})`, b.content || JSON.stringify(b, null, 2));
+            });
+          }
+          this.blocksTableBody.appendChild(callRow);
+        }
+
+        // Render result row
+        if (item.resultBlock) {
+          const resultRow = document.createElement('tr');
+          const b = item.resultBlock;
+          const bId = b.block_id || b.blockId || '—';
+          resultRow.dataset.blockId = bId;
+          resultRow.dataset.section = 'executions';
+          let rowClass = `exchange-item-row tool-result-row ${item.isError ? 'tool-error-row' : ''}`;
+          if (isSecCollapsed) rowClass += ' exchange-hidden';
+          resultRow.className = rowClass;
+
+          const identityKey = b.identity_key || b.identityKey || '';
+          const status = b.lifecycle_status || b.status || '';
+          const tokCount = b.token_count ?? b.tokenCount ?? 0;
+          const hash = b.content_hash || b.contentHash || '';
+          const hashShort = hash ? `${hash.slice(0, 8)}...` : '—';
+          const survived = b.turns_survived ?? b.turnsSurvived;
+          const survivedText = survived !== undefined ? `${survived} turns` : '—';
+          const snippet = this._extractBlockSnippet(b, 100);
+          const fullSnippet = this._extractBlockSnippet(b, 600);
+
+          const rolePillLabel = item.isError
+            ? `❌ Tool Output: ${this._escapeHtml(item.toolName)} (Failed)`
+            : `⚡ Tool Output: ${this._escapeHtml(item.toolName)}`;
+          const badgeClass = item.isError ? 'badge-role-tool-error' : 'badge-role-tool-result';
+          const badgeLabel = item.isError ? 'Tool Error' : 'Tool Result';
+
+          resultRow.innerHTML = `
+            <td class="code-cell">
+              <div class="msg-block-identity">
+                <span class="msg-role-pill role-tool-result ${item.isError ? 'is-error' : ''}">${rolePillLabel}</span>
+                <span class="msg-block-subid">${this._escapeHtml(bId)}${item.callId ? ` [ref: ${this._escapeHtml(item.callId)}]` : ''}</span>
+              </div>
+              <div class="msg-snippet-box" title="${this._escapeHtml(fullSnippet)}">&ldquo;${this._escapeHtml(snippet)}&rdquo;</div>
+              ${identityKey ? `<div class="msg-identity-sub">${this._escapeHtml(identityKey)}</div>` : ''}
+            </td>
+            <td>
+              <span class="badge ${badgeClass}">${badgeLabel}</span>
+              ${getStatusBadge(status)}
+            </td>
+            <td style="font-family: var(--font-mono); white-space: nowrap;">${formatTokenDisplay(tokCount)}</td>
+            <td>${survivedText}</td>
+            <td class="hash-cell">${hashShort}</td>
+            <td>
+              <button class="btn" style="padding: 2px 8px; font-size: 11px;">View Content</button>
+            </td>
+          `;
+
+          const viewBtn = resultRow.querySelector('button');
+          if (viewBtn) {
+            viewBtn.addEventListener('click', () => {
+              this.openModal(`Tool Result: ${item.toolName} (${bId})`, b.content || JSON.stringify(b, null, 2));
+            });
+          }
+          this.blocksTableBody.appendChild(resultRow);
+        }
+      });
+    }
   }
 
   renderEmptyTurnInspector() {

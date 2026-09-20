@@ -820,6 +820,11 @@ body {
   color: #0d1117;
 }
 
+.proportion-segment.segment-skills {
+  background-color: #39c5bb;
+  color: #0d1117;
+}
+
 .proportion-segment.segment-tools {
   background-color: #d29922;
   color: #0d1117;
@@ -855,7 +860,26 @@ body {
   white-space: nowrap;
 }
 
-/* Category Filter Chips */
+/* Category Filter Chips & Toolbar */
+.blocks-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.blocks-toolbar .filter-chips {
+  margin-bottom: 0;
+}
+
+.blocks-view-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .filter-chips {
   display: flex;
   flex-wrap: wrap;
@@ -900,6 +924,13 @@ body {
   border-color: #58a6ff;
   color: #58a6ff;
   box-shadow: 0 0 0 1px #58a6ff;
+}
+
+.filter-chip[data-filter="SKILLS"].active {
+  background-color: rgba(57, 197, 187, 0.15);
+  border-color: #39c5bb;
+  color: #39c5bb;
+  box-shadow: 0 0 0 1px #39c5bb;
 }
 
 .filter-chip[data-filter="TOOLS"].active {
@@ -982,8 +1013,9 @@ body {
   color: var(--text-secondary);
 }
 
-/* Lower Panel: Conversation Exchange Grouping */
-.exchange-group-header {
+/* Lower Panel: Section and Conversation Exchange Grouping */
+.exchange-group-header,
+.section-group-header {
   background-color: rgba(22, 27, 34, 0.95);
   cursor: pointer;
   user-select: none;
@@ -992,11 +1024,13 @@ body {
   transition: background-color 0.15s ease;
 }
 
-.exchange-group-header:hover {
+.exchange-group-header:hover,
+.section-group-header:hover {
   background-color: rgba(31, 36, 44, 1);
 }
 
-.exchange-group-header td {
+.exchange-group-header td,
+.section-group-header td {
   padding: 8px 14px;
   background-color: transparent !important;
 }
@@ -1022,7 +1056,8 @@ body {
   width: 12px;
 }
 
-.exchange-group-header.collapsed .exchange-collapse-icon {
+.exchange-group-header.collapsed .exchange-collapse-icon,
+.section-group-header.collapsed .exchange-collapse-icon {
   transform: rotate(-90deg);
 }
 
@@ -1086,6 +1121,53 @@ body {
   background-color: rgba(210, 153, 34, 0.02);
 }
 
+.exchange-item-row.system-row {
+  border-left: 3px solid #58a6ff;
+  background-color: rgba(56, 139, 253, 0.02);
+}
+
+.exchange-item-row.skill-row {
+  border-left: 3px solid #39c5bb;
+  background-color: rgba(57, 197, 187, 0.02);
+}
+
+.exchange-item-row.tool-def-row {
+  border-left: 3px solid #f0883e;
+  background-color: rgba(240, 136, 62, 0.02);
+}
+
+.exchange-item-row.tool-call-row {
+  border-left: 3px solid #79c0ff;
+  background-color: rgba(121, 192, 255, 0.02);
+}
+
+.exchange-item-row.tool-result-row {
+  border-left: 3px solid #56d364;
+  background-color: rgba(63, 185, 80, 0.02);
+}
+
+.exchange-item-row.tool-result-row.tool-error-row {
+  border-left: 3px solid #f85149;
+  background-color: rgba(248, 81, 73, 0.03);
+}
+
+/* Category Section Headers */
+.section-system-header {
+  background: linear-gradient(90deg, rgba(56, 139, 253, 0.08) 0%, rgba(22, 27, 34, 0.95) 45%) !important;
+}
+
+.section-skills-header {
+  background: linear-gradient(90deg, rgba(57, 197, 187, 0.08) 0%, rgba(22, 27, 34, 0.95) 45%) !important;
+}
+
+.section-tools-header {
+  background: linear-gradient(90deg, rgba(240, 136, 62, 0.08) 0%, rgba(22, 27, 34, 0.95) 45%) !important;
+}
+
+.section-executions-header {
+  background: linear-gradient(90deg, rgba(121, 192, 255, 0.08) 0%, rgba(22, 27, 34, 0.95) 45%) !important;
+}
+
 .msg-block-identity {
   display: flex;
   align-items: center;
@@ -1120,6 +1202,42 @@ body {
   background: rgba(210, 153, 34, 0.18);
   color: #e3b341;
   border: 1px solid rgba(210, 153, 34, 0.35);
+}
+
+.msg-role-pill.role-system {
+  background: rgba(56, 139, 253, 0.18);
+  color: #79b8ff;
+  border: 1px solid rgba(56, 139, 253, 0.35);
+}
+
+.msg-role-pill.role-skill {
+  background: rgba(57, 197, 187, 0.18);
+  color: #39c5bb;
+  border: 1px solid rgba(57, 197, 187, 0.35);
+}
+
+.msg-role-pill.role-tool {
+  background: rgba(240, 136, 62, 0.18);
+  color: #f0883e;
+  border: 1px solid rgba(240, 136, 62, 0.35);
+}
+
+.msg-role-pill.role-tool-call {
+  background: rgba(121, 192, 255, 0.18);
+  color: #79c0ff;
+  border: 1px solid rgba(121, 192, 255, 0.35);
+}
+
+.msg-role-pill.role-tool-result {
+  background: rgba(86, 211, 100, 0.18);
+  color: #56d364;
+  border: 1px solid rgba(86, 211, 100, 0.35);
+}
+
+.msg-role-pill.role-tool-result.is-error {
+  background: rgba(248, 81, 73, 0.18);
+  color: #f85149;
+  border: 1px solid rgba(248, 81, 73, 0.35);
 }
 
 .msg-block-subid {
@@ -1169,6 +1287,42 @@ body {
   background-color: rgba(210, 153, 34, 0.15);
   color: #d29922;
   border: 1px solid rgba(210, 153, 34, 0.3);
+}
+
+.badge-role-system {
+  background-color: rgba(56, 139, 253, 0.15);
+  color: #58a6ff;
+  border: 1px solid rgba(56, 139, 253, 0.3);
+}
+
+.badge-role-skill {
+  background-color: rgba(57, 197, 187, 0.15);
+  color: #39c5bb;
+  border: 1px solid rgba(57, 197, 187, 0.3);
+}
+
+.badge-role-tool {
+  background-color: rgba(240, 136, 62, 0.15);
+  color: #f0883e;
+  border: 1px solid rgba(240, 136, 62, 0.3);
+}
+
+.badge-role-tool-call {
+  background-color: rgba(121, 192, 255, 0.15);
+  color: #79c0ff;
+  border: 1px solid rgba(121, 192, 255, 0.3);
+}
+
+.badge-role-tool-result {
+  background-color: rgba(63, 185, 80, 0.15);
+  color: #56d364;
+  border: 1px solid rgba(63, 185, 80, 0.3);
+}
+
+.badge-role-tool-error {
+  background-color: rgba(248, 81, 73, 0.15);
+  color: #f85149;
+  border: 1px solid rgba(248, 81, 73, 0.3);
 }
 
 /* Diff Section */
