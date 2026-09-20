@@ -627,15 +627,25 @@ def test_context_capacity_section_and_usage_badge(client: TestClient) -> None:
 
 
 def test_turn_inspector_navigation_controls_and_selector(client: TestClient) -> None:
-    """Verify turn inspector panel header contains turn selector, prev/next buttons, and auto-follow logic."""
-    # 1. HTML structure
+    """Verify top KPI banner, Time Machine turn navigation console in context capacity card, and auto-follow logic."""
+    # 1. HTML structure and layout ordering (KPI banner at top, context capacity below it)
     res_html = client.get("/")
     assert res_html.status_code == 200
     html_text = res_html.text
+
+    kpi_pos = html_text.find('class="kpi-banner"')
+    capacity_pos = html_text.find('id="context-capacity-section"')
+    assert kpi_pos != -1 and capacity_pos != -1
+    assert kpi_pos < capacity_pos, "KPI banner must precede context capacity section at the top"
+
+    # Time Machine controls inside context capacity badge
     assert 'id="turn-inspector-select"' in html_text
     assert 'id="turn-prev-btn"' in html_text
     assert 'id="turn-next-btn"' in html_text
     assert 'id="turn-latest-btn"' in html_text
+    assert 'id="time-machine-step-text"' in html_text
+    assert "time-machine-nav-bar" in html_text
+    assert "time-machine-card" in html_text
     assert "turn-nav-controls" in html_text
     assert "inspector-header" in html_text
 
@@ -648,6 +658,10 @@ def test_turn_inspector_navigation_controls_and_selector(client: TestClient) -> 
     assert ".turn-inspector-select" in css_text
     assert ".turn-nav-btn" in css_text
     assert ".turn-latest-btn" in css_text
+    assert ".time-machine-nav-bar" in css_text
+    assert ".time-machine-nav-btn" in css_text
+    assert ".time-machine-select" in css_text
+    assert ".time-machine-step-indicator" in css_text
 
     # 3. JavaScript logic in app.js
     res_js = client.get("/js/app.js")
@@ -658,6 +672,7 @@ def test_turn_inspector_navigation_controls_and_selector(client: TestClient) -> 
     assert "navigateTurn(" in js_text
     assert "navigateLatestTurn()" in js_text
     assert "_userPinnedHistoricalTurn" in js_text
+    assert "timeMachineStepText" in js_text
     assert "ArrowLeft" in js_text
     assert "ArrowRight" in js_text
 

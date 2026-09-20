@@ -58,6 +58,7 @@ class DashboardApp {
     this.turnPrevBtn = document.getElementById('turn-prev-btn');
     this.turnNextBtn = document.getElementById('turn-next-btn');
     this.turnLatestBtn = document.getElementById('turn-latest-btn');
+    this.timeMachineStepText = document.getElementById('time-machine-step-text');
     this._userPinnedHistoricalTurn = false;
     this.turnMetaRibbon = document.getElementById('turn-meta-ribbon');
     this.autoDiffRibbon = document.getElementById('auto-diff-ribbon');
@@ -2645,6 +2646,14 @@ class DashboardApp {
     if (this.turnLatestBtn) {
       const isLatest = currPos === this.turns.length - 1;
       this.turnLatestBtn.style.display = isLatest ? 'none' : 'inline-flex';
+    }
+
+    if (this.timeMachineStepText) {
+      if (currPos >= 0 && this.turns.length > 0) {
+        this.timeMachineStepText.textContent = `Turn ${currPos + 1} of ${this.turns.length}`;
+      } else {
+        this.timeMachineStepText.textContent = '—';
+      }
     }
   }
 

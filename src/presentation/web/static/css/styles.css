@@ -300,21 +300,223 @@ body {
   flex: 1;
 }
 
-/* Context Window Capacity Overview */
+/* Context Window Capacity Overview & Time Machine */
 .context-capacity-section {
-  background: linear-gradient(135deg, rgba(22, 27, 34, 0.95) 0%, rgba(13, 17, 23, 0.98) 100%);
-  border: 1px solid var(--border-color);
+  background: linear-gradient(135deg, rgba(22, 27, 34, 0.98) 0%, rgba(17, 24, 39, 0.95) 50%, rgba(13, 17, 23, 0.98) 100%);
+  border: 1px solid rgba(88, 166, 255, 0.28);
   border-radius: var(--radius-lg);
-  padding: 16px 20px;
+  padding: 18px 22px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  box-shadow: var(--shadow-sm);
+  gap: 16px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35), 0 0 15px rgba(88, 166, 255, 0.06);
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.context-capacity-section::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent 0%, var(--color-primary) 30%, #a371f7 70%, transparent 100%);
+  opacity: 0.8;
 }
 
 .context-capacity-section:hover {
-  border-color: rgba(88, 166, 255, 0.4);
+  border-color: rgba(88, 166, 255, 0.5);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.45), 0 0 20px rgba(88, 166, 255, 0.12);
+}
+
+.time-machine-icon {
+  font-size: 18px;
+  filter: drop-shadow(0 0 6px rgba(88, 166, 255, 0.4));
+}
+
+.badge-time-machine {
+  background-color: rgba(163, 113, 247, 0.18);
+  color: #d2a8ff;
+  border: 1px solid rgba(163, 113, 247, 0.4);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 10px;
+  border-radius: var(--radius-full);
+  letter-spacing: 0.02em;
+}
+
+/* Time Machine Turn Navigation Console */
+.time-machine-nav-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 14px;
+  background: rgba(13, 17, 23, 0.75);
+  border: 1px solid rgba(48, 54, 61, 0.85);
+  border-radius: var(--radius-md);
+  padding: 12px 16px;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+.time-machine-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.time-machine-nav-btn {
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  border-radius: var(--radius-md);
+  background-color: var(--bg-surface);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  user-select: none;
+}
+
+.time-machine-nav-btn:hover:not(:disabled) {
+  background-color: rgba(56, 139, 253, 0.15);
+  border-color: var(--color-primary);
+  color: #58a6ff;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(88, 166, 255, 0.25);
+}
+
+.time-machine-nav-btn:active:not(:disabled) {
+  transform: translateY(0);
+  box-shadow: none;
+}
+
+.time-machine-nav-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+  border-color: var(--border-muted);
+}
+
+.nav-arrow {
+  font-size: 12px;
+}
+
+.time-machine-picker-wrapper {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.picker-clock-icon {
+  position: absolute;
+  left: 12px;
+  pointer-events: none;
+  font-size: 14px;
+  z-index: 1;
+  opacity: 0.85;
+}
+
+.picker-chevron {
+  position: absolute;
+  right: 12px;
+  pointer-events: none;
+  font-size: 12px;
+  color: var(--text-secondary);
+  z-index: 1;
+}
+
+.time-machine-select {
+  appearance: none;
+  background: linear-gradient(180deg, #161b22 0%, #0d1117 100%);
+  color: var(--text-heading);
+  border: 1px solid rgba(88, 166, 255, 0.4);
+  border-radius: var(--radius-md);
+  padding: 8px 32px 8px 34px;
+  font-size: 13px;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  cursor: pointer;
+  outline: none;
+  min-width: 210px;
+  box-shadow: 0 0 10px rgba(88, 166, 255, 0.08);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.time-machine-select:hover {
+  border-color: #58a6ff;
+  box-shadow: 0 0 12px rgba(88, 166, 255, 0.2);
+}
+
+.time-machine-select:focus {
+  border-color: #58a6ff;
+  box-shadow: 0 0 0 3px rgba(88, 166, 255, 0.3);
+}
+
+.time-machine-latest-btn {
+  padding: 8px 16px;
+  font-size: 12px;
+  font-weight: 700;
+  border-radius: var(--radius-md);
+  background: linear-gradient(135deg, #1f6feb 0%, #238636 100%);
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  box-shadow: 0 2px 10px rgba(31, 111, 235, 0.35);
+  transition: all 0.2s ease;
+  animation: pulse-glow 2.5s infinite ease-in-out;
+}
+
+.time-machine-latest-btn:hover {
+  filter: brightness(1.15);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px rgba(31, 111, 235, 0.5);
+}
+
+.live-dot {
+  color: #3fb950;
+  font-size: 10px;
+  animation: pulse-dot 1.5s infinite;
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.4; transform: scale(0.85); }
+}
+
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 2px 10px rgba(31, 111, 235, 0.35); }
+  50% { box-shadow: 0 2px 18px rgba(35, 134, 54, 0.5); }
+}
+
+.time-machine-step-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: var(--radius-full);
+  background: rgba(56, 139, 253, 0.1);
+  border: 1px solid rgba(56, 139, 253, 0.25);
+  font-size: 12px;
+  font-family: var(--font-mono);
+}
+
+.time-machine-step-indicator .step-label {
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.time-machine-step-indicator .step-val {
+  color: #58a6ff;
+  font-weight: 700;
 }
 
 .capacity-header-row {
@@ -338,8 +540,8 @@ body {
 }
 
 .capacity-section-title {
-  font-size: 15px;
-  font-weight: 600;
+  font-size: 16px;
+  font-weight: 700;
   color: var(--text-heading);
   margin: 0;
   letter-spacing: -0.01em;

@@ -70,54 +70,12 @@
 
   <!-- Main Dashboard Container -->
   <main class="container">
-    <!-- Model Context Window Capacity Overview -->
-    <section id="context-capacity-section" class="context-capacity-section">
-      <div class="capacity-header-row">
-        <div class="capacity-title-wrapper">
-          <div class="capacity-title-badge-group">
-            <h2 class="capacity-section-title">Context Window Capacity</h2>
-            <span id="capacity-model-badge" class="badge badge-info capacity-model-badge">—</span>
-          </div>
-          <div class="capacity-subtitle">
-            <span id="capacity-turn-tag">Active Context Window</span>: total tokens loaded vs model ceiling
-          </div>
-        </div>
-        <div class="capacity-usage-badge-wrapper">
-          <span id="capacity-usage-badge" class="badge context-usage-badge">0.0% Usage</span>
-        </div>
-      </div>
-
-      <div class="capacity-progress-wrapper">
-        <div class="capacity-progress-track">
-          <div id="capacity-progress-bar" class="capacity-progress-bar" style="width: 0%;"></div>
-        </div>
-      </div>
-
-      <div class="capacity-details-grid">
-        <div class="capacity-metric-chip">
-          <span class="capacity-metric-label">Used Context:</span>
-          <span id="capacity-used-k" class="capacity-metric-value">0.0K</span>
-          <span id="capacity-used-exact" class="capacity-metric-sub">(0 tokens)</span>
-        </div>
-        <div class="capacity-metric-chip">
-          <span class="capacity-metric-label">Model Capacity:</span>
-          <span id="capacity-available-k" class="capacity-metric-value">200.0K</span>
-          <span id="capacity-available-exact" class="capacity-metric-sub">(200,000 max)</span>
-        </div>
-        <div class="capacity-metric-chip">
-          <span class="capacity-metric-label">Available Headroom:</span>
-          <span id="capacity-remaining-k" class="capacity-metric-value">200.0K</span>
-          <span id="capacity-remaining-pct" class="capacity-metric-sub">(100.0% free)</span>
-        </div>
-      </div>
-    </section>
-
-    <!-- KPI Ribbon Banner -->
+    <!-- KPI Ribbon Banner (Top Dashboard Overview) -->
     <section class="kpi-banner">
       <div class="kpi-card">
         <div class="kpi-label">Total Tokens</div>
         <div id="kpi-tokens" class="kpi-value">0</div>
-        <div class="kpi-subtext">Cumulative Prompt & Output</div>
+        <div class="kpi-subtext">Cumulative Prompt &amp; Output</div>
       </div>
 
       <div class="kpi-card">
@@ -145,6 +103,82 @@
           <div id="pollution-meter-fill" class="pollution-meter-fill"></div>
         </div>
         <div id="pollution-level-text" class="kpi-subtext">Pristine Clean</div>
+      </div>
+    </section>
+
+    <!-- Context Window Capacity & Time Machine Turn Navigator -->
+    <section id="context-capacity-section" class="context-capacity-section time-machine-card">
+      <div class="capacity-header-row">
+        <div class="capacity-title-wrapper">
+          <div class="capacity-title-badge-group">
+            <span class="time-machine-icon">🧭</span>
+            <h2 class="capacity-section-title">Context Window Capacity &amp; Time Machine</h2>
+            <span id="capacity-model-badge" class="badge badge-info capacity-model-badge">—</span>
+            <span id="capacity-turn-tag" class="badge badge-time-machine">Active Context Window</span>
+          </div>
+          <div class="capacity-subtitle">
+            Timeline Controller: Navigate turns across time to inspect historical context growth, token loads, and cache states below.
+          </div>
+        </div>
+        <div class="capacity-right-group">
+          <span id="capacity-usage-badge" class="badge context-usage-badge">0.0% Usage</span>
+        </div>
+      </div>
+
+      <!-- Time Machine Turn Navigation Console -->
+      <div class="time-machine-nav-bar">
+        <div class="time-machine-controls turn-nav-controls">
+          <button id="turn-prev-btn" class="time-machine-nav-btn turn-nav-btn" type="button" title="Jump to previous turn (← Left Arrow)" disabled>
+            <span class="nav-arrow">◀</span>
+            <span class="nav-text">Prev Turn</span>
+          </button>
+
+          <div class="time-machine-picker-wrapper turn-select-wrapper">
+            <span class="picker-clock-icon">⏳</span>
+            <select id="turn-inspector-select" class="time-machine-select turn-inspector-select" title="Time Machine: Select turn to inspect">
+              <option value="">No turns loaded</option>
+            </select>
+          </div>
+
+          <button id="turn-next-btn" class="time-machine-nav-btn turn-nav-btn" type="button" title="Jump to next turn (→ Right Arrow)" disabled>
+            <span class="nav-text">Next Turn</span>
+            <span class="nav-arrow">▶</span>
+          </button>
+
+          <button id="turn-latest-btn" class="time-machine-latest-btn turn-latest-btn" type="button" title="Follow live / Jump to latest turn" style="display: none;">
+            <span class="live-dot">●</span>
+            <span class="latest-text">Live / Latest ↷</span>
+          </button>
+        </div>
+
+        <div id="time-machine-step-indicator" class="time-machine-step-indicator">
+          <span class="step-label">Time Step:</span>
+          <span id="time-machine-step-text" class="step-val">—</span>
+        </div>
+      </div>
+
+      <div class="capacity-progress-wrapper">
+        <div class="capacity-progress-track">
+          <div id="capacity-progress-bar" class="capacity-progress-bar" style="width: 0%;"></div>
+        </div>
+      </div>
+
+      <div class="capacity-details-grid">
+        <div class="capacity-metric-chip">
+          <span class="capacity-metric-label">Used Context:</span>
+          <span id="capacity-used-k" class="capacity-metric-value">0.0K</span>
+          <span id="capacity-used-exact" class="capacity-metric-sub">(0 tokens)</span>
+        </div>
+        <div class="capacity-metric-chip">
+          <span class="capacity-metric-label">Model Capacity:</span>
+          <span id="capacity-available-k" class="capacity-metric-value">200.0K</span>
+          <span id="capacity-available-exact" class="capacity-metric-sub">(200,000 max)</span>
+        </div>
+        <div class="capacity-metric-chip">
+          <span class="capacity-metric-label">Available Headroom:</span>
+          <span id="capacity-remaining-k" class="capacity-metric-value">200.0K</span>
+          <span id="capacity-remaining-pct" class="capacity-metric-sub">(100.0% free)</span>
+        </div>
       </div>
     </section>
 
@@ -191,21 +225,11 @@
           <div id="selected-turn-title" class="panel-title">Turn Inspector</div>
           <div class="panel-subtitle">Block-level AST breakdown, token weights, and lineage survival</div>
         </div>
-        <div class="turn-nav-controls">
-          <button id="turn-prev-btn" class="btn btn-sm turn-nav-btn" type="button" title="Previous turn (← Left Arrow)" disabled>◀ Prev</button>
-          <div class="turn-select-wrapper">
-            <select id="turn-inspector-select" class="turn-inspector-select" title="Jump directly to turn">
-              <option value="">No turns loaded</option>
-            </select>
-          </div>
-          <button id="turn-next-btn" class="btn btn-sm turn-nav-btn" type="button" title="Next turn (→ Right Arrow)" disabled>Next ▶</button>
-          <button id="turn-latest-btn" class="btn btn-sm btn-primary turn-latest-btn" type="button" title="Jump to latest turn" style="display: none;">Latest ↷</button>
-        </div>
       </div>
 
       <!-- Turn Metadata Summary -->
       <div id="turn-meta-ribbon" class="turn-meta-ribbon">
-        <span>Select a turn using the controls above or click on a turn in the chart to inspect its context AST.</span>
+        <span>Select a turn using the Time Machine above or click on a turn in the chart to inspect its context AST.</span>
       </div>
       <div id="auto-diff-ribbon" class="auto-diff-ribbon"></div>
 
