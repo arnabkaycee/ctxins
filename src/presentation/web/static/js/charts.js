@@ -125,7 +125,7 @@ class DashboardCharts {
                   : turnObj.turnIndex !== undefined
                   ? turnObj.turnIndex
                   : clickedIndex;
-              this.onTurnSelect(turnIdx);
+              this.onTurnSelect(turnIdx, true);
             }
           }
         },
@@ -241,7 +241,7 @@ class DashboardCharts {
     this.turns.forEach((t, i) => {
       const idx =
         t.turn_index !== undefined ? t.turn_index : t.turnIndex !== undefined ? t.turnIndex : i;
-      labels.push(`Turn #${idx}`);
+      labels.push(`Turn #${Number(idx) + 1}`);
 
       // Calculate token segments
       let sys = 0;

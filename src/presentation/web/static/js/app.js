@@ -54,6 +54,11 @@ class DashboardApp {
     this.recommendationsFeed = document.getElementById('recommendations-feed');
     this.recommendationsCount = document.getElementById('recommendations-count');
     this.turnTitle = document.getElementById('selected-turn-title');
+    this.turnInspectorSelect = document.getElementById('turn-inspector-select');
+    this.turnPrevBtn = document.getElementById('turn-prev-btn');
+    this.turnNextBtn = document.getElementById('turn-next-btn');
+    this.turnLatestBtn = document.getElementById('turn-latest-btn');
+    this._userPinnedHistoricalTurn = false;
     this.turnMetaRibbon = document.getElementById('turn-meta-ribbon');
     this.autoDiffRibbon = document.getElementById('auto-diff-ribbon');
     this.blocksTableBody = document.getElementById('blocks-table-body');
@@ -91,8 +96,8 @@ class DashboardApp {
     this._bindEvents();
 
     // Initialize Charts
-    this.charts = new DashboardCharts('token-chart', (turnIndex) => {
-      this.selectTurn(turnIndex);
+    this.charts = new DashboardCharts('token-chart', (turnIndex, userAction) => {
+      this.selectTurn(turnIndex, userAction !== undefined ? userAction : true);
     });
 
     // Initialize JSON Viewer
@@ -273,6 +278,27 @@ class DashboardApp {
       });
     }
 
+    if (this.turnInspectorSelect) {
+      this.turnInspectorSelect.addEventListener('change', (e) => {
+        const val = parseInt(e.target.value, 10);
+        if (!isNaN(val)) {
+          this.selectTurn(val, true);
+        }
+      });
+    }
+
+    if (this.turnPrevBtn) {
+      this.turnPrevBtn.addEventListener('click', () => this.navigateTurn(-1));
+    }
+
+    if (this.turnNextBtn) {
+      this.turnNextBtn.addEventListener('click', () => this.navigateTurn(1));
+    }
+
+    if (this.turnLatestBtn) {
+      this.turnLatestBtn.addEventListener('click', () => this.navigateLatestTurn());
+    }
+
     window.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') {
         if (
@@ -284,6 +310,15 @@ class DashboardApp {
         }
         if (this.modalOverlay && this.modalOverlay.classList.contains('active')) {
           this.closeModal();
+        }
+      } else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+        const tag = document.activeElement ? document.activeElement.tagName : '';
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+        if (this.modalOverlay && this.modalOverlay.classList.contains('active')) return;
+        if (e.key === 'ArrowLeft') {
+          this.navigateTurn(-1);
+        } else {
+          this.navigateTurn(1);
         }
       }
     });
@@ -380,6 +415,8 @@ class DashboardApp {
   switchSession(sessionId) {
     if (this.activeSessionId === sessionId) return;
     this.activeSessionId = sessionId;
+    this._userPinnedHistoricalTurn = false;
+    this.selectedTurnIndex = null;
     if (this.sessionSelect) {
       this.sessionSelect.value = sessionId;
     }
@@ -500,6 +537,8 @@ class DashboardApp {
         this.turns = [];
         this.violations = [];
         this.summary = null;
+        this._userPinnedHistoricalTurn = false;
+        this.selectedTurnIndex = null;
         if (this.statusText) {
           this.statusText.textContent = 'Erased (Unexported)';
         }
@@ -540,20 +579,26 @@ class DashboardApp {
     }
     this.renderRecommendations();
     this._populateDiffSelects();
+    this._populateTurnSelect();
 
-    // Select latest turn if none or selected out of bounds
+    // Select latest turn if following live, or preserve user-pinned historical turn if valid
     if (this.turns.length > 0) {
       const lastTurn = this.turns[this.turns.length - 1];
-      const defaultIdx =
+      const latestIdx =
         lastTurn.turn_index !== undefined
           ? lastTurn.turn_index
           : lastTurn.turnIndex !== undefined
           ? lastTurn.turnIndex
           : this.turns.length - 1;
-      const valid = this.turns.some(
-        (t) => (t.turn_index !== undefined ? t.turn_index : t.turnIndex) === this.selectedTurnIndex
-      );
-      this.selectTurn(valid ? this.selectedTurnIndex : defaultIdx);
+
+      if (!this._userPinnedHistoricalTurn) {
+        this.selectTurn(latestIdx);
+      } else {
+        const valid = this.turns.some(
+          (t) => (t.turn_index !== undefined ? t.turn_index : t.turnIndex) === this.selectedTurnIndex
+        );
+        this.selectTurn(valid ? this.selectedTurnIndex : latestIdx);
+      }
     } else {
       this.renderEmptyTurnInspector();
     }
@@ -974,7 +1019,7 @@ class DashboardApp {
             this.locateAndHighlightBlock(targetBlockId, targetTurn);
           } else {
             if (targetTurn !== null && targetTurn !== undefined) {
-              this.selectTurn(targetTurn);
+              this.selectTurn(targetTurn, true);
             }
             document.getElementById('blocks-table-body')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
             const turnLabel = targetTurn !== null && targetTurn !== undefined ? `Turn #${Number(targetTurn) + 1}` : 'Current turn';
@@ -1183,8 +1228,21 @@ class DashboardApp {
     });
   }
 
-  selectTurn(turnIndex) {
+  selectTurn(turnIndex, userAction = false) {
     this.selectedTurnIndex = turnIndex;
+    if (this.turns && this.turns.length > 0) {
+      const lastTurn = this.turns[this.turns.length - 1];
+      const lastIdx =
+        lastTurn.turn_index !== undefined
+          ? lastTurn.turn_index
+          : lastTurn.turnIndex !== undefined
+          ? lastTurn.turnIndex
+          : this.turns.length - 1;
+      if (userAction) {
+        this._userPinnedHistoricalTurn = (turnIndex !== lastIdx);
+      }
+    }
+
     const turn = this.turns.find(
       (t) => (t.turn_index !== undefined ? t.turn_index : t.turnIndex) === turnIndex
     );
@@ -1195,6 +1253,7 @@ class DashboardApp {
       this.turnTitle.textContent = `Turn #${Number(tIdx) + 1} Inspector`;
     }
 
+    this._updateTurnNavControls();
     this.renderContextCapacity();
 
     if (this.turnMetaRibbon) {
@@ -1231,7 +1290,7 @@ class DashboardApp {
     if (tIdx === 0 || this.turns.length <= 1) {
       if (this.autoDiffRibbon) {
         this.autoDiffRibbon.innerHTML = `
-          <span class="badge badge-info">Turn #0: Initial Prompt Baseline (All blocks initial load)</span>
+          <span class="badge badge-info">Turn #1: Initial Prompt Baseline (All blocks initial load)</span>
         `;
       }
     } else {
@@ -1246,7 +1305,7 @@ class DashboardApp {
     this._activeDiffTurnIndex = turnIndex;
     this.autoDiffRibbon.innerHTML = `
       <span style="color: var(--text-secondary); font-size: 11px;">
-        Comparing Turn #${prevIndex} → Turn #${turnIndex}...
+        Comparing Turn #${prevIndex + 1} → Turn #${turnIndex + 1}...
       </span>
     `;
 
@@ -1310,7 +1369,7 @@ class DashboardApp {
       : `<span class="badge badge-success">✓ Prefix Cache Intact</span>`;
 
     this.autoDiffRibbon.innerHTML = `
-      <span class="auto-diff-title">Turn #${prevIndex} → #${turnIndex} Delta:</span>
+      <span class="auto-diff-title">Turn #${prevIndex + 1} → #${turnIndex + 1} Delta:</span>
       <span class="delta-pill ${deltaClass}">${deltaFormatted}</span>
       <span class="badge badge-added" title="${added.length ? added.join(", ") : "None"}">${added.length} Added</span>
       <span class="badge badge-mutated" title="${mutated.length ? mutated.join(", ") : "None"}">${mutated.length} Mutated</span>
@@ -2367,6 +2426,7 @@ class DashboardApp {
 
   renderEmptyTurnInspector() {
     if (this.turnTitle) this.turnTitle.textContent = 'Turn Inspector';
+    this._updateTurnNavControls();
     if (this.turnMetaRibbon) this.turnMetaRibbon.innerHTML = '<span>Waiting for proxied agent traffic...</span>';
     if (this.autoDiffRibbon) this.autoDiffRibbon.innerHTML = '';
     if (this.contextProportionBar) this.contextProportionBar.innerHTML = '';
@@ -2530,6 +2590,96 @@ class DashboardApp {
     }
   }
 
+  _populateTurnSelect() {
+    if (!this.turnInspectorSelect) return;
+    this.turnInspectorSelect.innerHTML = '';
+
+    if (!this.turns || this.turns.length === 0) {
+      const opt = document.createElement('option');
+      opt.value = '';
+      opt.textContent = 'No turns loaded';
+      this.turnInspectorSelect.appendChild(opt);
+      this._updateTurnNavControls();
+      return;
+    }
+
+    this.turns.forEach((t, i) => {
+      const idx =
+        t.turn_index !== undefined ? t.turn_index : t.turnIndex !== undefined ? t.turnIndex : i;
+      const inp = t.input_tokens ?? t.inputTokens ?? 0;
+      const out = t.output_tokens ?? t.outputTokens ?? 0;
+      const total = inp + out;
+      const tokStr = total > 0 ? ` (${total.toLocaleString()} tok)` : '';
+      const opt = document.createElement('option');
+      opt.value = idx;
+      opt.textContent = `Turn #${Number(idx) + 1}${tokStr}`;
+      this.turnInspectorSelect.appendChild(opt);
+    });
+
+    this._updateTurnNavControls();
+  }
+
+  _updateTurnNavControls() {
+    if (!this.turns || this.turns.length === 0) {
+      if (this.turnInspectorSelect) this.turnInspectorSelect.value = '';
+      if (this.turnPrevBtn) this.turnPrevBtn.disabled = true;
+      if (this.turnNextBtn) this.turnNextBtn.disabled = true;
+      if (this.turnLatestBtn) this.turnLatestBtn.style.display = 'none';
+      return;
+    }
+
+    const currPos = this.turns.findIndex(
+      (t) => (t.turn_index !== undefined ? t.turn_index : t.turnIndex) === this.selectedTurnIndex
+    );
+
+    if (this.turnInspectorSelect && currPos >= 0) {
+      this.turnInspectorSelect.value = String(this.selectedTurnIndex);
+    }
+
+    if (this.turnPrevBtn) {
+      this.turnPrevBtn.disabled = currPos <= 0;
+    }
+    if (this.turnNextBtn) {
+      this.turnNextBtn.disabled = currPos < 0 || currPos >= this.turns.length - 1;
+    }
+    if (this.turnLatestBtn) {
+      const isLatest = currPos === this.turns.length - 1;
+      this.turnLatestBtn.style.display = isLatest ? 'none' : 'inline-flex';
+    }
+  }
+
+  navigateTurn(offset) {
+    if (!this.turns || this.turns.length === 0) return;
+    const currPos = this.turns.findIndex(
+      (t) => (t.turn_index !== undefined ? t.turn_index : t.turnIndex) === this.selectedTurnIndex
+    );
+    const startPos = currPos >= 0 ? currPos : this.turns.length - 1;
+    const targetPos = startPos + offset;
+    if (targetPos >= 0 && targetPos < this.turns.length) {
+      const targetTurn = this.turns[targetPos];
+      const targetIdx =
+        targetTurn.turn_index !== undefined
+          ? targetTurn.turn_index
+          : targetTurn.turnIndex !== undefined
+          ? targetTurn.turnIndex
+          : targetPos;
+      this.selectTurn(targetIdx, true);
+    }
+  }
+
+  navigateLatestTurn() {
+    if (!this.turns || this.turns.length === 0) return;
+    const lastTurn = this.turns[this.turns.length - 1];
+    const lastIdx =
+      lastTurn.turn_index !== undefined
+        ? lastTurn.turn_index
+        : lastTurn.turnIndex !== undefined
+        ? lastTurn.turnIndex
+        : this.turns.length - 1;
+    this._userPinnedHistoricalTurn = false;
+    this.selectTurn(lastIdx, false);
+  }
+
   getBlockInfo(blockId, preferredTurnIdx = null) {
     let foundBlock = null;
     let foundTurnIdx = null;
@@ -2586,7 +2736,7 @@ class DashboardApp {
     // 2. Switch turn if needed
     if (targetTurn !== null && targetTurn !== undefined) {
       if (this.selectedTurnIndex !== targetTurn) {
-        this.selectTurn(targetTurn);
+        this.selectTurn(targetTurn, true);
       }
     }
 

@@ -862,6 +862,63 @@ body {
   margin-top: 8px;
 }
 
+.inspector-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.turn-nav-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.turn-select-wrapper {
+  position: relative;
+}
+
+.turn-inspector-select {
+  background-color: var(--bg-surface);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  padding: 5px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  outline: none;
+  min-width: 140px;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.turn-inspector-select:hover {
+  border-color: var(--border-hover);
+}
+
+.turn-inspector-select:focus {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 2px var(--color-focus-ring);
+}
+
+.turn-nav-btn {
+  padding: 5px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.turn-latest-btn {
+  padding: 5px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  animation: pulse-badge 2s infinite;
+}
+
 .turn-meta-ribbon {
   display: flex;
   flex-wrap: wrap;

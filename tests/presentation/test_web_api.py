@@ -624,3 +624,46 @@ def test_context_capacity_section_and_usage_badge(client: TestClient) -> None:
     assert "contextCapacityTokensK" in summary
     assert "contextUsagePercent" in summary
     assert summary["contextCapacityTokens"] >= 128000
+
+
+def test_turn_inspector_navigation_controls_and_selector(client: TestClient) -> None:
+    """Verify turn inspector panel header contains turn selector, prev/next buttons, and auto-follow logic."""
+    # 1. HTML structure
+    res_html = client.get("/")
+    assert res_html.status_code == 200
+    html_text = res_html.text
+    assert 'id="turn-inspector-select"' in html_text
+    assert 'id="turn-prev-btn"' in html_text
+    assert 'id="turn-next-btn"' in html_text
+    assert 'id="turn-latest-btn"' in html_text
+    assert "turn-nav-controls" in html_text
+    assert "inspector-header" in html_text
+
+    # 2. CSS styles
+    res_css = client.get("/css/styles.css")
+    assert res_css.status_code == 200
+    css_text = res_css.text
+    assert ".inspector-header" in css_text
+    assert ".turn-nav-controls" in css_text
+    assert ".turn-inspector-select" in css_text
+    assert ".turn-nav-btn" in css_text
+    assert ".turn-latest-btn" in css_text
+
+    # 3. JavaScript logic in app.js
+    res_js = client.get("/js/app.js")
+    assert res_js.status_code == 200
+    js_text = res_js.text
+    assert "_populateTurnSelect()" in js_text
+    assert "_updateTurnNavControls()" in js_text
+    assert "navigateTurn(" in js_text
+    assert "navigateLatestTurn()" in js_text
+    assert "_userPinnedHistoricalTurn" in js_text
+    assert "ArrowLeft" in js_text
+    assert "ArrowRight" in js_text
+
+    # 4. JavaScript logic in charts.js
+    res_charts = client.get("/js/charts.js")
+    assert res_charts.status_code == 200
+    charts_text = res_charts.text
+    assert "Turn #${Number(idx) + 1}" in charts_text
+    assert "this.onTurnSelect(turnIdx, true);" in charts_text

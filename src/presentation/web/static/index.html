@@ -186,16 +186,26 @@
 
     <!-- Turn Inspector Section -->
     <section class="panel inspector-panel">
-      <div class="panel-header">
+      <div class="panel-header inspector-header">
         <div>
           <div id="selected-turn-title" class="panel-title">Turn Inspector</div>
           <div class="panel-subtitle">Block-level AST breakdown, token weights, and lineage survival</div>
+        </div>
+        <div class="turn-nav-controls">
+          <button id="turn-prev-btn" class="btn btn-sm turn-nav-btn" type="button" title="Previous turn (← Left Arrow)" disabled>◀ Prev</button>
+          <div class="turn-select-wrapper">
+            <select id="turn-inspector-select" class="turn-inspector-select" title="Jump directly to turn">
+              <option value="">No turns loaded</option>
+            </select>
+          </div>
+          <button id="turn-next-btn" class="btn btn-sm turn-nav-btn" type="button" title="Next turn (→ Right Arrow)" disabled>Next ▶</button>
+          <button id="turn-latest-btn" class="btn btn-sm btn-primary turn-latest-btn" type="button" title="Jump to latest turn" style="display: none;">Latest ↷</button>
         </div>
       </div>
 
       <!-- Turn Metadata Summary -->
       <div id="turn-meta-ribbon" class="turn-meta-ribbon">
-        <span>Select a turn from the chart or diff dropdowns below to inspect its context AST.</span>
+        <span>Select a turn using the controls above or click on a turn in the chart to inspect its context AST.</span>
       </div>
       <div id="auto-diff-ribbon" class="auto-diff-ribbon"></div>
 

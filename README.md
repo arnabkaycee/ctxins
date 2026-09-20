@@ -1,6 +1,6 @@
 # ctxins: Context Inspector & Optimizer for Agentic Harnesses
 
-[![CI](https://img.shields.io/badge/tests-231%20passed-brightgreen.svg)](docs/development.md#2-testing-suite)
+[![CI](https://img.shields.io/badge/tests-367%20passed-brightgreen.svg)](docs/development.md#2-testing-suite)
 [![Python](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13-blue.svg)](https://python.org)
 [![Type Checked](https://img.shields.io/badge/typecheck-mypy%20clean-blue.svg)](docs/development.md#3-quality-gates--linting)
 [![Linter](https://img.shields.io/badge/lint-ruff%20clean-blue.svg)](docs/development.md#3-quality-gates--linting)
@@ -61,6 +61,9 @@ agy
 eval $(uv run ctxins env --unset)
 ```
 
+> [!NOTE]
+> **First-Run Certificate Generation:** When `mitmproxy` starts for the first time, it automatically generates its local CA certificate at `~/.mitmproxy/mitmproxy-ca-cert.pem`. Launch `ctxins` once before running `eval $(uv run ctxins env)` in your agent terminal so the certificate path is detected and exported.
+
 > **Keybindings in TUI:**
 > - `[h]`: Open interactive Hook Guide for CLI agents, local ports, and SDKs.
 > - `[c]`: Copy proxy environment export command to clipboard (`export HTTP_PROXY=...`).
@@ -73,6 +76,11 @@ Hook any local agent or local model (Ollama, vLLM, LM Studio) running on any loc
 ```bash
 # Hook an agent or local LLM server running on port 8000
 uv run ctxins --target-port 8000
+
+# In your agent terminal, route base URL to the ctxins proxy:
+export OPENAI_BASE_URL="http://127.0.0.1:8080/v1"
+# Or for Ollama:
+export OLLAMA_HOST="http://127.0.0.1:8080"
 ```
 
 ### Option C: Harness Subprocess Runner (`ctxins run`)
@@ -130,6 +138,12 @@ unset HTTP_PROXY HTTPS_PROXY ALL_PROXY GRPC_PROXY http_proxy https_proxy all_pro
 | `ctxins run` | Spawn proxy and execute agent harness subprocess with auto-configured environment | `--web`, `--tui`, `--port PORT`, `--proxy-port PORT`, `--target-port PORT`, `-- COMMAND...` |
 | `ctxins web` | Launch standalone Web Dashboard server and auto-spawned mitmproxy interceptor | `--port PORT` (8484), `--host HOST`, `--proxy-port PORT` (8080), `--target-port PORT` |
 | `ctxins live` | Start Core Engine + selected UI mode (`web` or `tui`) | `--web`, `--tui`, `--port PORT`, `--proxy-port PORT`, `--target-port PORT` |
+
+#### Global Options
+The following options apply to all `ctxins` subcommands:
+- `--debug`, `-d`: Enable verbose debug logging (sets level to `DEBUG` and writes to log file).
+- `--log-level`: Explicit logging level (`DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`; default: `WARNING`).
+- `--log-file PATH`: Path to write log output (default: `~/.ctxins/ctxins.log`).
 
 ---
 
@@ -230,9 +244,23 @@ uv run mitmproxy -p 8080 -s src/interceptor/addon.py
 - **`CTX-001` (Stale Tool Output Bloat):** Flags unreferenced tool results lingering $\ge 3$ consecutive turns.
 - **`CTX-002` (Tool Schema Overweight):** Flags tool schemas consuming $> 35\%$ of context with $< 15\%$ invocation rate.
 - **`CTX-003` (Error Loop Thrashing):** Detects $3+$ consecutive turns repeating failing tool executions.
+- **`CTX-004` (Recurring Execution Results Exceeded):** Flags duplicate tool results accumulating across turns ($\ge 2,000$ tokens or $> 20\%$ of context window).
 - **`CACHE-001` (Dynamic Prefix Invalidation):** Flags prefix mutations in system prompts breaking prompt cache reuse.
 
 👉 **See [docs/heuristics.md](docs/heuristics.md) for complete mathematical formulas, threshold configurations, and suggested fixes.**
+
+---
+
+## ❓ Troubleshooting & FAQs
+
+- **Agent fails with `Connection Refused` on port 8080:**
+  Proxy environment variables (`HTTP_PROXY`, etc.) are still set in your shell after `ctxins` has stopped. Run `eval $(uv run ctxins env --unset)` or `eval $(ctxins unset-env)` to clear them.
+- **TLS Certificate Verification Error (`certificate verify failed`):**
+  Ensure `~/.mitmproxy/mitmproxy-ca-cert.pem` exists. Run `ctxins` once to auto-generate the certificate, then run `eval $(uv run ctxins env)`. For Node.js agents, confirm `NODE_EXTRA_CA_CERTS` is set; for Python, check `SSL_CERT_FILE` and `REQUESTS_CA_BUNDLE`.
+- **Port 8080 or 8484 already in use:**
+  Specify alternate ports using `--proxy-port <PORT>` and `--web-port <PORT>`.
+- **Preventing Shell Pollution entirely:**
+  Use `ctxins run -- <agent>` (e.g., `uv run ctxins run -- agy`). It configures proxy and certificate settings strictly within the child process and leaves your parent shell completely unmodified.
 
 ---
 
@@ -248,3 +276,4 @@ uv run mitmproxy -p 8080 -s src/interceptor/addon.py
 ## 📄 License
 
 This project is licensed under the [MIT License](LICENSE).
+
