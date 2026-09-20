@@ -144,9 +144,125 @@ class SessionStore:
             violations: List[RuleViolation] = []
             for t in turns:
                 for v in t.violations:
+                    if getattr(v, "turn_index", None) is None:
+                        v.turn_index = t.turn_index
                     if rule_id is None or v.rule_id == rule_id:
                         violations.append(v)
             return violations
+
+    def get_grouped_violations(
+        self,
+        session_id: str,
+        rule_id: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """Retrieve violations grouped by warning across turns, showing count and turn breakdown."""
+        with self.lock:
+            resolved = self._resolve_session_id(session_id)
+            turns = self.sessions.get(resolved) or self.sessions.get(session_id, [])
+            current_turn_idx = turns[-1].turn_index if turns else 0
+
+            raw_violations = self.get_violations(session_id, rule_id=rule_id)
+            if not raw_violations:
+                return []
+
+            groups_map: Dict[Any, List[RuleViolation]] = {}
+            for v in raw_violations:
+                key = v.rule_id if v.rule_id else (v.suggested_fix or v.title)
+                groups_map.setdefault(key, []).append(v)
+
+            p_order = {"CRITICAL": 0, "WARN": 1, "INFO": 2}
+            grouped: List[Dict[str, Any]] = []
+
+            for viols in groups_map.values():
+                sorted_viols = sorted(
+                    viols, key=lambda x: x.turn_index if x.turn_index is not None else 0
+                )
+                first = sorted_viols[0]
+                r_id = first.rule_id
+                title = first.title
+
+                severities = [x.severity.value for x in sorted_viols]
+                if "CRITICAL" in severities:
+                    sev = "CRITICAL"
+                elif "WARN" in severities:
+                    sev = "WARN"
+                else:
+                    sev = "INFO"
+
+                earlier_viols = [
+                    x
+                    for x in sorted_viols
+                    if x.turn_index is not None and x.turn_index < current_turn_idx
+                ]
+                current_viols = [
+                    x
+                    for x in sorted_viols
+                    if x.turn_index is not None and x.turn_index == current_turn_idx
+                ]
+
+                cur_viol = current_viols[0] if current_viols else None
+                fix = (
+                    cur_viol.suggested_fix if cur_viol and cur_viol.suggested_fix else ""
+                ) or next((x.suggested_fix for x in reversed(sorted_viols) if x.suggested_fix), "")
+                total_waste = sum(x.estimated_waste_usd for x in sorted_viols)
+                earlier_waste = sum(x.estimated_waste_usd for x in earlier_viols)
+                current_waste = sum(x.estimated_waste_usd for x in current_viols)
+
+                turn_indices = sorted(
+                    list({x.turn_index for x in sorted_viols if x.turn_index is not None})
+                )
+                earlier_turns = sorted(
+                    list({x.turn_index for x in earlier_viols if x.turn_index is not None})
+                )
+
+                all_bids: List[str] = []
+                seen_b = set()
+                for x in sorted_viols:
+                    for b in x.block_ids:
+                        if b not in seen_b:
+                            seen_b.add(b)
+                            all_bids.append(b)
+
+                grouped.append(
+                    {
+                        "rule_id": r_id,
+                        "ruleId": r_id,
+                        "severity": sev,
+                        "title": title,
+                        "message": cur_viol.message if cur_viol else sorted_viols[-1].message,
+                        "suggested_fix": fix,
+                        "suggestedFix": fix,
+                        "total_occurrences": len(sorted_viols),
+                        "totalOccurrences": len(sorted_viols),
+                        "turn_count": len(turn_indices),
+                        "turnCount": len(turn_indices),
+                        "turn_indices": turn_indices,
+                        "turnIndices": turn_indices,
+                        "current_turn_index": current_turn_idx,
+                        "currentTurnIndex": current_turn_idx,
+                        "current_violation": cur_viol.to_dict() if cur_viol else None,
+                        "currentTurnViolation": cur_viol.to_dict() if cur_viol else None,
+                        "earlier_violations": [x.to_dict() for x in earlier_viols],
+                        "earlierViolations": [x.to_dict() for x in earlier_viols],
+                        "earlier_turn_indices": earlier_turns,
+                        "earlierTurnIndices": earlier_turns,
+                        "total_waste_usd": total_waste,
+                        "totalWasteUSD": total_waste,
+                        "estimated_waste_usd": total_waste,
+                        "estimatedWasteUSD": total_waste,
+                        "earlier_waste_usd": earlier_waste,
+                        "earlierWasteUSD": earlier_waste,
+                        "current_waste_usd": current_waste,
+                        "currentWasteUSD": current_waste,
+                        "block_ids": all_bids,
+                        "blockIds": all_bids,
+                        "all_violations": [x.to_dict() for x in sorted_viols],
+                        "allViolations": [x.to_dict() for x in sorted_viols],
+                    }
+                )
+
+            grouped.sort(key=lambda g: (p_order.get(g["severity"], 3), -g["total_waste_usd"]))
+            return grouped
 
     def get_timeline(self, session_id: str) -> List[Dict[str, Any]]:
         """Retrieve turn-by-turn timeline metrics for visualization and analysis."""

@@ -165,3 +165,35 @@ def test_session_store_concurrency_thread_safety():
         turns = store.get_session(f"sess-{i}")
         assert turns is not None
         assert len(turns) == turns_per_thread
+
+
+def test_session_store_get_grouped_violations():
+    store = SessionStore(max_sessions=10)
+    # Add 3 turns with CTX-002
+    for idx in range(3):
+        v = RuleViolation(
+            rule_id="CTX-002",
+            severity=ViolationSeverity.WARN,
+            title="Tool Schema Overweight",
+            message=f"Tool bloat at turn {idx}",
+            estimated_waste_usd=0.01,
+            suggested_fix="Group tools into subagents or filter tool schemas dynamically.",
+            turn_index=idx,
+        )
+        t = _make_sample_turn("sess-group", idx, violations=[v])
+        store.append_turn(t)
+
+    grouped = store.get_grouped_violations("sess-group")
+    assert len(grouped) == 1
+    g = grouped[0]
+    assert g["rule_id"] == "CTX-002"
+    assert g["total_occurrences"] == 3
+    assert g["turn_count"] == 3
+    assert g["turn_indices"] == [0, 1, 2]
+    assert g["current_turn_index"] == 2
+    assert g["earlier_turn_indices"] == [0, 1]
+    assert len(g["earlier_violations"]) == 2
+    assert g["current_violation"] is not None
+    assert g["current_violation"]["turn_index"] == 2
+    assert g["suggested_fix"] == "Group tools into subagents or filter tool schemas dynamically."
+    assert round(g["total_waste_usd"], 4) == 0.03

@@ -712,6 +712,170 @@ class TUIState:
             return list(turn["violations"])
         return []
 
+    def get_grouped_violations(self, selected_only: Optional[bool] = None) -> List[Dict[str, Any]]:
+        """Return violations grouped by warning across turns, showing count and turn breakdown.
+
+        Args:
+            selected_only: If True, only include groups that have a violation on the
+                current/selected turn. If False, include all groups across the session.
+                Defaults to (not self.show_all_violations) when None.
+        """
+        if selected_only is None:
+            selected_only = not self.show_all_violations
+
+        # 1. Determine current turn index
+        if self.turns:
+            if 0 <= self.selected_turn_index < len(self.turns):
+                current_turn_idx = self.selected_turn_index
+            else:
+                current_turn_idx = len(self.turns) - 1
+        elif self.cumulative_violations:
+            current_turn_idx = max(
+                (int(v.get("turnIndex", 0) or 0) for v in self.cumulative_violations),
+                default=self.selected_turn_index,
+            )
+        else:
+            current_turn_idx = self.selected_turn_index
+
+        # 2. Collect all raw violations across session
+        all_raw_violations: List[Dict[str, Any]] = []
+        if self.cumulative_violations:
+            all_raw_violations.extend(self.cumulative_violations)
+
+        seen_keys = {(v.get("ruleId"), v.get("turnIndex")) for v in all_raw_violations}
+        for t in self.turns:
+            t_idx = t.get("turnIndex", t.get("turn_index", 0))
+            for v in t.get("violations", []):
+                norm_v = (
+                    self._normalize_violation(v, t_idx)
+                    if not isinstance(v, dict) or "turnIndex" not in v
+                    else v
+                )
+                v_key = (norm_v.get("ruleId"), norm_v.get("turnIndex"))
+                if v_key not in seen_keys:
+                    seen_keys.add(v_key)
+                    all_raw_violations.append(norm_v)
+
+        if not all_raw_violations:
+            return []
+
+        # 3. Group by ruleId or suggestedFix
+        groups_map: Dict[Any, List[Dict[str, Any]]] = {}
+        for v in all_raw_violations:
+            rule_id = v.get("ruleId") or v.get("rule_id", "")
+            fix = v.get("suggestedFix") or v.get("suggested_fix", "")
+            title = v.get("title") or rule_id or "UNKNOWN"
+            group_key = rule_id if rule_id else (fix or title)
+            groups_map.setdefault(group_key, []).append(v)
+
+        p_order = {"CRITICAL": 0, "WARN": 1, "INFO": 2}
+        results: List[Dict[str, Any]] = []
+
+        for viols in groups_map.values():
+            sorted_viols = sorted(viols, key=lambda x: int(x.get("turnIndex", 0) or 0))
+            first = sorted_viols[0]
+            rule_id = first.get("ruleId") or first.get("rule_id", "CTX-000")
+            title = first.get("title", rule_id)
+            severities = [str(v.get("severity", "WARN")).upper() for v in sorted_viols]
+            if "CRITICAL" in severities:
+                sev = "CRITICAL"
+            elif "WARN" in severities:
+                sev = "WARN"
+            else:
+                sev = "INFO"
+
+            earlier_viols = [
+                v for v in sorted_viols if int(v.get("turnIndex", 0) or 0) < current_turn_idx
+            ]
+            current_viols = [
+                v for v in sorted_viols if int(v.get("turnIndex", 0) or 0) == current_turn_idx
+            ]
+            later_viols = [
+                v for v in sorted_viols if int(v.get("turnIndex", 0) or 0) > current_turn_idx
+            ]
+
+            cur_viol = current_viols[0] if current_viols else None
+
+            # If selected_only is True, skip groups with no violation on current turn,
+            # unless self.turns is empty (e.g. synthetic test with raw cumulative_violations)
+            if selected_only and cur_viol is None and self.turns:
+                continue
+
+            fix = (
+                cur_viol.get("suggestedFix") or cur_viol.get("suggested_fix") if cur_viol else ""
+            ) or next(
+                (
+                    v.get("suggestedFix") or v.get("suggested_fix")
+                    for v in reversed(sorted_viols)
+                    if v.get("suggestedFix") or v.get("suggested_fix")
+                ),
+                "No suggestion provided.",
+            )
+
+            total_waste = sum(float(v.get("estimatedWasteUSD", 0.0) or 0.0) for v in sorted_viols)
+            earlier_waste = sum(
+                float(v.get("estimatedWasteUSD", 0.0) or 0.0) for v in earlier_viols
+            )
+            current_waste = sum(
+                float(v.get("estimatedWasteUSD", 0.0) or 0.0) for v in current_viols
+            )
+
+            all_turn_indices = sorted(list({int(v.get("turnIndex", 0) or 0) for v in sorted_viols}))
+            earlier_turn_indices = sorted(
+                list({int(v.get("turnIndex", 0) or 0) for v in earlier_viols})
+            )
+
+            all_block_ids: List[str] = []
+            seen_bids = set()
+            for v in sorted_viols:
+                bids = v.get("blockIds") or v.get("block_ids") or []
+                for b in bids:
+                    if b not in seen_bids:
+                        seen_bids.add(b)
+                        all_block_ids.append(b)
+
+            results.append(
+                {
+                    "ruleId": rule_id,
+                    "rule_id": rule_id,
+                    "severity": sev,
+                    "title": title,
+                    "suggestedFix": fix,
+                    "suggested_fix": fix,
+                    "totalOccurrences": len(sorted_viols),
+                    "total_occurrences": len(sorted_viols),
+                    "turnCount": len(all_turn_indices),
+                    "turn_count": len(all_turn_indices),
+                    "turnIndices": all_turn_indices,
+                    "turn_indices": all_turn_indices,
+                    "currentTurnIndex": current_turn_idx,
+                    "current_turn_index": current_turn_idx,
+                    "currentTurnViolation": cur_viol,
+                    "current_violation": cur_viol,
+                    "earlierViolations": earlier_viols,
+                    "earlier_violations": earlier_viols,
+                    "earlierTurnIndices": earlier_turn_indices,
+                    "earlier_turn_indices": earlier_turn_indices,
+                    "laterViolations": later_viols,
+                    "later_violations": later_viols,
+                    "totalWasteUSD": total_waste,
+                    "total_waste_usd": total_waste,
+                    "estimatedWasteUSD": total_waste,
+                    "estimated_waste_usd": total_waste,
+                    "earlierWasteUSD": earlier_waste,
+                    "earlier_waste_usd": earlier_waste,
+                    "currentWasteUSD": current_waste,
+                    "current_waste_usd": current_waste,
+                    "blockIds": all_block_ids,
+                    "block_ids": all_block_ids,
+                    "allViolations": sorted_viols,
+                    "all_violations": sorted_viols,
+                }
+            )
+
+        results.sort(key=lambda g: (p_order.get(g["severity"], 3), -g["totalWasteUSD"]))
+        return results
+
     def get_context_breakdown_for_selected_turn(self) -> Dict[str, int]:
         """Return token breakdown for active selected turn including fine-grained categories."""
         turn = self.get_selected_turn()

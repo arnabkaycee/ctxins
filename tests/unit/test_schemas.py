@@ -226,9 +226,14 @@ def test_normalize_session_id():
     from src.schema.ast import normalize_session_id
 
     # Negative signed 64-bit integer from Protobuf / Gemini
-    assert normalize_session_id(-3750763034362895579, harness="agy") == "sess_agy_3750763034362895579"
+    assert (
+        normalize_session_id(-3750763034362895579, harness="agy") == "sess_agy_3750763034362895579"
+    )
     assert normalize_session_id(-4090532296711904797) == "sess_4090532296711904797"
-    assert normalize_session_id("-3750763034362895579", harness="agy") == "sess_agy_3750763034362895579"
+    assert (
+        normalize_session_id("-3750763034362895579", harness="agy")
+        == "sess_agy_3750763034362895579"
+    )
     assert normalize_session_id("-12345") == "sess_12345"
 
     # Positive numbers

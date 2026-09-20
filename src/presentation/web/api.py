@@ -153,11 +153,13 @@ def create_api_router(store: SessionStore, ws_hub: WebSocketHub) -> APIRouter:
         return annotate_blocks_lifecycle(turn, prev)
 
     @router.get("/sessions/{id}/recommendations")
-    def get_session_recommendations(id: str) -> List[Dict[str, Any]]:
-        """Get all triggered RuleViolations and remediation suggestions."""
+    def get_session_recommendations(id: str, grouped: bool = True) -> List[Dict[str, Any]]:
+        """Get triggered RuleViolations and remediation suggestions, grouped across turns."""
         turns = store.get_session(id)
         if turns is None:
             raise HTTPException(status_code=404, detail=f"Session '{id}' not found")
+        if grouped:
+            return store.get_grouped_violations(id)
         violations = store.get_violations(id)
         return [v.to_dict() for v in violations]
 
@@ -209,7 +211,9 @@ def create_api_router(store: SessionStore, ws_hub: WebSocketHub) -> APIRouter:
             return Response(
                 content=content,
                 media_type="text/markdown",
-                headers={"Content-Disposition": f'attachment; filename="{id}_optimization_report.md"'},
+                headers={
+                    "Content-Disposition": f'attachment; filename="{id}_optimization_report.md"'
+                },
             )
 
         is_jsonc = fmt == "jsonc"

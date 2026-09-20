@@ -72,6 +72,7 @@ class RuleViolation:
     estimated_waste_usd: float
     suggested_fix: str
     block_ids: List[str] = field(default_factory=list)
+    turn_index: Optional[int] = None
 
     def to_dict(self) -> Dict[str, Any]:
         data = asdict(self)
@@ -88,6 +89,7 @@ class RuleViolation:
             estimated_waste_usd=float(data.get("estimated_waste_usd", 0.0)),
             suggested_fix=data.get("suggested_fix", ""),
             block_ids=data.get("block_ids", []),
+            turn_index=data.get("turn_index", data.get("turnIndex")),
         )
 
 

@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any, Dict
 
 import pytest
+from textual.widgets import Static
 
 from src.presentation.broadcaster import PresentationBroadcaster
 from src.presentation.events import UIEvent, UIEventType
@@ -1025,3 +1026,121 @@ async def test_session_selection_populates_data_and_widgets() -> None:
 
         assert app.state.session_id == sid1
         assert app.state.total_tokens == 1800
+
+
+@pytest.mark.asyncio
+async def test_grouped_violations_across_turns() -> None:
+    """Verify warnings repeated over turns are grouped once with count and earlier/current breakdown."""
+    state = TUIState(session_id="sess_grouped_test")
+    # Add 3 turns, each with CTX-002 warning
+    for i in range(3):
+        viol = {
+            "ruleId": "CTX-002",
+            "severity": "WARN",
+            "title": "Tool Schema Overweight",
+            "message": f"Tool schemas occupy 400 tokens, but only {i}/10 tools used.",
+            "estimatedWasteUSD": 0.012,
+            "suggestedFix": "Group tools into subagents or filter tool schemas dynamically.",
+            "blockIds": ["tool_1", "tool_2"],
+            "turnIndex": i,
+        }
+        state.turns.append(
+            {
+                "turnIndex": i,
+                "tokens": 1000,
+                "cachedReadTokens": 500,
+                "cost": 0.02,
+                "wastedCost": 0.012,
+                "violations": [viol],
+            }
+        )
+        state.cumulative_violations.append(viol)
+
+    state.selected_turn_index = 2
+    state.show_all_violations = False
+
+    groups = state.get_grouped_violations(selected_only=True)
+    assert len(groups) == 1
+    g = groups[0]
+    assert g["ruleId"] == "CTX-002"
+    assert g["title"] == "Tool Schema Overweight"
+    assert g["suggestedFix"] == "Group tools into subagents or filter tool schemas dynamically."
+    assert g["totalOccurrences"] == 3
+    assert g["turnCount"] == 3
+    assert g["turnIndices"] == [0, 1, 2]
+    assert g["currentTurnIndex"] == 2
+    assert g["currentTurnViolation"] is not None
+    assert g["currentTurnViolation"]["turnIndex"] == 2
+    assert len(g["earlierViolations"]) == 2
+    assert g["earlierTurnIndices"] == [0, 1]
+    assert pytest.approx(g["totalWasteUSD"]) == 0.036
+    assert pytest.approx(g["earlierWasteUSD"]) == 0.024
+    assert pytest.approx(g["currentWasteUSD"]) == 0.012
+
+    # Verify widget rendering in running app
+    app = CtxinsTUIApp(state=state)
+    async with app.run_test() as pilot:
+        await pilot.pause(0.05)
+        recs = app.query_one(RecommendationsWidget)
+        recs.update_from_state()
+        content = recs.query_one("#recommendations-content", Static)
+        rendered_text = str(content.render())
+
+        # Should show once
+        assert "Unique Warnings: 1" in rendered_text
+        assert "Total Violations: 3" in rendered_text
+        assert "CTX-002: Tool Schema Overweight (3 violations across 3 turns)" in rendered_text
+        assert "Current Turn (#2): Active" in rendered_text
+        assert "Earlier Turns (#0, #1): 2 violations" in rendered_text
+        assert "Group tools into subagents or filter tool schemas dynamically." in rendered_text
+
+
+@pytest.mark.asyncio
+async def test_grouped_violations_inactive_current_turn() -> None:
+    """Verify grouped warnings when current turn is clean but earlier turns had violations."""
+    state = TUIState(session_id="sess_clean_curr_test")
+    # Turns 0 and 1 have CTX-002
+    for i in range(2):
+        viol = {
+            "ruleId": "CTX-002",
+            "severity": "WARN",
+            "title": "Tool Schema Overweight",
+            "message": "Tool schemas occupy 400 tokens.",
+            "estimatedWasteUSD": 0.01,
+            "suggestedFix": "Group tools into subagents or filter tool schemas dynamically.",
+            "turnIndex": i,
+        }
+        state.turns.append({"turnIndex": i, "tokens": 500, "violations": [viol]})
+        state.cumulative_violations.append(viol)
+
+    # Turn 2 is clean (no violations)
+    state.turns.append({"turnIndex": 2, "tokens": 300, "violations": []})
+    state.selected_turn_index = 2
+
+    # In turn-only mode, Turn 2 has no active violations
+    state.show_all_violations = False
+    groups_turn = state.get_grouped_violations(selected_only=True)
+    assert len(groups_turn) == 0
+
+    # In All Session mode, the warning appears once with clean current turn
+    state.show_all_violations = True
+    groups_all = state.get_grouped_violations(selected_only=False)
+    assert len(groups_all) == 1
+    g = groups_all[0]
+    assert g["totalOccurrences"] == 2
+    assert g["currentTurnViolation"] is None
+    assert len(g["earlierViolations"]) == 2
+    assert g["earlierTurnIndices"] == [0, 1]
+
+    # Verify widget rendering in running app
+    app = CtxinsTUIApp(state=state)
+    async with app.run_test() as pilot:
+        await pilot.pause(0.05)
+        recs = app.query_one(RecommendationsWidget)
+        recs.update_from_state()
+        content = recs.query_one("#recommendations-content", Static)
+        rendered_text = str(content.render())
+
+        assert "Current Turn (#2): Clean / Not triggered" in rendered_text
+        assert "Earlier Turns (#0, #1): 2 violations" in rendered_text
+        assert "Group tools into subagents or filter tool schemas dynamically." in rendered_text

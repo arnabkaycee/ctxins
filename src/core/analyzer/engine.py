@@ -74,6 +74,9 @@ class PollutionAnalyzer:
             violations.extend(detected)
 
         # 2. Attach violations to the turn
+        for v in violations:
+            if v.turn_index is None:
+                v.turn_index = turn.turn_index
         turn.violations = violations
 
         # 3. Calculate financial cost metrics

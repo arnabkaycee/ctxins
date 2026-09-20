@@ -96,25 +96,170 @@ class MarkdownExporter:
                 ]
             )
         else:
-            for i, v in enumerate(violations, 1):
-                rule_id = getattr(v, "rule_id", None) or getattr(v, "ruleId", "RULE")
-                sev = getattr(v, "severity", "WARN")
-                sev_str = sev.value if hasattr(sev, "value") else str(sev)
-                title = getattr(v, "title", rule_id)
-                msg = getattr(v, "message", "")
+            current_turn_idx = turns[-1].turn_index if turns else 0
+            groups_map: Dict[Any, List[Any]] = {}
+            for v in violations:
+                rid = getattr(v, "rule_id", None) or getattr(v, "ruleId", "")
                 fix = getattr(v, "suggested_fix", "") or getattr(v, "suggestedFix", "")
-                waste = getattr(v, "estimated_waste_usd", 0.0) or getattr(v, "estimatedWasteUSD", 0.0)
-                waste_str = f" (${waste:.4f} waste)" if waste else ""
+                title = getattr(v, "title", rid or "RULE")
+                key = rid if rid else (fix or title)
+                groups_map.setdefault(key, []).append(v)
 
-                lines.extend(
-                    [
-                        f"### {i}. [{sev_str}] {title}{waste_str}",
-                        f"- **Rule ID:** `{rule_id}`",
-                        f"- **Diagnostic:** {msg}",
-                        f"- **Remediation:** {fix}",
-                        "",
-                    ]
+            p_order = {"CRITICAL": 0, "WARN": 1, "INFO": 2}
+            sorted_groups: List[Dict[str, Any]] = []
+            for viols in groups_map.values():
+                sorted_viols = sorted(
+                    viols,
+                    key=lambda x: getattr(x, "turn_index", getattr(x, "turnIndex", 0)) or 0,
                 )
+                first = sorted_viols[0]
+                rid = getattr(first, "rule_id", None) or getattr(first, "ruleId", "RULE")
+                title = getattr(first, "title", rid)
+                severities: List[str] = []
+                for x in sorted_viols:
+                    sev_attr = getattr(x, "severity", "WARN")
+                    s_val = sev_attr.value if hasattr(sev_attr, "value") else str(sev_attr)
+                    severities.append(str(s_val).upper())
+
+                if "CRITICAL" in severities:
+                    sev_str = "CRITICAL"
+                elif "WARN" in severities:
+                    sev_str = "WARN"
+                else:
+                    sev_str = "INFO"
+
+                earlier_viols = [
+                    x
+                    for x in sorted_viols
+                    if (getattr(x, "turn_index", getattr(x, "turnIndex", None)) is not None)
+                    and getattr(x, "turn_index", getattr(x, "turnIndex", 0)) < current_turn_idx
+                ]
+                current_viols = [
+                    x
+                    for x in sorted_viols
+                    if getattr(x, "turn_index", getattr(x, "turnIndex", None)) == current_turn_idx
+                ]
+                cur_viol = current_viols[0] if current_viols else None
+                fix = (
+                    getattr(cur_viol, "suggested_fix", "") or getattr(cur_viol, "suggestedFix", "")
+                    if cur_viol
+                    else ""
+                ) or next(
+                    (
+                        getattr(x, "suggested_fix", "") or getattr(x, "suggestedFix", "")
+                        for x in reversed(sorted_viols)
+                        if getattr(x, "suggested_fix", "") or getattr(x, "suggestedFix", "")
+                    ),
+                    "",
+                )
+                total_waste = sum(
+                    float(
+                        getattr(x, "estimated_waste_usd", 0.0)
+                        or getattr(x, "estimatedWasteUSD", 0.0)
+                        or 0.0
+                    )
+                    for x in sorted_viols
+                )
+                earlier_waste = sum(
+                    float(
+                        getattr(x, "estimated_waste_usd", 0.0)
+                        or getattr(x, "estimatedWasteUSD", 0.0)
+                        or 0.0
+                    )
+                    for x in earlier_viols
+                )
+                turn_indices = sorted(
+                    list(
+                        {
+                            getattr(x, "turn_index", getattr(x, "turnIndex", 0))
+                            for x in sorted_viols
+                            if getattr(x, "turn_index", getattr(x, "turnIndex", None)) is not None
+                        }
+                    )
+                )
+                earlier_turn_indices = sorted(
+                    list(
+                        {
+                            getattr(x, "turn_index", getattr(x, "turnIndex", 0))
+                            for x in earlier_viols
+                            if getattr(x, "turn_index", getattr(x, "turnIndex", None)) is not None
+                        }
+                    )
+                )
+
+                sorted_groups.append(
+                    {
+                        "rule_id": rid,
+                        "title": title,
+                        "fix": fix,
+                        "sev_str": sev_str,
+                        "count": len(sorted_viols),
+                        "turn_indices": turn_indices,
+                        "earlier_turn_indices": earlier_turn_indices,
+                        "cur_viol": cur_viol,
+                        "earlier_viols": earlier_viols,
+                        "total_waste": total_waste,
+                        "earlier_waste": earlier_waste,
+                    }
+                )
+
+            sorted_groups.sort(
+                key=lambda g: (
+                    p_order.get(str(g["sev_str"]), 3),
+                    -float(g["total_waste"]),
+                )
+            )
+
+            for i, g in enumerate(sorted_groups, 1):
+                rule_id = str(g["rule_id"])
+                sev_str = str(g["sev_str"])
+                title = str(g["title"])
+                fix = str(g["fix"])
+                count = int(g["count"])
+                turn_indices = list(g["turn_indices"])
+                cur_viol = g["cur_viol"]
+                earlier_viols = list(g["earlier_viols"])
+                total_waste = float(g["total_waste"])
+                waste_str = f" (${total_waste:.4f} waste)" if total_waste else ""
+
+                if count > 1:
+                    turns_desc = (
+                        f" ({count} occurrences across {len(turn_indices)} turns{waste_str})"
+                    )
+                    lines.append(f"### {i}. [{sev_str}] {title}{turns_desc}")
+                else:
+                    lines.append(f"### {i}. [{sev_str}] {title}{waste_str}")
+
+                lines.append(f"- **Rule ID:** `{rule_id}`")
+                lines.append(
+                    f"- **Total Violations:** {count} across turns {', '.join(f'#{t}' for t in turn_indices) if turn_indices else f'#{current_turn_idx}'}"
+                )
+
+                if cur_viol:
+                    cur_waste = getattr(cur_viol, "estimated_waste_usd", 0.0) or getattr(
+                        cur_viol, "estimatedWasteUSD", 0.0
+                    )
+                    cur_msg = getattr(cur_viol, "message", "")
+                    c_waste_str = f" (${cur_waste:.4f} waste)" if cur_waste else ""
+                    lines.append(
+                        f"- **Current Turn (#{current_turn_idx}):** Active{c_waste_str} — {cur_msg}"
+                    )
+                else:
+                    lines.append(f"- **Current Turn (#{current_turn_idx}):** Clean / Not triggered")
+
+                if earlier_viols:
+                    e_turns = list(g["earlier_turn_indices"])
+                    e_turns_str = ", ".join(f"#{t}" for t in e_turns)
+                    e_waste = float(g["earlier_waste"])
+                    e_waste_str = f" (${e_waste:.4f} waste)" if e_waste else ""
+                    lines.append(
+                        f"- **Earlier Turns ({e_turns_str}):** {len(earlier_viols)} violation(s){e_waste_str}"
+                    )
+                else:
+                    lines.append("- **Earlier Turns:** None (first occurrence)")
+
+                lines.append(f"- **Remediation:** {fix}")
+                lines.append("")
 
         lines.extend(
             [

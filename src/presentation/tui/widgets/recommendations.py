@@ -61,10 +61,10 @@ class RecommendationsWidget(Widget):
         mode_label = "All Session [r]" if is_all else f"Turn #{self.state.selected_turn_index} [r]"
         title_widget.update(f"[3] RECOMMENDATIONS ({mode_label})")
 
-        violations = self.state.get_violations_for_selected_turn()
-        if not violations:
+        groups = self.state.get_grouped_violations(selected_only=not is_all)
+        if not groups:
             msg = Text()
-            if not self.state.turns:
+            if not self.state.turns and not self.state.cumulative_violations:
                 msg.append("HEURISTIC RECOMMENDATIONS & WASTE ANALYSIS\n\n", style="bold #58a6ff")
                 msg.append("ctxins continuously evaluates context hygiene rules:\n\n", style="dim")
                 msg.append("  • CTX-001: Stale Tool Output persistence\n", style="yellow")
@@ -83,20 +83,26 @@ class RecommendationsWidget(Widget):
             return
 
         out = Text()
-        total_waste = sum(float(v.get("estimatedWasteUSD", 0.0)) for v in violations)
+        total_waste = sum(g["totalWasteUSD"] for g in groups)
+        total_violations_count = sum(g["totalOccurrences"] for g in groups)
         out.append(
-            f"Active Violations: {len(violations)} | Potential Savings: ${total_waste:.4f}\n\n",
+            f"Unique Warnings: {len(groups)} | Total Violations: {total_violations_count} | Potential Savings: ${total_waste:.4f}\n\n",
             style="bold #8b949e",
         )
 
-        for i, v in enumerate(violations):
-            rule_id = v.get("ruleId", "CTX-000")
-            severity = str(v.get("severity", "WARN")).upper()
-            title = v.get("title", rule_id)
-            waste = float(v.get("estimatedWasteUSD", 0.0))
-            fix = v.get("suggestedFix", "No suggestion provided.")
-            block_ids = v.get("blockIds", [])
-            turn_idx = v.get("turnIndex", 0)
+        for i, g in enumerate(groups):
+            rule_id = g["ruleId"]
+            severity = g["severity"]
+            title = g["title"]
+            fix = g["suggestedFix"]
+            count = g["totalOccurrences"]
+            turn_count = g["turnCount"]
+            current_turn = g["currentTurnIndex"]
+            cur_viol = g["currentTurnViolation"]
+            earlier_viols = g["earlierViolations"]
+            earlier_turns = g["earlierTurnIndices"]
+            total_waste = g["totalWasteUSD"]
+            block_ids = g["blockIds"]
 
             # Badge styling
             if severity == "CRITICAL":
@@ -110,18 +116,52 @@ class RecommendationsWidget(Widget):
                 badge_text = "[WARN]"
 
             out.append(f"{badge_text} ", style=badge_style)
-            out.append(f"{rule_id}: {title} (Turn #{turn_idx})\n", style="bold white")
+            occ_text = f"{count} violation{'s' if count != 1 else ''}"
+            if turn_count > 1:
+                occ_text += f" across {turn_count} turns"
+            out.append(f"{rule_id}: {title} ({occ_text})\n", style="bold white")
 
-            if waste > 0:
-                out.append(f"  Waste Impact: ${waste:.4f}\n", style=f"bold {COLOR_CRITICAL}")
+            # Current turn breakdown
+            if cur_viol:
+                cur_waste = float(cur_viol.get("estimatedWasteUSD", 0.0) or 0.0)
+                cur_msg = cur_viol.get("message", "")
+                waste_info = f" (${cur_waste:.4f} waste)" if cur_waste > 0 else ""
+                out.append(f"  • Current Turn (#{current_turn}): ", style="bold cyan")
+                out.append(f"Active{waste_info}\n", style="bold #e3b341")
+                if cur_msg:
+                    out.append(f"    {cur_msg}\n", style="dim")
+            else:
+                out.append(f"  • Current Turn (#{current_turn}): ", style="bold cyan")
+                out.append("Clean / Not triggered\n", style="dim green")
+
+            # Earlier turns breakdown
+            if earlier_viols:
+                earlier_waste = g["earlierWasteUSD"]
+                earlier_waste_info = f" (${earlier_waste:.4f} waste)" if earlier_waste > 0 else ""
+                turns_str = ", ".join(f"#{t}" for t in earlier_turns)
+                out.append(f"  • Earlier Turns ({turns_str}): ", style="bold cyan")
+                out.append(
+                    f"{len(earlier_viols)} violation{'s' if len(earlier_viols) != 1 else ''}{earlier_waste_info}\n",
+                    style="yellow",
+                )
+            else:
+                out.append("  • Earlier Turns: ", style="bold cyan")
+                out.append("None (first occurrence)\n", style="dim")
+
+            if total_waste > 0:
+                out.append(
+                    f"  Total Waste Impact: ${total_waste:.4f}\n", style=f"bold {COLOR_CRITICAL}"
+                )
 
             if block_ids:
-                b_str = ", ".join(block_ids)
+                b_str = ", ".join(block_ids[:5])
+                if len(block_ids) > 5:
+                    b_str += f" (+{len(block_ids) - 5} more)"
                 out.append(f"  Referenced Blocks: {b_str}\n", style="dim cyan")
 
             out.append(f"  Suggested Fix: {fix}\n", style=f"bold {COLOR_SUCCESS}")
 
-            if i < len(violations) - 1:
+            if i < len(groups) - 1:
                 out.append(f"  {'─' * 36}\n", style=COLOR_BORDER)
 
         content_widget.update(out)

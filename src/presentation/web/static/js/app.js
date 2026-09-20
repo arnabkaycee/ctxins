@@ -444,33 +444,177 @@ class DashboardApp {
       return;
     }
 
-    // Sort CRITICAL -> WARN -> INFO
-    const priorityOrder = { CRITICAL: 0, WARN: 1, INFO: 2 };
-    const sorted = [...this.violations].sort((a, b) => {
-      const pA = priorityOrder[a.severity] ?? 3;
-      const pB = priorityOrder[b.severity] ?? 3;
-      return pA - pB;
+    // Determine current turn index
+    const currentTurn =
+      this.selectedTurnIndex !== null && this.selectedTurnIndex !== undefined
+        ? this.selectedTurnIndex
+        : (this.turns.length > 0
+            ? (this.turns[this.turns.length - 1].turn_index ?? this.turns[this.turns.length - 1].turnIndex ?? 0)
+            : 0);
+
+    // Group violations by ruleId or suggestedFix
+    const groupsMap = new Map();
+    this.violations.forEach((v) => {
+      const ruleId = v.rule_id || v.ruleId || '';
+      const fix = v.suggested_fix || v.suggestedFix || '';
+      const title = v.title || ruleId || 'Alert';
+      const groupKey = ruleId || fix || title;
+      if (!groupsMap.has(groupKey)) {
+        groupsMap.set(groupKey, []);
+      }
+      groupsMap.get(groupKey).push(v);
     });
 
-    sorted.forEach((v) => {
+    const priorityOrder = { CRITICAL: 0, WARN: 1, INFO: 2 };
+    const sortedGroups = Array.from(groupsMap.values()).map((viols) => {
+      const sortedViols = [...viols].sort((a, b) => {
+        const tA = a.turn_index ?? a.turnIndex ?? 0;
+        const tB = b.turn_index ?? b.turnIndex ?? 0;
+        return tA - tB;
+      });
+      const first = sortedViols[0];
+      const ruleId = first.rule_id || first.ruleId || 'RULE';
+      const title = first.title || ruleId;
+      const fix =
+        sortedViols.find((x) => x.suggested_fix || x.suggestedFix)?.suggested_fix ||
+        sortedViols.find((x) => x.suggested_fix || x.suggestedFix)?.suggestedFix ||
+        '';
+
+      let maxSev = 'INFO';
+      for (const x of sortedViols) {
+        const s = (x.severity || 'INFO').toUpperCase();
+        if (s === 'CRITICAL') {
+          maxSev = 'CRITICAL';
+          break;
+        } else if (s === 'WARN') {
+          maxSev = 'WARN';
+        }
+      }
+
+      const earlierViolations = sortedViols.filter(
+        (x) => (x.turn_index ?? x.turnIndex ?? 0) < currentTurn
+      );
+      const currentViolations = sortedViols.filter(
+        (x) => (x.turn_index ?? x.turnIndex ?? 0) === currentTurn
+      );
+      const currentViolation = currentViolations.length > 0 ? currentViolations[0] : null;
+
+      const totalWaste = sortedViols.reduce(
+        (sum, x) => sum + Number(x.estimated_waste_usd ?? x.estimatedWasteUSD ?? 0),
+        0
+      );
+      const earlierWaste = earlierViolations.reduce(
+        (sum, x) => sum + Number(x.estimated_waste_usd ?? x.estimatedWasteUSD ?? 0),
+        0
+      );
+      const currentWaste = currentViolation
+        ? Number(currentViolation.estimated_waste_usd ?? currentViolation.estimatedWasteUSD ?? 0)
+        : 0;
+
+      const uniqueTurns = Array.from(
+        new Set(sortedViols.map((x) => x.turn_index ?? x.turnIndex ?? 0))
+      ).sort((a, b) => a - b);
+      const earlierTurns = Array.from(
+        new Set(earlierViolations.map((x) => x.turn_index ?? x.turnIndex ?? 0))
+      ).sort((a, b) => a - b);
+
+      return {
+        ruleId,
+        title,
+        fix,
+        severity: maxSev,
+        totalOccurrences: sortedViols.length,
+        uniqueTurns,
+        earlierViolations,
+        earlierTurns,
+        currentViolation,
+        totalWaste,
+        earlierWaste,
+        currentWaste,
+        violations: sortedViols,
+        primaryViolation: currentViolation || sortedViols[sortedViols.length - 1],
+      };
+    });
+
+    sortedGroups.sort((a, b) => {
+      const pA = priorityOrder[a.severity] ?? 3;
+      const pB = priorityOrder[b.severity] ?? 3;
+      if (pA !== pB) return pA - pB;
+      return b.totalWaste - a.totalWaste;
+    });
+
+    if (this.recommendationsCount) {
+      this.recommendationsCount.textContent = `${sortedGroups.length} active (${this.violations.length} total)`;
+    }
+
+    sortedGroups.forEach((group) => {
+      const v = group.primaryViolation;
       const card = document.createElement('div');
-      const sev = v.severity || 'INFO';
+      const sev = group.severity;
       card.className = `violation-card severity-${sev}`;
 
-      const badgeClass = sev === 'CRITICAL' ? 'badge-critical' : sev === 'WARN' ? 'badge-warn' : 'badge-info';
-      const wasteVal = v.estimated_waste_usd ?? v.estimatedWasteUSD;
-      const wasteStr = wasteVal !== undefined && wasteVal !== null ? `$${Number(wasteVal).toFixed(4)} waste` : '';
+      const badgeClass =
+        sev === 'CRITICAL' ? 'badge-critical' : sev === 'WARN' ? 'badge-warn' : 'badge-info';
+      const wasteStr =
+        group.totalWaste > 0 ? `$${group.totalWaste.toFixed(4)} total waste` : '';
+
+      const count = group.totalOccurrences;
+      const turnCount = group.uniqueTurns.length;
+      const occBadge = `<span class="badge badge-occurrence" style="margin-left: 6px; font-size: 11px; background: rgba(110, 118, 129, 0.2); color: var(--text-secondary); border-radius: 12px; padding: 2px 8px;">${count} violation${count !== 1 ? 's' : ''}${turnCount > 1 ? ` across ${turnCount} turns` : ''}</span>`;
+
+      let currentTurnHtml = '';
+      if (group.currentViolation) {
+        const curWaste =
+          group.currentWaste > 0 ? ` ($${group.currentWaste.toFixed(4)} waste)` : '';
+        currentTurnHtml = `
+          <div style="margin-bottom: 3px;">
+            <strong style="color: var(--text-primary);">Current Turn (#${currentTurn}):</strong> 
+            <span style="color: var(--color-warn, #d29922); font-weight: 500;">Active${curWaste}</span>
+            ${group.currentViolation.message ? ` — <span style="color: var(--text-secondary);">${group.currentViolation.message}</span>` : ''}
+          </div>
+        `;
+      } else {
+        currentTurnHtml = `
+          <div style="margin-bottom: 3px;">
+            <strong style="color: var(--text-primary);">Current Turn (#${currentTurn}):</strong> 
+            <span style="color: var(--color-success, #3fb950); font-weight: 500;">Clean / Not triggered</span>
+          </div>
+        `;
+      }
+
+      let earlierTurnsHtml = '';
+      if (group.earlierViolations.length > 0) {
+        const earlierWasteStr =
+          group.earlierWaste > 0 ? ` ($${group.earlierWaste.toFixed(4)} waste)` : '';
+        const turnsList = group.earlierTurns.map((t) => `#${t}`).join(', ');
+        earlierTurnsHtml = `
+          <div style="color: var(--text-secondary); font-size: 11px;">
+            <strong style="color: var(--text-primary);">Earlier Turns (${turnsList}):</strong> 
+            ${group.earlierViolations.length} violation${group.earlierViolations.length !== 1 ? 's' : ''}${earlierWasteStr}
+          </div>
+        `;
+      } else {
+        earlierTurnsHtml = `
+          <div style="color: var(--text-muted); font-size: 11px;">
+            <strong style="color: var(--text-primary);">Earlier Turns:</strong> None (first occurrence)
+          </div>
+        `;
+      }
 
       card.innerHTML = `
         <div class="violation-header">
           <div class="violation-title-group">
             <span class="badge ${badgeClass}">${sev}</span>
-            <span class="violation-title">${v.title || v.rule_id || v.ruleId || 'Heuristic Alert'}</span>
+            <span class="violation-title">${group.title || group.ruleId || 'Heuristic Alert'}</span>
+            ${occBadge}
           </div>
           ${wasteStr ? `<span class="violation-waste">${wasteStr}</span>` : ''}
         </div>
-        <div class="violation-msg">${v.message || ''}</div>
-        ${v.suggested_fix || v.suggestedFix ? `<div class="violation-fix">💡 Fix: ${v.suggested_fix || v.suggestedFix}</div>` : ''}
+        <div class="violation-breakdown" style="margin: 8px 0 6px 0; font-size: 12px; background: rgba(255, 255, 255, 0.03); border-radius: 6px; padding: 6px 10px; border: 1px solid rgba(255, 255, 255, 0.06);">
+          ${currentTurnHtml}
+          ${earlierTurnsHtml}
+        </div>
+        ${group.fix ? `<div class="violation-fix">💡 Fix: ${group.fix}</div>` : ''}
         <div class="violation-actions">
           <button class="violation-action-btn inspect-culprit-btn" type="button">
             <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor" style="vertical-align: -2px; margin-right: 4px;">
@@ -746,6 +890,7 @@ class DashboardApp {
 
     this.renderProportionBar(turn);
     this.renderBlocksTable(turn);
+    this.renderRecommendations();
 
     // Auto-diff (N vs N-1) handling
     if (tIdx === 0 || this.turns.length <= 1) {

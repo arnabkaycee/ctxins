@@ -267,7 +267,10 @@ def test_export_session_markdown(client: TestClient) -> None:
     response = client.get("/api/v1/sessions/sess_test_1/export?format=markdown")
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("text/markdown")
-    assert 'attachment; filename="sess_test_1_optimization_report.md"' in response.headers["content-disposition"]
+    assert (
+        'attachment; filename="sess_test_1_optimization_report.md"'
+        in response.headers["content-disposition"]
+    )
     text = response.text
     assert "# 🔍 ctxins Context Optimization Report: `sess_test_1`" in text
     assert "## 📊 Executive Summary & Financial Audit" in text
@@ -429,3 +432,49 @@ def test_static_assets_cache_headers_and_busting(client: TestClient) -> None:
     assert resp_js.status_code == 200
     assert "no-cache" in resp_js.headers.get("cache-control", "")
 
+
+def test_get_grouped_session_recommendations(
+    client: TestClient, populated_store: SessionStore
+) -> None:
+    """Verify recommendations across multi-turn session are grouped once with count and earlier turns."""
+    from src.schema.ast import CanonicalTurn, RuleViolation, ViolationSeverity
+
+    # sess_test_1 already has 2 turns. Let's add turn 2 with same CTX-001 violation as turn 1
+    v = RuleViolation(
+        rule_id="CTX-001",
+        severity=ViolationSeverity.WARN,
+        title="Stale Tool Output Bloat",
+        message="Stale tool block #2",
+        estimated_waste_usd=0.015,
+        suggested_fix="Prune older tool payloads or truncate large responses.",
+        turn_index=2,
+    )
+    t = CanonicalTurn(
+        turn_id="turn_2",
+        correlation_id="corr_2",
+        session_id="sess_test_1",
+        turn_index=2,
+        timestamp=1700000020.0,
+        provider="anthropic",
+        model="claude-3-5-sonnet",
+        violations=[v],
+        turn_cost_usd=0.015,
+        wasted_cost_usd=0.015,
+    )
+    populated_store.append_turn(t)
+
+    response = client.get("/api/v1/sessions/sess_test_1/recommendations")
+    assert response.status_code == 200
+    recs = response.json()
+    # Should be grouped once
+    assert len(recs) == 1
+    r = recs[0]
+    assert r["rule_id"] == "CTX-001"
+    assert r["total_occurrences"] == 2
+    assert r["turn_count"] == 2
+    assert r["turn_indices"] == [0, 2]
+    assert r["current_turn_index"] == 2
+    assert r["current_violation"] is not None
+    assert r["earlier_turn_indices"] == [0]
+    assert len(r["earlier_violations"]) == 1
+    assert r["suggested_fix"] == "Prune older tool payloads or truncate large responses."
