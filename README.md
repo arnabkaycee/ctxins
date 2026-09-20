@@ -132,18 +132,32 @@ unset HTTP_PROXY HTTPS_PROXY ALL_PROXY GRPC_PROXY http_proxy https_proxy all_pro
 
 | Subcommand | Description | Key Options |
 | :--- | :--- | :--- |
-| `ctxins` / `ctxins tui` | Launch single-window TUI cockpit with concurrent background Web Dashboard | `--proxy-port PORT` (8080), `--web-port PORT` (8484), `--no-web`, `--target-port PORT`, `--target URL` |
+| `ctxins` / `ctxins tui` | Launch single-window TUI cockpit with concurrent background Web Dashboard | `--granularity {step,human}`, `--proxy-port PORT` (8080), `--web-port PORT` (8484), `--no-web`, `--target-port PORT`, `--target URL` |
 | `ctxins env` | Output shell export commands (`eval $(ctxins env)`) or unset commands (`--unset` / `-u`) | `--proxy-port PORT` (8080), `--unset` / `-u`, `--json` |
 | `ctxins unset-env` | Output shell unset commands to remove proxy & cert variables (`eval $(ctxins unset-env)`) | `--json` |
-| `ctxins run` | Spawn proxy and execute agent harness subprocess with auto-configured environment | `--web`, `--tui`, `--port PORT`, `--proxy-port PORT`, `--target-port PORT`, `-- COMMAND...` |
-| `ctxins web` | Launch standalone Web Dashboard server and auto-spawned mitmproxy interceptor | `--port PORT` (8484), `--host HOST`, `--proxy-port PORT` (8080), `--target-port PORT` |
-| `ctxins live` | Start Core Engine + selected UI mode (`web` or `tui`) | `--web`, `--tui`, `--port PORT`, `--proxy-port PORT`, `--target-port PORT` |
+| `ctxins run` | Spawn proxy and execute agent harness subprocess with auto-configured environment | `--granularity {step,human}`, `--web`, `--tui`, `--port PORT`, `--proxy-port PORT`, `--target-port PORT`, `-- COMMAND...` |
+| `ctxins web` | Launch standalone Web Dashboard server and auto-spawned mitmproxy interceptor | `--granularity {step,human}`, `--port PORT` (8484), `--host HOST`, `--proxy-port PORT` (8080), `--target-port PORT` |
+| `ctxins live` | Start Core Engine + selected UI mode (`web` or `tui`) | `--granularity {step,human}`, `--web`, `--tui`, `--port PORT`, `--proxy-port PORT`, `--target-port PORT` |
 
 #### Global Options
 The following options apply to all `ctxins` subcommands:
 - `--debug`, `-d`: Enable verbose debug logging (sets level to `DEBUG` and writes to log file).
 - `--log-level`: Explicit logging level (`DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`; default: `WARNING`).
 - `--log-file PATH`: Path to write log output (default: `~/.ctxins/ctxins.log`).
+
+#### ⏱️ Turn Granularity (`--granularity`)
+Configure turn boundaries at startup (immutable during the session):
+- **`step` (default)**: Every LLM API request is logged as an individual turn, including intermediate agent tool-use cycles.
+- **`human`**: Only user-initiated prompts start a new turn. Multi-step tool calls and model responses are rolled into the active human turn, accumulating tokens, latency, cost, and displaying an aggregated step count (`· N steps`).
+
+```bash
+# Start TUI with human interaction granularity
+uv run ctxins run --tui --granularity human -- claude
+
+# Or set via environment variable
+export CTXINS_GRANULARITY=human
+uv run ctxins
+```
 
 ---
 
