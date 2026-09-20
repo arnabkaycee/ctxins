@@ -18,6 +18,7 @@ class DashboardApp {
     this.statusPill = document.getElementById('connection-status');
     this.statusText = document.getElementById('status-text');
     this.exportBtn = document.getElementById('export-btn');
+    this.navDemoBtn = document.getElementById('nav-demo-btn');
 
     // KPI Elements
     this.kpiTokens = document.getElementById('kpi-tokens');
@@ -111,6 +112,13 @@ class DashboardApp {
 
     if (this.exportBtn) {
       this.exportBtn.addEventListener('click', () => this.exportSession());
+    }
+
+    if (this.navDemoBtn) {
+      this.navDemoBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        this.loadDemoSession();
+      });
     }
 
     if (this.diffBtn) {
@@ -318,11 +326,15 @@ class DashboardApp {
     if (!this.statusPill || !this.statusText) return;
     this.statusPill.className = `status-pill ${status}`;
     if (status === 'connected') {
-      this.statusText.textContent = 'Live Connected';
+      if (!this.turns || this.turns.length === 0) {
+        this.statusText.textContent = 'Listening on 127.0.0.1:8080 - Waiting for agent traffic';
+      } else {
+        this.statusText.textContent = 'Live Connected';
+      }
     } else if (status === 'reconnecting') {
       this.statusText.textContent = 'Reconnecting...';
     } else {
-      this.statusText.textContent = 'Disconnected';
+      this.statusText.textContent = 'Listening on 127.0.0.1:8080 - Waiting for agent traffic';
     }
   }
 
@@ -569,26 +581,123 @@ class DashboardApp {
       this.blocksTableBody.innerHTML = `
         <tr>
           <td colspan="6" style="text-align: center; color: var(--text-secondary); padding: 36px 20px; line-height: 1.6;">
-            <div style="font-weight: 600; font-size: 14px; color: #e3b341; margin-bottom: 8px;">
+            <div style="font-weight: 600; font-size: 15px; color: #e3b341; margin-bottom: 8px;">
               Notice: Unproxied requests are not detected
             </div>
-            <div style="font-size: 12px; max-width: 500px; margin: 0 auto; color: var(--text-muted);">
+            <div style="font-size: 12px; max-width: 600px; margin: 0 auto; color: var(--text-muted);">
               Automatic OS-level packet proxying without root/VPN is not supported.
               Sessions and turns appear dynamically as soon as an agent routes traffic through ctxins:
-              <br><br>
-              <div style="text-align: left; background: #161b22; border: 1px solid #30363d; border-radius: 6px; padding: 12px; font-family: monospace; font-size: 11px;">
-                <div style="color: #8b949e; margin-bottom: 4px;"># Launch agent directly through ctxins proxy:</div>
-                <div style="color: #58a6ff; margin-bottom: 8px;">ctxins run -- &lt;agent-command&gt;</div>
-                <div style="color: #8b949e; margin-bottom: 4px;"># Or export proxy environment in your agent terminal:</div>
-                <div style="color: #58a6ff; margin-bottom: 8px;">eval $(ctxins env)</div>
-                <div style="color: #8b949e; margin-bottom: 4px;"># To unset proxy environment variables when finished:</div>
-                <div style="color: #e3b341;">eval $(ctxins env --unset)</div>
+
+              <div class="empty-state-cmd-box">
+                <div style="color: #8b949e; margin-bottom: 4px; font-size: 11px;"># Launch agent directly through ctxins proxy:</div>
+                <div class="empty-state-cmd-row">
+                  <code class="empty-state-cmd-text">ctxins run -- &lt;agent&gt;</code>
+                  <button class="empty-state-copy-btn" data-copy="ctxins run -- <agent>" title="Copy command">
+                    <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" class="copy-icon">
+                      <path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 0 1 0 1.5h-1.5a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-1.5a.75.75 0 0 1 1.5 0v1.5A1.75 1.75 0 0 1 9.25 16h-7.5A1.75 1.75 0 0 1 0 14.25v-7.5z"></path>
+                      <path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0 1 14.25 11h-7.5A1.75 1.75 0 0 1 5 9.25v-7.5zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25h-7.5z"></path>
+                    </svg>
+                    <span class="copy-text">Copy</span>
+                    <span class="copy-feedback">Copied!</span>
+                  </button>
+                </div>
+
+                <div style="color: #8b949e; margin-top: 10px; margin-bottom: 4px; font-size: 11px;"># Or export proxy environment in your agent terminal:</div>
+                <div class="empty-state-cmd-row">
+                  <code class="empty-state-cmd-text">eval $(ctxins env)</code>
+                  <button class="empty-state-copy-btn" data-copy="eval $(ctxins env)" title="Copy command">
+                    <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" class="copy-icon">
+                      <path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 0 1 0 1.5h-1.5a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-1.5a.75.75 0 0 1 1.5 0v1.5A1.75 1.75 0 0 1 9.25 16h-7.5A1.75 1.75 0 0 1 0 14.25v-7.5z"></path>
+                      <path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0 1 14.25 11h-7.5A1.75 1.75 0 0 1 5 9.25v-7.5zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25h-7.5z"></path>
+                    </svg>
+                    <span class="copy-text">Copy</span>
+                    <span class="copy-feedback">Copied!</span>
+                  </button>
+                </div>
+
+                <div style="color: #8b949e; margin-top: 10px; margin-bottom: 4px; font-size: 11px;"># To unset proxy environment variables when finished:</div>
+                <div class="empty-state-cmd-row">
+                  <code class="empty-state-cmd-text" style="color: #e3b341;">eval $(ctxins env --unset)</code>
+                  <button class="empty-state-copy-btn" data-copy="eval $(ctxins env --unset)" title="Copy command">
+                    <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" class="copy-icon">
+                      <path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 0 1 0 1.5h-1.5a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-1.5a.75.75 0 0 1 1.5 0v1.5A1.75 1.75 0 0 1 9.25 16h-7.5A1.75 1.75 0 0 1 0 14.25v-7.5z"></path>
+                      <path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0 1 14.25 11h-7.5A1.75 1.75 0 0 1 5 9.25v-7.5zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25h-7.5z"></path>
+                    </svg>
+                    <span class="copy-text">Copy</span>
+                    <span class="copy-feedback">Copied!</span>
+                  </button>
+                </div>
+              </div>
+
+              <div style="margin-top: 20px;">
+                <button id="load-demo-btn" class="btn btn-demo">
+                  <svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor">
+                    <path d="M8 0a8 8 0 1 1 0 16A8 8 0 0 1 8 0zM6.5 5v6l5-3-5-3z"/>
+                  </svg>
+                  Explore Demo Session
+                </button>
               </div>
             </div>
           </td>
         </tr>
       `;
+      this._bindEmptyStateActions();
     }
+  }
+
+  _bindEmptyStateActions() {
+    if (!this.blocksTableBody) return;
+    const copyBtns = this.blocksTableBody.querySelectorAll('.empty-state-copy-btn');
+    copyBtns.forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const text = btn.getAttribute('data-copy');
+        if (!text) return;
+        this._copyToClipboard(text, btn);
+      });
+    });
+
+    const demoBtn = document.getElementById('load-demo-btn');
+    if (demoBtn) {
+      demoBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        this.loadDemoSession();
+      });
+    }
+  }
+
+  _copyToClipboard(text, btnElement) {
+    const doFeedback = () => {
+      if (!btnElement) return;
+      btnElement.classList.add('copied');
+      setTimeout(() => {
+        btnElement.classList.remove('copied');
+      }, 2000);
+    };
+
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(doFeedback).catch(() => {
+        this._fallbackCopy(text);
+        doFeedback();
+      });
+    } else {
+      this._fallbackCopy(text);
+      doFeedback();
+    }
+  }
+
+  _fallbackCopy(text) {
+    const textArea = document.createElement('textarea');
+    textArea.value = text;
+    textArea.style.position = 'fixed';
+    textArea.style.opacity = '0';
+    document.body.appendChild(textArea);
+    textArea.focus();
+    textArea.select();
+    try {
+      document.execCommand('copy');
+    } catch (_) {}
+    document.body.removeChild(textArea);
   }
 
   _populateDiffSelects() {
@@ -629,6 +738,35 @@ class DashboardApp {
     const t2 = this.diffT2.value;
 
     if (t1 === '' || t2 === '') return;
+
+    if (this.activeSessionId && this.activeSessionId.startsWith('demo-')) {
+      const turn1 = this.turns.find((t) => (t.turn_index ?? t.turnIndex ?? 0) == t1);
+      const turn2 = this.turns.find((t) => (t.turn_index ?? t.turnIndex ?? 0) == t2);
+      if (turn1 && turn2) {
+        const b1 = (turn1.all_blocks || turn1.blocks || []).map((b) => b.block_id || b.blockId);
+        const b2 = (turn2.all_blocks || turn2.blocks || []).map((b) => b.block_id || b.blockId);
+        const b1Set = new Set(b1);
+        const b2Set = new Set(b2);
+
+        const added = b2.filter((id) => !b1Set.has(id));
+        const removed = b1.filter((id) => !b2Set.has(id));
+        const persisted = b2.filter((id) => b1Set.has(id));
+        const mutated = (turn2.all_blocks || turn2.blocks || [])
+          .filter((b) => (b.lifecycle_status || b.status) === 'mutated')
+          .map((b) => b.block_id || b.blockId);
+        const tokenGrowth = (turn2.input_tokens ?? turn2.inputTokens ?? 0) - (turn1.input_tokens ?? turn1.inputTokens ?? 0);
+
+        this.renderDiffResults({
+          tokenGrowth,
+          addedBlockIds: added,
+          mutatedBlockIds: mutated,
+          removedBlockIds: removed,
+          persistedBlockIds: persisted,
+          cacheBreakpointBlockId: added.length > 0 ? added[0] : null,
+        });
+        return;
+      }
+    }
 
     try {
       const res = await fetch(`/api/v1/sessions/${encodeURIComponent(this.activeSessionId)}/diff/${t1}/${t2}`);
@@ -695,6 +833,25 @@ class DashboardApp {
       alert('No active session to export.');
       return;
     }
+    if (this.activeSessionId && this.activeSessionId.startsWith('demo-')) {
+      const exportData = {
+        sessionId: this.activeSessionId,
+        summary: this.summary,
+        turns: this.turns,
+        violations: this.violations,
+        exported_at: new Date().toISOString(),
+      };
+      const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${this.activeSessionId}-export.jsonc`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      return;
+    }
     const exportUrl = `/api/v1/sessions/${encodeURIComponent(this.activeSessionId)}/export?format=jsonc`;
     window.location.href = exportUrl;
   }
@@ -715,6 +872,520 @@ class DashboardApp {
 
   closeModal() {
     if (this.modalOverlay) this.modalOverlay.classList.remove('active');
+  }
+
+  loadDemoSession() {
+    const demoData = this._getDemoSessionData();
+    const demoSession = {
+      sessionId: 'demo-claude-session',
+      agentHarness: 'Claude Code',
+      model: 'claude-3-7-sonnet',
+      turnCount: 4,
+      createdAt: new Date().toISOString(),
+    };
+
+    if (!this.sessions.some((s) => s.sessionId === demoSession.sessionId)) {
+      this.sessions.unshift(demoSession);
+    }
+    this.activeSessionId = demoSession.sessionId;
+    this._populateSessionSelect();
+
+    this.turns = demoData.turns;
+    this.violations = demoData.violations;
+    this.summary = demoData.summary;
+
+    if (this.statusPill) {
+      this.statusPill.className = 'status-pill connected';
+    }
+    if (this.statusText) {
+      this.statusText.textContent = 'Demo Sandbox (claude-3-7-sonnet)';
+    }
+
+    this.renderAll();
+  }
+
+  _getDemoSessionData() {
+    const generateTestOutput = () => {
+      const lines = [
+        '============================= test session starts =============================',
+        'platform darwin -- Python 3.11.8, pytest-8.1.1, pluggy-1.4.0',
+        'rootdir: /workspace/ctxins',
+        'configfile: pyproject.toml',
+        'collected 250 items',
+        '',
+      ];
+      for (let i = 1; i <= 242; i++) {
+        const padded = String(i).padStart(3, '0');
+        const pct = Math.floor((i / 250) * 100);
+        lines.push(`tests/unit/test_module_${padded}.py::test_worker_spec_${padded} PASSED [${pct}%]`);
+      }
+      lines.push('tests/unit/test_auth.py::test_token_generation PASSED [97%]');
+      lines.push('tests/unit/test_auth.py::test_token_refresh PASSED [98%]');
+      lines.push('tests/unit/test_auth.py::test_jwt_token_expiry FAILED [99%]');
+      lines.push('tests/unit/test_auth.py::test_user_permissions PASSED [100%]');
+      lines.push('');
+      lines.push('=================================== FAILURES ===================================');
+      lines.push('_____________________________ test_jwt_token_expiry _____________________________');
+      lines.push('def test_jwt_token_expiry():');
+      lines.push('        auth_svc = AuthService(secret="test_secret_k8s")');
+      lines.push('        token = auth_svc.issue_jwt(sub="usr_481", ttl_seconds=300)');
+      lines.push('>       assert auth_svc.validate_jwt(token, current_time=now + 301) is False');
+      lines.push('E       AssertionError: assert True is False');
+      lines.push('E       + where True = validate_jwt("eyJhbGciOi...", current_time=1710931501)');
+      lines.push('');
+      lines.push('tests/unit/test_auth.py:84: AssertionError');
+      lines.push('=========================== short test summary info ============================');
+      lines.push('FAILED tests/unit/test_auth.py::test_jwt_token_expiry - AssertionError: assert True is False');
+      lines.push('======================= 1 failed, 249 passed in 4.12s ==========================');
+      return lines.join('\n');
+    };
+
+    const turns = [
+      {
+        turn_index: 0,
+        input_tokens: 4500,
+        output_tokens: 350,
+        cached_read_tokens: 0,
+        turn_cost_usd: 0.0135,
+        duration_ms: 1850,
+        ttft_ms: 320,
+        category_breakdown: {
+          system: 1200,
+          tools: 2200,
+          skills: 300,
+          history: 650,
+          tool_results: 0,
+          thoughts: 150,
+        },
+        all_blocks: [
+          {
+            block_id: 'blk-sys-instructions',
+            block_type: 'system',
+            identity_key: 'system:core_instructions',
+            token_count: 1200,
+            turns_survived: 3,
+            content_hash: '3f7a1b9c',
+            lifecycle_status: 'added',
+            content: {
+              role: 'system',
+              instructions: 'You are Claude Code, an expert agentic software engineer.\nOperate carefully in user workspaces. Read code before editing. Run tests to verify all changes.\nAvoid context bloat and stale result survival.',
+            },
+          },
+          {
+            block_id: 'blk-tool-schemas',
+            block_type: 'tool_defs',
+            identity_key: 'tools:all_definitions',
+            token_count: 2200,
+            turns_survived: 3,
+            content_hash: '9a4d8c2e',
+            lifecycle_status: 'added',
+            content: [
+              {
+                name: 'execute_bash',
+                description: 'Run commands in isolated bash sandbox environment',
+                parameters: { type: 'object', properties: { command: { type: 'string' } }, required: ['command'] },
+              },
+              {
+                name: 'edit_file',
+                description: 'Perform precise search-and-replace text modifications to workspace files',
+                parameters: { type: 'object', properties: { target_file: { type: 'string' }, old_content: { type: 'string' }, new_content: { type: 'string' } }, required: ['target_file', 'old_content', 'new_content'] },
+              },
+              {
+                name: 'database_query',
+                description: 'Execute analytical SQL queries against telemetry data warehouse',
+                parameters: { type: 'object', properties: { query: { type: 'string' } }, required: ['query'] },
+              },
+              {
+                name: 'web_search',
+                description: 'Perform targeted technical documentation searches',
+                parameters: { type: 'object', properties: { q: { type: 'string' } }, required: ['q'] },
+              },
+            ],
+          },
+          {
+            block_id: 'blk-skill-pytest',
+            block_type: 'skill',
+            identity_key: 'skill:testing_standard',
+            token_count: 300,
+            turns_survived: 3,
+            content_hash: '5d8e2a1b',
+            lifecycle_status: 'added',
+            content: '# Skill: Pytest Testing Standards\nAlways run pytest with concise output and focus on the first failure traceback.',
+          },
+          {
+            block_id: 'blk-user-prompt-0',
+            block_type: 'conversation_history',
+            identity_key: 'user:turn_0_prompt',
+            token_count: 650,
+            turns_survived: 3,
+            content_hash: '7b1c3d5e',
+            lifecycle_status: 'added',
+            content: {
+              role: 'user',
+              content: 'Fix the intermittent authentication test failure in test_auth.py and make sure all tests pass cleanly.',
+            },
+          },
+          {
+            block_id: 'blk-tht-turn-0',
+            block_type: 'thought',
+            identity_key: 'assistant:plan_init',
+            token_count: 150,
+            turns_survived: 0,
+            content_hash: '1c2b4a6f',
+            lifecycle_status: 'added',
+            content: 'I will first execute the test suite via execute_bash to locate the failing assertion in test_auth.py.',
+          },
+          {
+            block_id: 'blk-call-bash-0',
+            block_type: 'assistant',
+            identity_key: 'assistant:tool_call:execute_bash',
+            token_count: 200,
+            turns_survived: 0,
+            content_hash: '2d4e6f8a',
+            lifecycle_status: 'added',
+            content: {
+              action: 'call',
+              tool: 'execute_bash',
+              arguments: { command: 'pytest tests/ -v' },
+            },
+          },
+        ],
+      },
+      {
+        turn_index: 1,
+        input_tokens: 6200,
+        output_tokens: 420,
+        cached_read_tokens: 3800,
+        turn_cost_usd: 0.0098,
+        duration_ms: 2450,
+        ttft_ms: 280,
+        category_breakdown: {
+          system: 1200,
+          tools: 2200,
+          skills: 300,
+          history: 920,
+          tool_results: 1400,
+          thoughts: 180,
+        },
+        all_blocks: [
+          {
+            block_id: 'blk-sys-instructions',
+            block_type: 'system',
+            identity_key: 'system:core_instructions',
+            token_count: 1200,
+            turns_survived: 2,
+            content_hash: '3f7a1b9c',
+            lifecycle_status: 'persisted',
+          },
+          {
+            block_id: 'blk-tool-schemas',
+            block_type: 'tool_defs',
+            identity_key: 'tools:all_definitions',
+            token_count: 2200,
+            turns_survived: 2,
+            content_hash: '9a4d8c2e',
+            lifecycle_status: 'persisted',
+          },
+          {
+            block_id: 'blk-skill-pytest',
+            block_type: 'skill',
+            identity_key: 'skill:testing_standard',
+            token_count: 300,
+            turns_survived: 2,
+            content_hash: '5d8e2a1b',
+            lifecycle_status: 'persisted',
+          },
+          {
+            block_id: 'blk-user-prompt-0',
+            block_type: 'conversation_history',
+            identity_key: 'user:turn_0_prompt',
+            token_count: 650,
+            turns_survived: 2,
+            content_hash: '7b1c3d5e',
+            lifecycle_status: 'persisted',
+          },
+          {
+            block_id: 'blk-hist-asst-0',
+            block_type: 'conversation_history',
+            identity_key: 'assistant:turn_0_response',
+            token_count: 270,
+            turns_survived: 2,
+            content_hash: '4a5b6c7d',
+            lifecycle_status: 'added',
+            content: 'Running pytest to inspect all test results across 250 unit test cases...',
+          },
+          {
+            block_id: 'blk-result-pytest-250',
+            block_type: 'tool_results',
+            identity_key: 'tool_result:pytest_250_lines',
+            token_count: 1400,
+            turns_survived: 1,
+            content_hash: '8f9e0a1b',
+            lifecycle_status: 'added',
+            content: generateTestOutput(),
+          },
+          {
+            block_id: 'blk-tht-turn-1',
+            block_type: 'thought',
+            identity_key: 'assistant:diagnose_jwt_failure',
+            token_count: 180,
+            turns_survived: 0,
+            content_hash: '6e7f8a9b',
+            lifecycle_status: 'added',
+            content: 'The failure occurred in test_jwt_token_expiry because token leeway is 0s while clock skew is 1s. Let me edit src/auth/service.py to allow 5s grace leeway.',
+          },
+          {
+            block_id: 'blk-call-edit-1',
+            block_type: 'assistant',
+            identity_key: 'assistant:tool_call:edit_file',
+            token_count: 240,
+            turns_survived: 0,
+            content_hash: '5c6d7e8f',
+            lifecycle_status: 'added',
+            content: {
+              action: 'call',
+              tool: 'edit_file',
+              arguments: {
+                target_file: 'src/auth/service.py',
+                old_content: 'leeway_seconds = 0',
+                new_content: 'leeway_seconds = 5',
+              },
+            },
+          },
+        ],
+      },
+      {
+        turn_index: 2,
+        input_tokens: 7800,
+        output_tokens: 510,
+        cached_read_tokens: 5600,
+        turn_cost_usd: 0.0142,
+        duration_ms: 2950,
+        ttft_ms: 310,
+        category_breakdown: {
+          system: 1200,
+          tools: 2200,
+          skills: 300,
+          history: 2480,
+          tool_results: 1400,
+          thoughts: 220,
+        },
+        all_blocks: [
+          {
+            block_id: 'blk-sys-instructions',
+            block_type: 'system',
+            identity_key: 'system:core_instructions',
+            token_count: 1200,
+            turns_survived: 1,
+            content_hash: '3f7a1b9c',
+            lifecycle_status: 'persisted',
+          },
+          {
+            block_id: 'blk-tool-schemas',
+            block_type: 'tool_defs',
+            identity_key: 'tools:all_definitions',
+            token_count: 2200,
+            turns_survived: 1,
+            content_hash: '9a4d8c2e',
+            lifecycle_status: 'persisted',
+          },
+          {
+            block_id: 'blk-skill-pytest',
+            block_type: 'skill',
+            identity_key: 'skill:testing_standard',
+            token_count: 300,
+            turns_survived: 1,
+            content_hash: '5d8e2a1b',
+            lifecycle_status: 'persisted',
+          },
+          {
+            block_id: 'blk-user-prompt-0',
+            block_type: 'conversation_history',
+            identity_key: 'user:turn_0_prompt',
+            token_count: 650,
+            turns_survived: 1,
+            content_hash: '7b1c3d5e',
+            lifecycle_status: 'persisted',
+          },
+          {
+            block_id: 'blk-result-pytest-250',
+            block_type: 'tool_results',
+            identity_key: 'tool_result:pytest_250_lines',
+            token_count: 1400,
+            turns_survived: 1,
+            content_hash: '8f9e0a1b',
+            lifecycle_status: 'persisted',
+            content: generateTestOutput(),
+          },
+          {
+            block_id: 'blk-result-edit-file',
+            block_type: 'tool_results',
+            identity_key: 'tool_result:edit_file_ack',
+            token_count: 120,
+            turns_survived: 1,
+            content_hash: '3b4c5d6e',
+            lifecycle_status: 'added',
+            content: { success: true, target_file: 'src/auth/service.py', patch_applied: true },
+          },
+          {
+            block_id: 'blk-result-git-status',
+            block_type: 'tool_results',
+            identity_key: 'tool_result:git_status',
+            token_count: 180,
+            turns_survived: 1,
+            content_hash: '2a3b4c5d',
+            lifecycle_status: 'added',
+            content: 'On branch main\nChanges not staged for commit:\n\tmodified:   src/auth/service.py\n\nno changes added to commit (use "git add" to track)',
+          },
+          {
+            block_id: 'blk-tht-turn-2',
+            block_type: 'thought',
+            identity_key: 'assistant:check_retest',
+            token_count: 220,
+            turns_survived: 0,
+            content_hash: '9e0a1b2c',
+            lifecycle_status: 'added',
+            content: 'The patch was cleanly applied to src/auth/service.py. Now executing git status and preparing to run the verification test.',
+          },
+          {
+            block_id: 'blk-call-bash-2',
+            block_type: 'assistant',
+            identity_key: 'assistant:tool_call:retest',
+            token_count: 210,
+            turns_survived: 0,
+            content_hash: '8d9e0a1b',
+            lifecycle_status: 'added',
+            content: {
+              action: 'call',
+              tool: 'execute_bash',
+              arguments: { command: 'pytest tests/unit/test_auth.py::test_jwt_token_expiry' },
+            },
+          },
+        ],
+      },
+      {
+        turn_index: 3,
+        input_tokens: 8000,
+        output_tokens: 720,
+        cached_read_tokens: 6800,
+        turn_cost_usd: 0.0110,
+        duration_ms: 1650,
+        ttft_ms: 260,
+        category_breakdown: {
+          system: 1200,
+          tools: 2200,
+          skills: 300,
+          history: 4180,
+          tool_results: 0,
+          thoughts: 120,
+        },
+        all_blocks: [
+          {
+            block_id: 'blk-sys-instructions',
+            block_type: 'system',
+            identity_key: 'system:core_instructions',
+            token_count: 1200,
+            turns_survived: 0,
+            content_hash: '3f7a1b9c',
+            lifecycle_status: 'persisted',
+          },
+          {
+            block_id: 'blk-tool-schemas',
+            block_type: 'tool_defs',
+            identity_key: 'tools:all_definitions',
+            token_count: 2200,
+            turns_survived: 0,
+            content_hash: '9a4d8c2e',
+            lifecycle_status: 'persisted',
+          },
+          {
+            block_id: 'blk-skill-pytest',
+            block_type: 'skill',
+            identity_key: 'skill:testing_standard',
+            token_count: 300,
+            turns_survived: 0,
+            content_hash: '5d8e2a1b',
+            lifecycle_status: 'persisted',
+          },
+          {
+            block_id: 'blk-user-prompt-0',
+            block_type: 'conversation_history',
+            identity_key: 'user:turn_0_prompt',
+            token_count: 650,
+            turns_survived: 0,
+            content_hash: '7b1c3d5e',
+            lifecycle_status: 'persisted',
+          },
+          {
+            block_id: 'blk-history-consolidated',
+            block_type: 'conversation_history',
+            identity_key: 'history:turns_1_2_context',
+            token_count: 3530,
+            turns_survived: 0,
+            content_hash: '4d5e6f7a',
+            lifecycle_status: 'added',
+            content: 'History: Identified test failure in test_jwt_token_expiry, modified src/auth/service.py leeway to 5s, verified git working directory status.',
+          },
+          {
+            block_id: 'blk-tht-turn-3',
+            block_type: 'thought',
+            identity_key: 'assistant:final_wrapup',
+            token_count: 120,
+            turns_survived: 0,
+            content_hash: '1a2b3c4d',
+            lifecycle_status: 'added',
+            content: 'Verification test passed with 1 passed in 0.08s. Task completed successfully.',
+          },
+          {
+            block_id: 'blk-asst-success',
+            block_type: 'assistant',
+            identity_key: 'assistant:final_message',
+            token_count: 720,
+            turns_survived: 0,
+            content_hash: '9b8a7c6d',
+            lifecycle_status: 'added',
+            content: 'I have investigated the flaky authentication test and identified that `test_jwt_token_expiry` was failing due to 0-second clock skew tolerance. By updating `leeway_seconds = 5` in `src/auth/service.py`, token expiry validation now accounts for realistic cluster clock jitter. All test suites pass successfully!',
+          },
+        ],
+      },
+    ];
+
+    const violations = [
+      {
+        rule_id: 'CTX001',
+        ruleId: 'CTX001',
+        title: 'Stale Tool Output in Turn 2',
+        severity: 'WARN',
+        message: 'Tool result from Turn 1 (250 lines of pytest output, 1,400 tokens) survived into Turn 2 unreferenced, creating context drag.',
+        suggested_fix: 'Truncate tool outputs or evict unreferenced execution results after subsequent tool invocations to recover context bandwidth.',
+        estimated_waste_usd: 0.0042,
+        estimatedWasteUSD: 0.0042,
+        affected_turns: [2],
+      },
+      {
+        rule_id: 'CTX002',
+        ruleId: 'CTX002',
+        title: 'Unused Tool Schema Bloat',
+        severity: 'WARN',
+        message: '3 tool definitions (database_query, web_search, deploy_preview totaling 1,650 tokens) were declared in system prompt but never invoked across the session.',
+        suggested_fix: 'Use dynamic tool provisioning or defer unneeded tool schemas to specialized subagents to conserve prompt cache tokens.',
+        estimated_waste_usd: 0.0085,
+        estimatedWasteUSD: 0.0085,
+        affected_turns: [0, 1, 2, 3],
+      },
+    ];
+
+    const summary = {
+      totalInputTokens: 26500,
+      totalOutputTokens: 2000,
+      totalTokens: 28500,
+      cacheHitRatio: 0.685,
+      estimatedCostUSD: 0.0485,
+      potentialSavingsUSD: 0.0127,
+      pollutionScore: 34.2,
+    };
+
+    return { turns, violations, summary };
   }
 }
 
