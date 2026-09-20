@@ -597,9 +597,78 @@ body {
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
   padding: 10px 16px;
-  margin-bottom: 16px;
+  margin-bottom: 8px;
   font-family: var(--font-mono);
   font-size: 13px;
+}
+
+/* Auto-Diff Ribbon */
+.auto-diff-ribbon {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  background-color: var(--bg-header);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 8px 14px;
+  margin-bottom: 16px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.auto-diff-ribbon:empty {
+  display: none;
+}
+
+.auto-diff-title {
+  color: var(--text-secondary);
+  font-weight: 600;
+  margin-right: 2px;
+}
+
+.delta-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.delta-positive {
+  background-color: var(--color-critical-bg);
+  color: var(--color-critical);
+  border: 1px solid rgba(248, 81, 73, 0.35);
+}
+
+.delta-negative {
+  background-color: var(--color-success-bg);
+  color: var(--color-success);
+  border: 1px solid rgba(63, 185, 80, 0.35);
+}
+
+.delta-neutral {
+  background-color: rgba(110, 118, 129, 0.15);
+  color: var(--text-secondary);
+  border: 1px solid rgba(110, 118, 129, 0.3);
+}
+
+.breakpoint-callout {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: var(--radius-sm);
+  background-color: var(--color-warning-bg);
+  color: var(--color-warning);
+  border: 1px solid rgba(210, 153, 34, 0.4);
+  font-weight: 600;
+  font-family: var(--font-mono);
+  font-size: 11px;
 }
 
 .turn-meta-item {
@@ -663,6 +732,47 @@ body {
 }
 
 /* Diff Section */
+/* Expandable Manual Diff Section */
+.diff-advanced-details {
+  margin-top: 16px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background-color: var(--bg-canvas);
+  overflow: hidden;
+}
+
+.diff-advanced-summary {
+  padding: 10px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  cursor: pointer;
+  user-select: none;
+  background-color: var(--bg-header);
+  border-bottom: 1px solid transparent;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.diff-advanced-details[open] .diff-advanced-summary {
+  border-bottom: 1px solid var(--border-color);
+  color: var(--text-primary);
+}
+
+.diff-advanced-summary:hover {
+  color: var(--accent-blue);
+}
+
+.diff-advanced-details .diff-toolbar {
+  margin-top: 0;
+  border: none;
+  border-radius: 0;
+  background-color: transparent;
+}
+
+.diff-advanced-details .diff-results {
+  padding: 0 14px 14px 14px;
+}
+
 .diff-toolbar {
   display: flex;
   align-items: center;

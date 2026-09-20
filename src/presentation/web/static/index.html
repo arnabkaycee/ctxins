@@ -123,6 +123,7 @@
       <div id="turn-meta-ribbon" class="turn-meta-ribbon">
         <span>Select a turn from the chart or diff dropdowns below to inspect its context AST.</span>
       </div>
+      <div id="auto-diff-ribbon" class="auto-diff-ribbon"></div>
 
       <!-- Context Blocks Table -->
       <div class="table-wrapper">
@@ -147,17 +148,20 @@
         </table>
       </div>
 
-      <!-- Turn-to-Turn Diff Viewer Sub-Section -->
-      <div class="diff-toolbar">
-        <span style="font-weight: 600; font-size: 13px;">Turn-to-Turn Context Diff:</span>
-        <label for="diff-t1" style="font-size: 12px; color: var(--text-secondary);">From:</label>
-        <select id="diff-t1" class="session-select" style="min-width: 100px;"></select>
-        <label for="diff-t2" style="font-size: 12px; color: var(--text-secondary);">To:</label>
-        <select id="diff-t2" class="session-select" style="min-width: 100px;"></select>
-        <button id="diff-btn" class="btn">Compare Turns</button>
-      </div>
+      <!-- Turn-to-Turn Diff Viewer Sub-Section (Advanced / Manual) -->
+      <details class="diff-advanced-details">
+        <summary class="diff-advanced-summary">Advanced: Manual Turn Diff</summary>
+        <div class="diff-toolbar">
+          <span style="font-weight: 600; font-size: 13px;">Turn-to-Turn Context Diff:</span>
+          <label for="diff-t1" style="font-size: 12px; color: var(--text-secondary);">From:</label>
+          <select id="diff-t1" class="session-select" style="min-width: 100px;"></select>
+          <label for="diff-t2" style="font-size: 12px; color: var(--text-secondary);">To:</label>
+          <select id="diff-t2" class="session-select" style="min-width: 100px;"></select>
+          <button id="diff-btn" class="btn">Compare Turns</button>
+        </div>
 
-      <div id="diff-results" class="diff-results"></div>
+        <div id="diff-results" class="diff-results"></div>
+      </details>
     </section>
   </main>
 
