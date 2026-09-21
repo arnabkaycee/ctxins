@@ -269,6 +269,8 @@ uv run mitmproxy -p 8080 -s src/interceptor/addon.py
 
 - **Agent fails with `Connection Refused` on port 8080:**
   Proxy environment variables (`HTTP_PROXY`, etc.) are still set in your shell after `ctxins` has stopped. Run `eval $(uv run ctxins env --unset)` or `eval $(ctxins unset-env)` to clear them.
+- **System apps / browser break when `ctxins` is not opened:**
+  Never modify system-wide network proxy settings or export `HTTP_PROXY` in `~/.zshrc` / `~/.bashrc`. If active, clear them with `eval $(uv run ctxins unset-env)`. Use `ctxins run -- <agent>` or the per-command `with-ctxins` wrapper function so your system apps and shell remain 100% untouched.
 - **TLS Certificate Verification Error (`certificate verify failed`):**
   Ensure `~/.mitmproxy/mitmproxy-ca-cert.pem` exists. Run `ctxins` once to auto-generate the certificate, then run `eval $(uv run ctxins env)`. For Node.js agents, confirm `NODE_EXTRA_CA_CERTS` is set; for Python, check `SSL_CERT_FILE` and `REQUESTS_CA_BUNDLE`.
 - **Port 8080 or 8484 already in use:**
