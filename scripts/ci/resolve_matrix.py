@@ -113,6 +113,7 @@ def resolve_tool_versions(tool: str, depth: int = 4) -> List[Dict[str, Any]]:
             {
                 "tool": tool,
                 "package": package,
+                "registry": registry,
                 "version": ver,
                 "tier": label,
                 "binary": cfg["binary"],
