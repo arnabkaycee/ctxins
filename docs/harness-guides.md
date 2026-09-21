@@ -119,14 +119,15 @@ REQUESTS_CA_BUNDLE="$HOME/.mitmproxy/mitmproxy-ca-cert.pem" \
 agy
 ```
 
-#### Persistent Proxy Configuration:
-If you prefer not setting environment variables on every launch, export them in your shell profile (`~/.zshrc` / `~/.bashrc`):
-```bash
-export HTTP_PROXY="http://127.0.0.1:8080"
-export HTTPS_PROXY="http://127.0.0.1:8080"
-export NODE_EXTRA_CA_CERTS="$HOME/.mitmproxy/mitmproxy-ca-cert.pem"
-export SSL_CERT_FILE="$HOME/.mitmproxy/mitmproxy-ca-cert.pem"
-```
+#### Avoiding System & Shell Pollution:
+> [!WARNING]
+> **Do NOT export proxy variables persistently in `~/.zshrc` or `~/.bashrc`.**
+> Exporting `HTTP_PROXY` globally causes all terminal commands and system applications to route through port 8080. When `ctxins` is closed, system apps and CLI tools will fail with `connection refused`.
+>
+> Instead, always keep proxy variables scoped:
+> - **Preferred:** Run wrapped in a child process: `uv run ctxins run -- agy`
+> - **Or:** Use the per-command wrapper function: `with-ctxins agy`
+
 
 > **What `ctxins` inspects for Antigravity:**
 > - **Multi-Turn Context Accumulation:** Tracks token growth across planning, code edits, and sub-agent task delegations.
