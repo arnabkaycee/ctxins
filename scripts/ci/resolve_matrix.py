@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """Resolve agent CLI package versions dynamically for GitHub Actions test matrix.
 
-Queries npm (and local stubs) to compute [latest, N-1, N-2, N-3] release versions
+Queries npm (and installer endpoints) to compute [latest, N-1, N-2, N-3] release versions
 for:
-- pi (@earendil-works/pi-coding-agent)
-- opencode v2 (opencode-ai >= 1.0.0)
-- opencode v1 (opencode-ai < 1.0.0)
-- claude (@anthropic-ai/claude-code)
-- agy (antigravity-cli / local binary)
+- pi: npm install -g --ignore-scripts @earendil-works/pi-coding-agent
+- opencode v1: npm install -g @opencode/cli
+- opencode v2: curl -fsSL https://opencode.ai/v2/install | bash
+- claude: curl -fsSL https://claude.ai/install.sh | bash
+- agy: antigravity-cli / local binary
 """
 
 from __future__ import annotations
@@ -23,27 +23,31 @@ from typing import Any, Dict, List
 TOOL_CONFIGS: Dict[str, Dict[str, Any]] = {
     "claude": {
         "package": "@anthropic-ai/claude-code",
-        "registry": "npm",
+        "installer_type": "claude_curl",
+        "registry": "curl",
         "binary": "claude",
         "command_template": "claude -p 'ping'",
         "version_filter": lambda v: not re.search(r"[a-zA-Z-]", v),
     },
     "opencode-v2": {
         "package": "opencode-ai",
-        "registry": "npm",
+        "installer_type": "opencode_v2_curl",
+        "registry": "curl",
         "binary": "opencode",
         "command_template": "opencode --version",
         "version_filter": lambda v: v.startswith("1.") and not re.search(r"[a-zA-Z-]", v),
     },
     "opencode-v1": {
-        "package": "opencode-ai",
+        "package": "@opencode/cli",
+        "installer_type": "npm_opencode",
         "registry": "npm",
         "binary": "opencode",
         "command_template": "opencode --version",
-        "version_filter": lambda v: v.startswith("0.") and not re.search(r"[a-zA-Z-]", v),
+        "version_filter": lambda v: not re.search(r"[a-zA-Z-]", v),
     },
     "pi": {
         "package": "@earendil-works/pi-coding-agent",
+        "installer_type": "npm_pi",
         "registry": "npm",
         "binary": "pi",
         "command_template": "pi --version",
@@ -51,6 +55,7 @@ TOOL_CONFIGS: Dict[str, Dict[str, Any]] = {
     },
     "agy": {
         "package": "agy",
+        "installer_type": "agy_binary",
         "registry": "system",
         "binary": "agy",
         "command_template": "agy --version",
@@ -90,11 +95,13 @@ def resolve_tool_versions(tool: str, depth: int = 4) -> List[Dict[str, Any]]:
     if not cfg:
         return []
 
+    installer_type = cfg["installer_type"]
     registry = cfg["registry"]
     package = cfg["package"]
     v_filter = cfg["version_filter"]
 
-    if registry == "npm":
+    # If backed by npm registry (directly or for version resolution)
+    if package != "agy":
         all_versions = fetch_npm_versions(package)
         valid = [v for v in all_versions if v_filter(v)]
         valid.sort(key=_parse_semver)
@@ -109,13 +116,36 @@ def resolve_tool_versions(tool: str, depth: int = 4) -> List[Dict[str, Any]]:
     labels = ["latest", "N-1", "N-2", "N-3"]
     for idx, ver in enumerate(selected):
         label = labels[idx] if idx < len(labels) else f"N-{idx}"
+
+        # Determine exact install command
+        if installer_type == "claude_curl":
+            if ver == "latest" or idx == 0:
+                install_cmd = "curl -fsSL https://claude.ai/install.sh | bash"
+            else:
+                install_cmd = f"curl -fsSL https://claude.ai/install.sh | bash -s -- {ver}"
+        elif installer_type == "opencode_v2_curl":
+            if ver == "latest" or idx == 0:
+                install_cmd = "curl -fsSL https://opencode.ai/v2/install | bash"
+            else:
+                install_cmd = (
+                    f"curl -fsSL https://opencode.ai/v2/install | bash -s -- --version {ver}"
+                )
+        elif installer_type == "npm_opencode":
+            install_cmd = f"npm install -g {package}@{ver}"
+        elif installer_type == "npm_pi":
+            install_cmd = f"npm install -g --ignore-scripts {package}@{ver}"
+        else:
+            install_cmd = "agy --version"
+
         entries.append(
             {
                 "tool": tool,
                 "package": package,
+                "installer_type": installer_type,
                 "registry": registry,
                 "version": ver,
                 "tier": label,
+                "install_cmd": install_cmd,
                 "binary": cfg["binary"],
                 "command_template": cfg["command_template"],
             }
