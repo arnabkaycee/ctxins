@@ -163,7 +163,7 @@ EOF
     done
 
     echo "Executing opencode run..."
-    timeout 60 opencode run --server "http://opencode:ci-test-password@127.0.0.1:4096" --auto -m "ollama/${MODEL}" "ping" || true
+    timeout 60 opencode run --server "http://127.0.0.1:4096" --auto -m "ollama/${MODEL}" "ping" || true
     ;;
 
   pi)
