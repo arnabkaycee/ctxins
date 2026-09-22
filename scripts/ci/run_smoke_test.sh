@@ -100,6 +100,8 @@ case "${TOOL}" in
     fi
 
     export CI=true
+    export OPENCODE_SERVER_PASSWORD="ci-test-password"
+    export OPENCODE_SERVER_USERNAME="opencode"
     export NO_PROXY="127.0.0.1:4096,localhost:4096,127.0.0.1:1234,localhost:1234,127.0.0.1:8000,localhost:8000,models.opencode.ai,${NO_PROXY:-}"
     export no_proxy="127.0.0.1:4096,localhost:4096,127.0.0.1:1234,localhost:1234,127.0.0.1:8000,localhost:8000,models.opencode.ai,${no_proxy:-}"
 
@@ -161,7 +163,7 @@ EOF
     done
 
     echo "Executing opencode run..."
-    timeout 60 opencode run --attach "http://localhost:4096" --dangerously-skip-permissions -m "ollama/${MODEL}" "ping" || true
+    timeout 60 opencode run --server "http://opencode:ci-test-password@127.0.0.1:4096" --auto -m "ollama/${MODEL}" "ping" || true
     ;;
 
   pi)
