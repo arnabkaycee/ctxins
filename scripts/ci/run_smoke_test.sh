@@ -154,13 +154,21 @@ EOF
     opencode serve --port 4096 > /tmp/opencode_serve.log 2>&1 &
     OPENCODE_PID=$!
 
+    OC_READY=0
     for i in {1..30}; do
-      if curl -s "http://127.0.0.1:4096/" > /dev/null 2>&1; then
-        echo "opencode server is ready on port 4096!"
+      if curl -fsS --noproxy "*" "http://127.0.0.1:4096/" > /dev/null 2>&1; then
+        echo "opencode server is ready on port 4096 after ${i}s!"
+        OC_READY=1
         break
       fi
       sleep 1
     done
+
+    if [ "$OC_READY" -ne 1 ]; then
+      echo "❌ Error: opencode server failed to start within 30s" >&2
+      cat /tmp/opencode_serve.log || true
+      exit 1
+    fi
 
     echo "Executing opencode run..."
     timeout 60 opencode run --server "http://127.0.0.1:4096" --auto -m "ollama/${MODEL}" "ping" || true
