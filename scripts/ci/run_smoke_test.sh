@@ -24,9 +24,13 @@ mkdir -p ~/.mitmproxy
 
 CTXINS_PID=""
 SHIM_PID=""
+DUMMY_PID=""
 
 cleanup() {
   echo "Cleaning up background services..."
+  if [ -n "${DUMMY_PID:-}" ] && kill -0 "${DUMMY_PID}" 2>/dev/null; then
+    kill "${DUMMY_PID}" 2>/dev/null || true
+  fi
   if [ -n "${SHIM_PID:-}" ] && kill -0 "${SHIM_PID}" 2>/dev/null; then
     kill "${SHIM_PID}" 2>/dev/null || true
   fi
@@ -93,11 +97,33 @@ case "${TOOL}" in
 
     export CI=true
 
+    # Prevent proxy 502 on background model discovery probes (port 1234 for LM Studio, port 8000 for vLLM)
+    python3 -c "
+import http.server, socketserver, threading, time
+class H(http.server.BaseHTTPRequestHandler):
+    def do_GET(self): self.send_response(404); self.end_headers()
+    def do_POST(self): self.send_response(404); self.end_headers()
+    def log_message(self, *args): pass
+for p in (1234, 8000):
+    try:
+        s = socketserver.TCPServer(('127.0.0.1', p), H)
+        threading.Thread(target=s.serve_forever, daemon=True).start()
+    except Exception: pass
+while True: time.sleep(1)
+" >/dev/null 2>&1 &
+    DUMMY_PID=$!
+    sleep 1
+
     mkdir -p "$HOME/.config/opencode"
     cat <<EOF > "$HOME/.config/opencode/opencode.json"
 {
   "\$schema": "https://opencode.ai/config.json",
   "model": "ollama/${MODEL}",
+  "plugins": [
+    "*",
+    "-opencode.provider.lmstudio",
+    "-opencode.provider.vllm"
+  ],
   "providers": {
     "ollama": {
       "name": "Ollama",
