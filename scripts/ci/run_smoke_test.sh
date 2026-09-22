@@ -156,8 +156,9 @@ EOF
 
     OC_READY=0
     for i in {1..30}; do
-      if curl -fsS --noproxy "*" "http://127.0.0.1:4096/" > /dev/null 2>&1; then
-        echo "opencode server is ready on port 4096 after ${i}s!"
+      CODE=$(curl -s -o /dev/null -w "%{http_code}" --noproxy "*" -u "opencode:ci-test-password" "http://127.0.0.1:4096/" || echo "000")
+      if [ "$CODE" != "000" ] && [ "$CODE" != "000000" ] && [ -n "$CODE" ]; then
+        echo "opencode server is ready on port 4096 (HTTP $CODE) after ${i}s!"
         OC_READY=1
         break
       fi
