@@ -81,7 +81,7 @@ case "${TOOL}" in
     export CI=true
 
     echo "Executing claude..."
-    timeout 30 claude -p "ping" || true
+    timeout 60 claude -p "ping" || true
     ;;
 
   opencode*|opencode)
@@ -96,8 +96,21 @@ case "${TOOL}" in
     export OLLAMA_HOST="${OLLAMA_URL}"
     export CI=true
 
+    mkdir -p "$HOME/.config/opencode"
+    cat <<EOF > "$HOME/.config/opencode/opencode.json"
+{
+  "model": "openai/${MODEL}",
+  "providers": {
+    "openai": {
+      "baseURL": "${OLLAMA_URL}/v1",
+      "apiKey": "dummy"
+    }
+  }
+}
+EOF
+
     echo "Executing opencode..."
-    timeout 30 opencode run "ping" || timeout 30 opencode --version || true
+    timeout 30 opencode run -m "openai/${MODEL}" "ping" || timeout 30 opencode run "ping" || true
     ;;
 
   pi)
@@ -108,11 +121,12 @@ case "${TOOL}" in
     fi
 
     export OPENAI_BASE_URL="${OLLAMA_URL}/v1"
+    export OPENAI_API_KEY="dummy-key"
     export OLLAMA_HOST="${OLLAMA_URL}"
     export CI=true
 
     echo "Executing pi..."
-    timeout 30 pi -p "ping" || timeout 30 pi --version || true
+    timeout 30 pi --provider openai --model "${MODEL}" -p "ping" || true
     ;;
 
   agy)
@@ -124,7 +138,7 @@ case "${TOOL}" in
 
     export CI=true
     echo "Executing agy..."
-    timeout 30 agy --version || true
+    timeout 30 agy "ping" || true
     ;;
 
   *)
