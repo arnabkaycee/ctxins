@@ -91,26 +91,38 @@ case "${TOOL}" in
       exit 1
     fi
 
-    export OPENAI_BASE_URL="${OLLAMA_URL}/v1"
-    export OPENAI_API_KEY="dummy-key"
-    export OLLAMA_HOST="${OLLAMA_URL}"
     export CI=true
 
     mkdir -p "$HOME/.config/opencode"
     cat <<EOF > "$HOME/.config/opencode/opencode.json"
 {
-  "model": "openai/${MODEL}",
+  "\$schema": "https://opencode.ai/config.json",
+  "model": "ollama/${MODEL}",
   "providers": {
-    "openai": {
-      "baseURL": "${OLLAMA_URL}/v1",
-      "apiKey": "dummy"
+    "ollama": {
+      "name": "Ollama",
+      "package": "@opencode/ai/providers/openai-compatible",
+      "settings": {
+        "baseURL": "${OLLAMA_URL}/v1"
+      },
+      "models": {
+        "${MODEL}": {
+          "name": "${MODEL}"
+        }
+      }
     }
+  },
+  "permission": {
+    "read": "allow",
+    "edit": "allow",
+    "bash": "allow"
   }
 }
 EOF
+    cp -f "$HOME/.config/opencode/opencode.json" ./opencode.json
 
     echo "Executing opencode..."
-    timeout 30 opencode run -m "openai/${MODEL}" "ping" || timeout 30 opencode run "ping" || true
+    timeout 60 opencode run --standalone --auto -m "ollama/${MODEL}" "ping" || true
     ;;
 
   pi)
@@ -120,13 +132,31 @@ EOF
       exit 1
     fi
 
-    export OPENAI_BASE_URL="${OLLAMA_URL}/v1"
-    export OPENAI_API_KEY="dummy-key"
-    export OLLAMA_HOST="${OLLAMA_URL}"
+    export PI_CODING_AGENT_DIR="$HOME/.pi/agent"
+    mkdir -p "$HOME/.pi/agent"
+    cat <<EOF > "$HOME/.pi/agent/models.json"
+{
+  "providers": {
+    "ollama": {
+      "baseUrl": "${OLLAMA_URL}/v1",
+      "api": "openai-completions",
+      "apiKey": "ollama",
+      "compat": {
+        "supportsDeveloperRole": false,
+        "supportsReasoningEffort": false
+      },
+      "models": [
+        { "id": "${MODEL}" }
+      ]
+    }
+  }
+}
+EOF
+
     export CI=true
 
     echo "Executing pi..."
-    timeout 30 pi --provider openai --model "${MODEL}" -p "ping" || true
+    timeout 60 pi --provider ollama --model "${MODEL}" --no-context-files --no-skills -p "ping" || true
     ;;
 
   agy)
