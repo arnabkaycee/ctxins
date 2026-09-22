@@ -25,9 +25,13 @@ mkdir -p ~/.mitmproxy
 CTXINS_PID=""
 SHIM_PID=""
 DUMMY_PID=""
+OPENCODE_PID=""
 
 cleanup() {
   echo "Cleaning up background services..."
+  if [ -n "${OPENCODE_PID:-}" ] && kill -0 "${OPENCODE_PID}" 2>/dev/null; then
+    kill "${OPENCODE_PID}" 2>/dev/null || true
+  fi
   if [ -n "${DUMMY_PID:-}" ] && kill -0 "${DUMMY_PID}" 2>/dev/null; then
     kill "${DUMMY_PID}" 2>/dev/null || true
   fi
@@ -96,6 +100,8 @@ case "${TOOL}" in
     fi
 
     export CI=true
+    export NO_PROXY="127.0.0.1:4096,localhost:4096,127.0.0.1:1234,localhost:1234,127.0.0.1:8000,localhost:8000,models.opencode.ai,${NO_PROXY:-}"
+    export no_proxy="127.0.0.1:4096,localhost:4096,127.0.0.1:1234,localhost:1234,127.0.0.1:8000,localhost:8000,models.opencode.ai,${no_proxy:-}"
 
     # Prevent proxy 502 on background model discovery probes (port 1234 for LM Studio, port 8000 for vLLM)
     python3 -c "
@@ -119,11 +125,6 @@ while True: time.sleep(1)
 {
   "\$schema": "https://opencode.ai/config.json",
   "model": "ollama/${MODEL}",
-  "plugins": [
-    "*",
-    "-opencode.provider.lmstudio",
-    "-opencode.provider.vllm"
-  ],
   "providers": {
     "ollama": {
       "name": "Ollama",
@@ -147,8 +148,20 @@ while True: time.sleep(1)
 EOF
     cp -f "$HOME/.config/opencode/opencode.json" ./opencode.json
 
-    echo "Executing opencode..."
-    timeout 60 opencode run --standalone --auto -m "ollama/${MODEL}" "ping" || true
+    echo "Starting opencode server on port 4096..."
+    opencode serve --port 4096 > /tmp/opencode_serve.log 2>&1 &
+    OPENCODE_PID=$!
+
+    for i in {1..30}; do
+      if curl -s "http://127.0.0.1:4096/" > /dev/null 2>&1; then
+        echo "opencode server is ready on port 4096!"
+        break
+      fi
+      sleep 1
+    done
+
+    echo "Executing opencode run..."
+    timeout 60 opencode run --attach "http://localhost:4096" --dangerously-skip-permissions -m "ollama/${MODEL}" "ping" || true
     ;;
 
   pi)
