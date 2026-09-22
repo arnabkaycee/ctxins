@@ -51,7 +51,7 @@ class ProviderRouter:
         ),
         (
             re.compile(r"^(localhost|127\.0\.0\.1)(:11434)?$", re.IGNORECASE),
-            re.compile(r"^/(api/chat|v1/chat/completions)(?=[/?#]|$)", re.IGNORECASE),
+            re.compile(r"^/(api/chat|api/generate|v1/chat/completions)(?=[/?#]|$)", re.IGNORECASE),
             Provider.OLLAMA,
         ),
         (
@@ -74,7 +74,7 @@ class ProviderRouter:
         ),
         (
             re.compile(r"^(localhost|127\.0\.0\.1)(:\d+)?$", re.IGNORECASE),
-            re.compile(r"^/api/chat(?=[/?#]|$)", re.IGNORECASE),
+            re.compile(r"^/(api/chat|api/generate)(?=[/?#]|$)", re.IGNORECASE),
             Provider.OLLAMA,
         ),
     ]

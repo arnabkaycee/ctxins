@@ -968,6 +968,9 @@ class CtxinsAddon:
         try:
             metadata = getattr(flow, "metadata", {})
             if not metadata.get("ctxins_intercepted"):
+                resp = getattr(flow, "response", None)
+                if resp is not None:
+                    flow.response.stream = True
                 return
 
             corr_id = metadata.get("ctxins_correlation_id")

@@ -30,12 +30,12 @@ TOOL_CONFIGS: Dict[str, Dict[str, Any]] = {
         "version_filter": lambda v: not re.search(r"[a-zA-Z-]", v),
     },
     "opencode-v2": {
-        "package": "opencode-ai",
+        "package": "opencode-v2",
         "installer_type": "opencode_v2_curl",
         "registry": "curl",
         "binary": "opencode",
         "command_template": "opencode --version",
-        "version_filter": lambda v: v.startswith("1.") and not re.search(r"[a-zA-Z-]", v),
+        "version_filter": lambda v: True,
     },
     "opencode-v1": {
         "package": "@opencode/cli",
@@ -101,7 +101,9 @@ def resolve_tool_versions(tool: str, depth: int = 4) -> List[Dict[str, Any]]:
     v_filter = cfg["version_filter"]
 
     # If backed by npm registry (directly or for version resolution)
-    if package != "agy":
+    if installer_type == "opencode_v2_curl" or package == "agy":
+        selected = ["latest"]
+    else:
         all_versions = fetch_npm_versions(package)
         valid = [v for v in all_versions if v_filter(v)]
         valid.sort(key=_parse_semver)
@@ -109,8 +111,6 @@ def resolve_tool_versions(tool: str, depth: int = 4) -> List[Dict[str, Any]]:
             selected = ["latest"]
         else:
             selected = valid[-depth:][::-1]
-    else:
-        selected = ["latest"]
 
     entries: List[Dict[str, Any]] = []
     labels = ["latest", "N-1", "N-2", "N-3"]
@@ -124,12 +124,7 @@ def resolve_tool_versions(tool: str, depth: int = 4) -> List[Dict[str, Any]]:
             else:
                 install_cmd = f"curl -fsSL https://claude.ai/install.sh | bash -s -- {ver}"
         elif installer_type == "opencode_v2_curl":
-            if ver == "latest" or idx == 0:
-                install_cmd = "curl -fsSL https://opencode.ai/v2/install | bash"
-            else:
-                install_cmd = (
-                    f"curl -fsSL https://opencode.ai/v2/install | bash -s -- --version {ver}"
-                )
+            install_cmd = "curl -fsSL https://opencode.ai/v2/install | bash"
         elif installer_type == "npm_opencode":
             install_cmd = f"npm install -g {package}@{ver}"
         elif installer_type == "npm_pi":

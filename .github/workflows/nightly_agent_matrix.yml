@@ -166,5 +166,6 @@ jobs:
           name: "logs-${{ matrix.tool }}-${{ matrix.version }}"
           path: |
             /tmp/ollama.log
+            /tmp/opencode_serve.log
             ~/.ctxins/ctxins.log
           if-no-files-found: ignore
